@@ -9,7 +9,7 @@ Please note that this project is in its early stages.
 ## Development Status
 
 This package is currently being developed with a focus on:
-- Implementing core LOO-CV and PSIS functionality
+- Implementing core LOO-CV and PSIS functionality in a framework agnostic way
 - Setting up proper testing infrastructure
 - Creating comprehensive documentation
-- Ensuring compatibility with popular Bayesian frameworks
+- Ensuring compatibility with popular Bayesian frameworks such as Arviz, PyStan, PyMC, etc.
