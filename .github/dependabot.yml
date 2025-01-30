@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Python dependencies
+  # Python dependencies (including pre-commit hooks)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -10,6 +10,17 @@ updates:
     labels:
       - "dependencies"
       - "python"
+    groups:
+      pre-commit-hooks:
+        patterns:
+          - "pre-commit"
+          - "black"
+          - "flake8*"
+          - "isort"
+          - "mypy"
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
       # Ignore patch updates for numpy and scipy as they can break compatibility
       - dependency-name: "numpy"
@@ -27,20 +38,3 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
-
-  # Pre-commit hooks
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "monthly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "pre-commit"
-    allow:
-      # Only allow updates for pre-commit hooks
-      - dependency-name: "pre-commit"
-      - dependency-name: "black"
-      - dependency-name: "flake8*"
-      - dependency-name: "isort"
-      - dependency-name: "mypy"
