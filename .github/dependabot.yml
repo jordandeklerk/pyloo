@@ -1,0 +1,46 @@
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    ignore:
+      # Ignore patch updates for numpy and scipy as they can break compatibility
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-patch"]
+      - dependency-name: "scipy"
+        update-types: ["version-update:semver-patch"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Pre-commit hooks
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "pre-commit"
+    allow:
+      # Only allow updates for pre-commit hooks
+      - dependency-name: "pre-commit"
+      - dependency-name: "black"
+      - dependency-name: "flake8*"
+      - dependency-name: "isort"
+      - dependency-name: "mypy"
