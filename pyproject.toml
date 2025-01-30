@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pyloo"
 version = "0.1.0"
-description = "Python implementation of Leave-One-Out cross-validation"
+description = "Python implementation of Leave-One-Out cross-validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
