@@ -1,6 +1,6 @@
 # Scripts Directory
 
-This directory contains scripts and configuration files for building, testing, and maintaining the pyloo package.
+Various scripts and configuration files for building, testing, and maintaining the pyloo package.
 
 ## Files
 
