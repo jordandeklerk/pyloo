@@ -6,16 +6,17 @@ This directory contains examples demonstrating how to use pyloo for Leave-One-Ou
 
 ```
 examples/
-├── basic/              # Basic usage examples
-│   ├── basic_loo.py   # Basic LOO-CV example
-│   └── basic_psis.py  # Basic PSIS example
-├── frameworks/         # Framework-specific examples
-│   ├── pymc/          # PyMC examples
-│   ├── pystan/        # PyStan examples
-│   └── numpyro/       # NumPyro examples
-└── advanced/          # Advanced usage examples
-    ├── moment_match/  # Moment matching examples
-    └── k_fold/        # K-fold cross-validation examples
+├── basic/                # Basic usage examples
+│   ├── basic_loo.py      # Basic LOO-CV example
+│   └── basic_psis.py     # Basic PSIS example
+├── frameworks/           # Framework-specific examples
+│   ├── pymc/             # PyMC examples
+│   ├── pystan/           # PyStan examples
+│   └── numpyro/          # NumPyro examples
+│   └── tensorflow/       # Tensorflow examples
+└── advanced/             # Advanced usage examples
+    ├── moment_match/     # Moment matching examples
+    └── k_fold/           # K-fold cross-validation examples
 ```
 
 ## Running the Examples
@@ -37,6 +38,9 @@ pip install pystan
 
 # For NumPyro examples
 pip install numpyro
+
+# For Tensorflow examples
+pip install tensorflow
 ```
 
 ## Example Descriptions
@@ -49,6 +53,7 @@ pip install numpyro
 - PyMC examples show integration with PyMC models
 - PyStan examples demonstrate usage with Stan models
 - NumPyro examples illustrate usage with NumPyro models
+- Tensorflow examples illustrate usage with NumPyro models
 
 ### Advanced Examples
 - Moment matching examples for improved LOO-CV estimates
