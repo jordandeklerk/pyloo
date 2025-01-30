@@ -1,0 +1,58 @@
+name: 📚 Documentation Improvement
+description: Suggest improvements to the documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve the documentation!
+        
+  - type: dropdown
+    id: doc_type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation needs improvement?
+      options:
+        - API Reference
+        - Tutorials/Examples
+        - Installation Guide
+        - Contributing Guide
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Please provide the URL or path to the documentation that needs improvement.
+      placeholder: "e.g., https://pyloo.readthedocs.io/en/latest/api.html or docs/api.rst"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Current Problem
+      description: What is wrong or missing in the current documentation?
+      placeholder: The documentation is unclear about...
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How could the documentation be improved?
+      placeholder: It would be better if...
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context about the documentation improvement here.
+    validations:
+      required: false
