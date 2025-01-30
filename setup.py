@@ -9,7 +9,7 @@ REQUIREMENTS_FILE = os.path.join(PROJECT_ROOT, "requirements.txt")
 REQUIREMENTS_DEV_FILE = os.path.join(PROJECT_ROOT, "requirements-dev.txt")
 REQUIREMENTS_TEST_FILE = os.path.join(PROJECT_ROOT, "requirements-test.txt")
 README_FILE = os.path.join(PROJECT_ROOT, "README.md")
-VERSION_FILE = os.path.join(PROJECT_ROOT, "src", "pyloo", "__init__.py")
+VERSION_FILE = os.path.join(PROJECT_ROOT, "pyloo", "__init__.py")
 
 
 def get_requirements():
@@ -50,8 +50,7 @@ setup(
     author="Jordan Deklerk",
     author_email="jordan.deklerk@gmail.com",
     url="https://github.com/your-username/pyloo",
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
+    packages=find_packages(),
     install_requires=get_requirements(),
     extras_require={
         "dev": get_requirements_dev(),

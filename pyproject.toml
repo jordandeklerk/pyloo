@@ -58,5 +58,5 @@ multi_line_output = 3
 minversion = "7.0"
 addopts = "-ra -q --cov=pyloo"
 testpaths = [
-    "tests",
+    "pyloo/tests",
 ]

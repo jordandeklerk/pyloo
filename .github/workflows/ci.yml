@@ -32,11 +32,11 @@ jobs:
     
     - name: Lint with flake8
       run: |
-        flake8 src/pyloo
+        flake8 pyloo
     
     - name: Run tests
       run: |
-        pytest src/pyloo/tests
+        pytest pyloo/tests
     
     - name: Build documentation
       run: |
