@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added parametrized tests for GPD inverse function
   - Added test cases matching ArviZ's test coverage
 - Updated test dependencies:
-  - Added arviz>=0.16.0 for test compatibility
+  - Updated arviz to version 0.20.0 for test compatibility
   - Added numpy>=1.21.0 and scipy>=1.7.0 as explicit test requirements
 
 ## v[0.1.0] (2025-01-29)
