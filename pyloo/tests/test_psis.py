@@ -80,13 +80,12 @@ def test_psislw_smooths_for_low_k():
 def test_psislw_extreme_values(centered_eight):
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T 
-    log_like[:, 1] = 10  # Make one observation have extreme values
+    log_like[:, 1] = 10  
     log_weights, pareto_k = psislw(-log_like)
-    assert pareto_k[1] > 0.7  # Should trigger high k warning
+    assert pareto_k[1] > 0.7  
 
 
 def test_psislw_multidimensional():
-    # Test with multidimensional log-likelihood array
     llm = np.random.rand(4, 23, 15, 2)  # chain, draw, dim1, dim2
     ll1 = llm.reshape(4, 23, 15 * 2)    # chain, draw, combined_dims
     
@@ -99,12 +98,10 @@ def test_psislw_multidimensional():
 
 
 def test_psislw_all_k_high():
-    # Test case where all k values are high (> 0.7)
     n_samples = 2000
     n_obs = 5
-    # Generate data that will produce high k values
     log_ratios = np.random.normal(0, 10, size=(n_samples, n_obs))
-    log_ratios[:, 0] = 1000  # Extreme values
+    log_ratios[:, 0] = 1000  
     log_weights, pareto_k = psislw(-log_ratios)
     assert np.all(pareto_k > 0.7)
 
@@ -123,4 +120,3 @@ def test_gpinv_parametrized(probs, kappa, sigma):
         assert np.all(np.isnan(result))
     else:
         assert np.all(np.isfinite(result[probs > 0]))
-        
