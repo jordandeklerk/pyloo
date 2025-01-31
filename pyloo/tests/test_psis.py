@@ -83,3 +83,4 @@ def test_psislw_extreme_values(centered_eight):
     log_like[:, 1] = 10
     log_weights, pareto_k = psislw(-log_like)
     assert pareto_k[1] > 0.7
+    
