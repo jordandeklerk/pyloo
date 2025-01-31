@@ -123,3 +123,4 @@ def test_gpinv_parametrized(probs, kappa, sigma):
         assert np.all(np.isnan(result))
     else:
         assert np.all(np.isfinite(result[probs > 0]))
+        
