@@ -31,7 +31,7 @@ def psislw(
     elif len(r_eff) != n_obs:
         raise ValueError("r_eff must be a scalar or have length equal to n_observations")
 
-    tail_len = int(np.ceil(min(0.2 * n_samples, 3 * np.sqrt(n_samples / r_eff))))
+    tail_len = np.ceil(np.minimum(0.2 * n_samples, 3 * np.sqrt(n_samples / r_eff))).astype(int)
     smoothed_log_weights = np.empty_like(log_ratios)
     pareto_k = np.full(n_obs, np.inf)
 
@@ -40,8 +40,8 @@ def psislw(
         x = x - np.max(x)
         
         sorted_idx = np.argsort(x)
-        cutoff_idx = -tail_len - 1
-        cutoff = max(x[sorted_idx[cutoff_idx]], np.log(np.finfo(float).tiny))
+        cutoff_idx = -int(tail_len[i] if isinstance(tail_len, np.ndarray) else tail_len) - 1
+        cutoff = np.maximum(x[sorted_idx[cutoff_idx]], np.log(np.finfo(float).tiny))
         
         tail_ids = x > cutoff
         x_tail = x[tail_ids]
