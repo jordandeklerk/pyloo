@@ -1,8 +1,4 @@
-"""Pareto smoothed importance sampling (PSIS).
-
-Reference: Vehtari et al. (2024). Pareto smoothed importance sampling. 
-Journal of Machine Learning Research, 25(72):1-58.
-"""
+"""Functions for Pareto smoothed importance sampling (PSIS)."""
 
 import numpy as np
 from dataclasses import dataclass
@@ -10,7 +6,19 @@ from typing import Optional, Tuple, Union
 
 @dataclass
 class PSISObject:
-    """Object containing smoothed log weights and diagnostics."""
+    """Object containing smoothed log weights and diagnostics from PSIS calculations.
+    
+    Attributes
+    ----------
+    log_weights : np.ndarray
+        Smoothed log weights
+    pareto_k : np.ndarray
+        Estimated shape parameters for the generalized Pareto distribution
+    n_eff : Optional[np.ndarray]
+        Effective sample size estimate (if computed)
+    r_eff : Optional[np.ndarray]
+        Relative efficiency estimate (if provided)
+    """
     log_weights: np.ndarray
     pareto_k: np.ndarray
     n_eff: Optional[np.ndarray] = None
@@ -20,7 +28,55 @@ def psislw(
     log_ratios: np.ndarray,
     r_eff: Union[float, np.ndarray] = 1.0,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Main PSIS implementation."""
+    """Compute Pareto smoothed importance sampling (PSIS) log weights.
+    
+    Parameters
+    ----------
+    log_ratios : np.ndarray
+        Array of shape (n_samples, n_observations) containing log importance ratios
+        (for example, log-likelihood values).
+    r_eff : Union[float, np.ndarray], optional
+        Relative MCMC efficiency (effective sample size / total samples) used in 
+        tail length calculation. Can be a scalar or array of length n_observations.
+        Default is 1.0 (for independent draws).
+        
+    Returns
+    -------
+    smoothed_log_weights : np.ndarray
+        Array of same shape as log_ratios containing smoothed log weights
+    pareto_k : np.ndarray
+        Array of length n_observations containing estimated shape parameters for the
+        generalized Pareto distribution fit to the tail of the log ratios
+        
+    Notes
+    -----
+    The Pareto k diagnostic values indicate the reliability of the importance sampling
+    estimates:
+    * k < 0.5   : excellent
+    * 0.5 <= k <= 0.7 : good
+    * k > 0.7   : unreliable
+    
+    Examples
+    --------
+    Calculate PSIS weights for log-likelihood values:
+
+    .. ipython::
+
+        In [1]: import numpy as np
+           ...: from pyloo import psislw
+           ...: log_liks = np.random.normal(size=(1000, 100))
+           ...: weights, k = psislw(log_liks)
+           ...: print(f"Mean Pareto k: {k.mean():.3f}")
+    
+    See Also
+    --------
+    PSISObject : Container for PSIS results including diagnostics
+    
+    References
+    ----------
+    .. [1] Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P. C. (2024).
+           Pareto smoothed importance sampling. Journal of Machine Learning Research, 25(72):1-58.
+    """
     if log_ratios.ndim == 1:
         log_ratios = log_ratios.reshape(-1, 1)
     
@@ -80,7 +136,20 @@ def psislw(
     return smoothed_log_weights, pareto_k
 
 def _gpdfit(x: np.ndarray) -> Tuple[float, float]:
-    """Estimate GPD parameters."""
+    """Estimate generalized Pareto distribution parameters using method of moments.
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        1D array of values to fit
+        
+    Returns
+    -------
+    k : float
+        Estimated shape parameter (xi)
+    sigma : float
+        Estimated scale parameter
+    """
     prior_bs = 3
     prior_k = 10
     n = len(x)
@@ -109,7 +178,22 @@ def _gpdfit(x: np.ndarray) -> Tuple[float, float]:
     return k_post, sigma
 
 def _gpinv(probs: np.ndarray, kappa: float, sigma: float) -> np.ndarray:
-    """Inverse GPD function."""
+    """Compute inverse generalized Pareto distribution function.
+    
+    Parameters
+    ----------
+    probs : np.ndarray
+        Array of probabilities
+    kappa : float
+        Shape parameter
+    sigma : float
+        Scale parameter
+        
+    Returns
+    -------
+    np.ndarray
+        Array of quantiles corresponding to the probabilities
+    """
     x = np.full_like(probs, np.nan)
     if sigma <= 0:
         return x
@@ -133,7 +217,18 @@ def _gpinv(probs: np.ndarray, kappa: float, sigma: float) -> np.ndarray:
     return x
 
 def _logsumexp(x: np.ndarray) -> float:
-    """Stable implementation of log(sum(exp(x)))."""
+    """Compute log(sum(exp(x))) in a numerically stable way.
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        Input array
+        
+    Returns
+    -------
+    float
+        log(sum(exp(x))) computed in a way that avoids numerical overflow
+    """
     x_max = np.max(x)
     if x_max == -np.inf:
         return -np.inf
