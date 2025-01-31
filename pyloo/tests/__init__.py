@@ -1,3 +1,1 @@
-"""
-Test suite for pyloo package.
-"""
+"""Test suite for pyloo package."""

@@ -88,46 +88,41 @@ def psislw(
         raise ValueError("r_eff must be a scalar or have length equal to n_observations")
 
     tail_len = np.ceil(np.minimum(0.2 * n_samples, 3 * np.sqrt(n_samples / r_eff))).astype(int)
-    smoothed_log_weights = np.empty_like(log_ratios)
-    pareto_k = np.full(n_obs, np.inf)
+    smoothed_log_weights = log_ratios.copy()
+    pareto_k = np.zeros(n_obs)
 
     for i in range(n_obs):
-        x = log_ratios[:, i]
+        x = smoothed_log_weights[:, i]
         x = x - np.max(x)
         
         sorted_idx = np.argsort(x)
         cutoff_idx = -int(tail_len[i] if isinstance(tail_len, np.ndarray) else tail_len) - 1
         cutoff = np.maximum(x[sorted_idx[cutoff_idx]], np.log(np.finfo(float).tiny))
         
-        tail_ids = x > cutoff
-        x_tail = x[tail_ids]
-        n_tail = len(x_tail)
+        tail_ids = np.where(x > cutoff)[0] 
+        n_tail = len(tail_ids)
         
-        if n_tail <= 4 or len(np.unique(x_tail)) == 1:
-            k = np.inf
-            smoothed_log_weights[:, i] = x
+        if n_tail <= 4:
+            # Not enough tail samples for GPD fit
+            pareto_k[i] = np.inf
         else:
-            tail_order = np.argsort(x_tail)
+            tail_order = np.argsort(x[tail_ids])
+            x_tail = x[tail_ids][tail_order]
             exp_cutoff = np.exp(cutoff)
             x_tail = np.exp(x_tail) - exp_cutoff
             
-            k, sigma = _gpdfit(x_tail[tail_order])
+            k, sigma = _gpdfit(x_tail)
+            pareto_k[i] = k
             
             if np.isfinite(k):
                 sti = (np.arange(0.5, n_tail) / n_tail)
                 smoothed_tail = _gpinv(sti, k, sigma)
                 smoothed_tail = np.log(smoothed_tail + exp_cutoff)
                 
-                x_smooth = x.copy()
-                x_smooth[tail_ids] = smoothed_tail[np.argsort(tail_order)]
-                x_smooth[x_smooth > 0] = 0
-                smoothed_log_weights[:, i] = x_smooth
-            else:
-                smoothed_log_weights[:, i] = x
+                x[tail_ids[tail_order]] = smoothed_tail
+                x[x > 0] = 0
             
-            pareto_k[i] = k
-            
-        smoothed_log_weights[:, i] = smoothed_log_weights[:, i] - _logsumexp(smoothed_log_weights[:, i])
+        smoothed_log_weights[:, i] = x - _logsumexp(x)
 
     if log_ratios.ndim == 1:
         smoothed_log_weights = smoothed_log_weights.ravel()
