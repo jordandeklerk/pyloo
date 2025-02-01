@@ -1,5 +1,5 @@
 pytest>=7.0.0
 pytest-cov>=4.0.0
-arviz==0.15.1
+arviz==0.16.1
 numpy>=1.21.0
-scipy>=1.7.0
+scipy>=1.7.0,<1.11.0
