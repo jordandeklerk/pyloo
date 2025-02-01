@@ -68,7 +68,7 @@ def _wquant(x: np.ndarray, w: np.ndarray, probs: np.ndarray) -> np.ndarray:
     idx = np.argsort(x)
     x, w = x[idx], w[idx]
 
-    ww = np.cumsum(w) / np.sum(w)  # Normalized cumulative weights
+    ww = np.cumsum(w) / np.sum(w)
 
     qq = np.zeros_like(probs)
     for j, prob in enumerate(probs):
@@ -115,7 +115,6 @@ def _e_loo_khat(
         exp_cutoff = np.exp(np.log(x_tail[-1]))
         khat_r, _ = _gpdfit(x_tail - exp_cutoff)
 
-    # Early return for special cases
     if (
         x is None
         or np.allclose(x, x[0])

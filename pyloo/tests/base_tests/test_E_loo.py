@@ -2,8 +2,9 @@
 
 import numpy as np
 import pytest
-from ...E_loo import e_loo, ExpectationResult, _wmean, _wvar, _wsd, _wquant
-from ...psis import PSISObject
+
+from ...E_loo import ExpectationResult, _wmean, _wquant, _wsd, _wvar, e_loo
+from ...psis import PSISObject, _logsumexp
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,
@@ -181,6 +182,76 @@ def test_numerical_stability():
 
     result = e_loo(x, psis_obj, type="quantile", probs=[0.1, 0.5, 0.9])
     assert np.all(np.isfinite(result.value))
+
+
+def test_eight_schools_expectations(centered_eight, non_centered_eight):
+    """Test E_loo functions with eight schools data from both parameterizations."""
+    centered_loglik = centered_eight.log_likelihood.obs.stack(
+        __sample__=("chain", "draw")
+    ).values.T
+    non_centered_loglik = non_centered_eight.log_likelihood.obs.stack(
+        __sample__=("chain", "draw")
+    ).values.T
+
+    centered_loglik_norm = centered_loglik - _logsumexp(
+        centered_loglik, axis=1, keepdims=True
+    )
+    non_centered_loglik_norm = non_centered_loglik - _logsumexp(
+        non_centered_loglik, axis=1, keepdims=True
+    )
+
+    n_samples = centered_loglik.shape[1]
+    tail_len = max(20, int(0.2 * n_samples))
+
+    centered_psis = PSISObject(
+        log_weights=centered_loglik_norm,
+        pareto_k=np.zeros(centered_loglik.shape[0]),
+        tail_len=tail_len,
+    )
+
+    non_centered_psis = PSISObject(
+        log_weights=non_centered_loglik_norm,
+        pareto_k=np.zeros(non_centered_loglik.shape[0]),
+        tail_len=tail_len,
+    )
+
+    centered_y = centered_eight.posterior_predictive.obs.stack(
+        __sample__=("chain", "draw")
+    ).values.T
+    non_centered_y = non_centered_eight.posterior_predictive.obs.stack(
+        __sample__=("chain", "draw")
+    ).values.T
+
+    for type in ["mean", "variance", "sd"]:
+        result_centered = e_loo(
+            centered_y, centered_psis, type=type, log_ratios=centered_loglik
+        )
+        assert result_centered.value.shape == (8,)
+        assert result_centered.pareto_k.shape == (8,)
+        assert np.all(np.isfinite(result_centered.value))
+        assert np.all(np.isfinite(result_centered.pareto_k))
+
+        result_non_centered = e_loo(
+            non_centered_y, non_centered_psis, type=type, log_ratios=non_centered_loglik
+        )
+        assert result_non_centered.value.shape == (8,)
+        assert result_non_centered.pareto_k.shape == (8,)
+        assert np.all(np.isfinite(result_non_centered.value))
+        assert np.all(np.isfinite(result_non_centered.pareto_k))
+
+    probs = [0.1, 0.5, 0.9]
+    result_centered = e_loo(centered_y, centered_psis, type="quantile", probs=probs)
+    result_non_centered = e_loo(
+        non_centered_y, non_centered_psis, type="quantile", probs=probs
+    )
+
+    assert result_centered.value.shape == (len(probs), 8)
+    assert result_non_centered.value.shape == (len(probs), 8)
+
+    assert np.all(result_centered.value[1] > result_centered.value[0])
+    assert np.all(result_centered.value[2] > result_centered.value[1])
+    assert np.all(result_non_centered.value[1] > result_non_centered.value[0])
+    assert np.all(result_non_centered.value[2] > result_non_centered.value[1])
 
 
 def test_weighted_quantiles_edge_cases():
