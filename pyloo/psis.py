@@ -19,11 +19,14 @@ class PSISObject:
         Effective sample size estimate (if computed)
     r_eff : Optional[np.ndarray]
         Relative efficiency estimate (if provided)
+    tail_len : Optional[Union[int, np.ndarray]]
+        Length of the tail for Pareto smoothing. Can be a scalar or array.
     """
     log_weights: np.ndarray
     pareto_k: np.ndarray
     n_eff: Optional[np.ndarray] = None
     r_eff: Optional[np.ndarray] = None
+    tail_len: Optional[Union[int, np.ndarray]] = None
 
 def psislw(
     log_ratios: np.ndarray,
