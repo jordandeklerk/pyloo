@@ -3,6 +3,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
+from collections.abc import Sequence
 
 @dataclass
 class PSISObject:
@@ -131,20 +132,7 @@ def psislw(
     return smoothed_log_weights, pareto_k
 
 def _gpdfit(x: np.ndarray) -> Tuple[float, float]:
-    """Estimate generalized Pareto distribution parameters using method of moments.
-    
-    Parameters
-    ----------
-    x : np.ndarray
-        1D array of values to fit
-        
-    Returns
-    -------
-    k : float
-        Estimated shape parameter (xi)
-    sigma : float
-        Estimated scale parameter
-    """
+    """Estimate generalized Pareto distribution parameters using method of moments."""
     prior_bs = 3
     prior_k = 10
     n = len(x)
@@ -173,22 +161,7 @@ def _gpdfit(x: np.ndarray) -> Tuple[float, float]:
     return k_post, sigma
 
 def _gpinv(probs: np.ndarray, kappa: float, sigma: float) -> np.ndarray:
-    """Compute inverse generalized Pareto distribution function.
-    
-    Parameters
-    ----------
-    probs : np.ndarray
-        Array of probabilities
-    kappa : float
-        Shape parameter
-    sigma : float
-        Scale parameter
-        
-    Returns
-    -------
-    np.ndarray
-        Array of quantiles corresponding to the probabilities
-    """
+    """Compute inverse generalized Pareto distribution function."""
     x = np.full_like(probs, np.nan)
     if sigma <= 0:
         return x
@@ -211,22 +184,57 @@ def _gpinv(probs: np.ndarray, kappa: float, sigma: float) -> np.ndarray:
     
     return x
 
-def _logsumexp(x: np.ndarray) -> float:
-    """Compute log(sum(exp(x))) in a numerically stable way.
-    
-    Parameters
-    ----------
-    x : np.ndarray
-        Input array
-        
-    Returns
-    -------
-    float
-        log(sum(exp(x))) computed in a way that avoids numerical overflow
-    """
-    x_max = np.max(x)
-    if x_max == -np.inf:
-        return -np.inf
-    
-    sum_exp = np.sum(np.exp(x - x_max))
-    return x_max + np.log(sum_exp)
+def _logsumexp(ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, copy=True):
+    """Stable logsumexp implementation."""
+    ary = np.asarray(ary)
+    if ary.dtype.kind == "i":
+        ary = ary.astype(np.float64)
+    dtype = ary.dtype.type
+    shape = ary.shape
+    shape_len = len(shape)
+
+    if isinstance(axis, Sequence):
+        axis = tuple(axis_i if axis_i >= 0 else shape_len + axis_i for axis_i in axis)
+        agroup = axis
+    else:
+        axis = axis if (axis is None) or (axis >= 0) else shape_len + axis
+        agroup = (axis,)
+
+    shape_max = (
+        tuple(1 for _ in shape)
+        if axis is None
+        else tuple(1 if i in agroup else d for i, d in enumerate(shape))
+    )
+
+    if out is None:
+        if not keepdims:
+            out_shape = (
+                tuple()
+                if axis is None
+                else tuple(d for i, d in enumerate(shape) if i not in agroup)
+            )
+        else:
+            out_shape = shape_max
+        out = np.empty(out_shape, dtype=dtype)
+
+    if b_inv == 0:
+        return np.full_like(out, np.inf, dtype=dtype) if out.shape else np.inf
+    if b_inv is None and b == 0:
+        return np.full_like(out, -np.inf) if out.shape else -np.inf
+
+    ary_max = np.empty(shape_max, dtype=dtype)
+    ary.max(axis=axis, keepdims=True, out=ary_max)
+    if copy:
+        ary = ary.copy()
+    ary -= ary_max
+    np.exp(ary, out=ary)
+    ary.sum(axis=axis, keepdims=keepdims, out=out)
+    np.log(out, out=out)
+
+    if b_inv is not None:
+        ary_max -= np.log(b_inv)
+    elif b:
+        ary_max += np.log(b)
+    out += ary_max if keepdims else ary_max.squeeze()
+
+    return out if out.shape else dtype(out)

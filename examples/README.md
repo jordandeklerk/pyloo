@@ -1,6 +1,6 @@
 # pyloo Examples
 
-This directory contains examples demonstrating how to use pyloo for Leave-One-Out Cross-Validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) with various Bayesian models and frameworks.
+Template directory containing future examples demonstrating how to use pyloo for Leave-One-Out Cross-Validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) with various Bayesian models and frameworks.
 
 ## Directory Structure
 
