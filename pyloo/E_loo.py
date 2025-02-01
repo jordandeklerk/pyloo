@@ -1,9 +1,11 @@
-"""Functions for computing weighted expectations using importance sampling weights."""
+"""Functions for computing weighted expectations using importance sampling."""
+
+from dataclasses import dataclass
+from typing import Optional, Sequence, Union
 
 import numpy as np
-from typing import Optional, Union, Sequence
-from dataclasses import dataclass
-from .psis import PSISObject, _logsumexp, _gpdfit
+
+from .psis import PSISObject, _gpdfit, _logsumexp
 
 
 @dataclass
@@ -13,12 +15,13 @@ class ExpectationResult:
     Attributes
     ----------
     value : Union[float, np.ndarray]
-        The computed expectation value. For matrix inputs with type="quantile" and
-        multiple probabilities, this will be a matrix with shape (len(probs),
-        n_cols). Otherwise it will be a scalar or vector.
+        The computed expectation value. For matrix inputs with type="quantile"
+        and multiple probabilities, this will be a matrix with shape
+        (len(probs), n_cols). Otherwise it will be a scalar or vector.
     pareto_k : Union[float, np.ndarray]
-        Function-specific Pareto k diagnostic value(s). For matrix inputs this will
-        be a vector with length n_cols, for vector inputs it will be a scalar.
+        Function-specific Pareto k diagnostic value(s). For matrix inputs this
+        will be a vector with length n_cols, for vector inputs it will be a
+        scalar.
     """
 
     value: Union[float, np.ndarray]
@@ -34,9 +37,9 @@ def _wmean(x: np.ndarray, w: np.ndarray) -> float:
 def _wvar(x: np.ndarray, w: np.ndarray) -> float:
     """Compute weighted variance using bias-corrected estimator.
 
-    The denominator (1 - sum(w^2)) equals (ESS-1)/ESS, where effective sample size
-    ESS is estimated as 1/sum(w^2). See "Monte Carlo theory, methods and examples"
-    by Owen (2013).
+    The denominator (1 - sum(w^2)) equals (ESS-1)/ESS, where effective sample
+    size ESS is estimated as 1/sum(w^2). See "Monte Carlo theory, methods and
+    examples" by Owen (2013).
     """
     if np.allclose(x, x[0]):
         return 0.0
@@ -155,8 +158,8 @@ def _validate_inputs(
     if type == "quantile":
         if probs is None:
             raise ValueError("probs must be provided for quantile calculation")
-        probs = np.asarray(probs)
-        if not np.all((probs > 0) & (probs < 1)):
+        probs_array = np.asarray(probs)
+        if not np.all((probs_array > 0) & (probs_array < 1)):
             raise ValueError("probs must be between 0 and 1")
 
 
@@ -185,8 +188,8 @@ def e_loo(
     probs : array-like, optional
         Probabilities for computing quantiles. Required if type="quantile".
     log_ratios : array-like, optional
-        Raw (not smoothed) log ratios with same shape as x. If provided, these
-        are used to compute more accurate Pareto k diagnostics.
+        Raw (not smoothed) log ratios with same shape as x. If provided,
+        these are used to compute more accurate Pareto k diagnostics.
 
     Returns
     -------
@@ -258,8 +261,10 @@ def _e_loo_matrix(
     # Initialize output arrays
     n_cols = x.shape[1]
     if type == "quantile":
-        probs = np.asarray(probs)
-        value = np.zeros((len(probs), n_cols))
+        if probs is None:
+            raise ValueError("probs must be provided for quantile calculation")
+        probs_array = np.asarray(probs)
+        value = np.zeros((len(probs_array), n_cols))
     else:
         value = np.zeros(n_cols)
 
@@ -272,7 +277,7 @@ def _e_loo_matrix(
         elif type == "sd":
             value[i] = _wsd(x[:, i], w[:, i])
         else:  # type == "quantile"
-            value[:, i] = _wquant(x[:, i], w[:, i], probs)
+            value[:, i] = _wquant(x[:, i], w[:, i], probs_array)
 
     # Compute diagnostics
     if log_ratios is None:
