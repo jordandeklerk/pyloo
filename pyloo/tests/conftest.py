@@ -31,7 +31,7 @@ def numpy_arrays(rng):
         "normal": rng.normal(size=1000),
         "uniform": rng.uniform(size=1000),
         "random_weights": rng.normal(size=(1000, 8)),
-        "random_ratios": rng.normal(size=(2000, 5))
+        "random_ratios": rng.normal(size=(2000, 5)),
     }
 
 
@@ -46,7 +46,7 @@ def multidim_data(rng):
     """Return multidimensional data for testing."""
     return {
         "llm": rng.normal(size=(4, 23, 15, 2)),  # chain, draw, dim1, dim2
-        "ll1": rng.normal(size=(4, 23, 30)),     # chain, draw, combined_dims
+        "ll1": rng.normal(size=(4, 23, 30)),  # chain, draw, combined_dims
     }
 
 

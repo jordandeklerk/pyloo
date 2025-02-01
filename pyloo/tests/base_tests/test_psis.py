@@ -1,4 +1,5 @@
 """Tests for PSIS functionality."""
+
 import copy
 import numpy as np
 import pytest
@@ -19,19 +20,23 @@ from pyloo.tests.helpers import (
 def test_psislw(centered_eight):
     """Test PSIS-LOO against ArviZ implementation."""
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    log_like = log_like.values.T  
+    log_like = log_like.values.T
     log_weights, pareto_k = psislw(-log_like)
-    _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")))
+    _, arviz_k = az.stats.psislw(
+        -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+    )
     assert_arrays_allclose(pareto_k, arviz_k.values)
 
 
 def test_psislw_r_eff(centered_eight):
     """Test PSIS-LOO with relative effective sample sizes."""
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    log_like = log_like.values.T  
+    log_like = log_like.values.T
     r_eff = np.full(log_like.shape[1], 0.7)
     log_weights, pareto_k = psislw(-log_like, r_eff)
-    _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7)
+    _, arviz_k = az.stats.psislw(
+        -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7
+    )
     assert_arrays_allclose(pareto_k, arviz_k.values)
 
 
@@ -49,7 +54,7 @@ def test_psis_object(numpy_arrays):
     pareto_k = np.random.uniform(size=8)
     n_eff = np.random.uniform(size=8) * 1000
     r_eff = n_eff / 1000
-    
+
     psis = PSISObject(log_weights, pareto_k, n_eff, r_eff)
     assert_arrays_equal(psis.log_weights, log_weights)
     assert_arrays_equal(psis.pareto_k, pareto_k)
@@ -85,7 +90,7 @@ def test_psislw_smooths_for_low_k():
     rng = np.random.default_rng(44)
     x = rng.normal(size=100)
     x_smoothed, k = psislw(x.copy())
-    assert k < 1/3
+    assert k < 1 / 3
     assert not np.allclose(x - logsumexp(x), x_smoothed)
 
 
@@ -103,13 +108,13 @@ def test_psislw_multidimensional(centered_eight):
     """Test PSIS-LOO with multidimensional data."""
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
-    
-    llm = log_like.reshape(-1, 4, 2).copy()  
-    ll1 = log_like.copy()  
-    
+
+    llm = log_like.reshape(-1, 4, 2).copy()
+    ll1 = log_like.copy()
+
     log_weights_m, pareto_k_m = psislw(-llm.reshape(-1, llm.shape[-2] * llm.shape[-1]))
     log_weights_1, pareto_k_1 = psislw(-ll1)
-    
+
     assert_arrays_allclose(pareto_k_m, pareto_k_1)
     assert_arrays_allclose(log_weights_m, log_weights_1)
 
