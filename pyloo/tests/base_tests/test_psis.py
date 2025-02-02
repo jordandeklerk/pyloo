@@ -1,19 +1,20 @@
 """Tests for PSIS functionality."""
 
 import copy
+
+import arviz as az
 import numpy as np
 import pytest
 from scipy.special import logsumexp
-import arviz as az
 
-from pyloo.psis import PSISObject, psislw, _gpdfit, _gpinv, _logsumexp
-from pyloo.tests.helpers import (
+from ...psis import PSISObject, _gpdfit, _gpinv, _logsumexp, psislw
+from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,
     assert_arrays_equal,
+    assert_bounded,
     assert_finite,
     assert_positive,
-    assert_bounded,
 )
 
 
@@ -22,9 +23,7 @@ def test_psislw(centered_eight):
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
     log_weights, pareto_k = psislw(-log_like)
-    _, arviz_k = az.stats.psislw(
-        -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    )
+    _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")))
     assert_arrays_allclose(pareto_k, arviz_k.values)
 
 
@@ -34,9 +33,7 @@ def test_psislw_r_eff(centered_eight):
     log_like = log_like.values.T
     r_eff = np.full(log_like.shape[1], 0.7)
     log_weights, pareto_k = psislw(-log_like, r_eff)
-    _, arviz_k = az.stats.psislw(
-        -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7
-    )
+    _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7)
     assert_arrays_allclose(pareto_k, arviz_k.values)
 
 
