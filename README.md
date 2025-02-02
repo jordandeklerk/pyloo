@@ -1,5 +1,5 @@
-<img src="./assets/logo_light.png#gh-light-mode-only" width=200></img>
-<img src="./assets/logo_dark.png#gh-dark-mode-only" width=200></img>
+<img src="./assets/logo_light.png#gh-light-mode-only#gh-light-mode-only" width=200></img>
+<img src="./assets/logo_dark.png#gh-dark-mode-only#gh-dark-mode-only" width=200></img>
 
 🚧 **Work in Progress** 🚧
 
