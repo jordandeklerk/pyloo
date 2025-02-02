@@ -1,5 +1,9 @@
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_dark.png#gh-light-mode-only" width=200></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_light.png#gh-dark-mode-only" width=200></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_dark.png#gh-light-mode-only" width=100></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_light.png#gh-dark-mode-only" width=100></img>
+
+
+[![codecov](https://codecov.io/gh/pyloo/branch/main/graph/badge.svg)](https://codecov.io/gh/pyloo/new)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
 🚧 **Work in Progress** 🚧
 
