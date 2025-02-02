@@ -119,12 +119,10 @@ def test_psislw_multidimensional(centered_eight):
 def test_psislw_all_k_high(centered_eight):
     """Test PSIS-LOO with high k values."""
     centered_eight = copy.deepcopy(centered_eight)
-    # Make one of the khats high by setting extreme values
     centered_eight.log_likelihood["obs"][:, :, 1] = 10
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
     _, pareto_k = psislw(-log_like)
-    # Check that non-modified schools have finite k values
     assert np.all(np.isfinite(pareto_k[np.arange(len(pareto_k)) != 1]))
     # The modified school should have k > 0.7 (unreliable) or infinite
     assert pareto_k[1] > 0.7 or np.isinf(pareto_k[1])
