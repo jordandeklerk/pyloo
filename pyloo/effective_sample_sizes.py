@@ -6,7 +6,7 @@ from typing import Callable, Optional, Union
 import numpy as np
 
 
-def compute_relative_efficiency(
+def rel_eff(
     x: Union[np.ndarray, Callable],
     chain_id: Optional[np.ndarray] = None,
     cores: int = 1,
@@ -69,23 +69,23 @@ def compute_relative_efficiency(
     if x.ndim == 1:
         x = x.reshape(-1, 1)
         if chain_id is not None:
-            x = _convert_matrix_to_chains(x, chain_id)
+            x = _mat_to_chains(x, chain_id)
         else:
             x = x.reshape(x.shape[0], 1, 1)
     elif x.ndim == 2:
         if chain_id is None:
             raise ValueError("chain_id required for 2-D input")
-        x = _convert_matrix_to_chains(x, chain_id)
+        x = _mat_to_chains(x, chain_id)
     elif x.ndim != 3:
         raise ValueError("Input must be 1-D, 2-D, or 3-D array")
 
     S = x.shape[0] * x.shape[1]
 
     if cores == 1:
-        n_eff = np.array([compute_mcmc_effective_size(x[:, :, i]) for i in range(x.shape[2])])
+        n_eff = np.array([mcmc_eff_size(x[:, :, i]) for i in range(x.shape[2])])
     else:
         with mp.Pool(cores) as pool:
-            n_eff = np.array(pool.map(compute_mcmc_effective_size, [x[:, :, i] for i in range(x.shape[2])]))
+            n_eff = np.array(pool.map(mcmc_eff_size, [x[:, :, i] for i in range(x.shape[2])]))
 
     return np.minimum(n_eff / S, 1.0)
 
@@ -105,7 +105,7 @@ def _relative_eff_function(
 
     def process_one(i: int) -> float:
         val_i = func(data_i=data[i : i + 1], draws=draws)
-        return compute_relative_efficiency(val_i, chain_id=chain_id, cores=1)[0]
+        return rel_eff(val_i, chain_id=chain_id, cores=1)[0]
 
     if cores == 1:
         n_eff = np.array([process_one(i) for i in range(N)])
@@ -116,9 +116,7 @@ def _relative_eff_function(
     return n_eff
 
 
-def compute_psis_effective_size(
-    w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None
-) -> Union[float, np.ndarray]:
+def psis_eff_size(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None) -> Union[float, np.ndarray]:
     """Compute effective sample size for Pareto Smoothed Importance Sampling (PSIS).
 
     Parameters
@@ -175,7 +173,7 @@ def compute_psis_effective_size(
     return (1.0 / ss) * r_eff
 
 
-def compute_mcmc_effective_size(sims: np.ndarray) -> float:
+def mcmc_eff_size(sims: np.ndarray) -> float:
     """Calculate MCMC effective sample size using Stan's approach.
 
     Parameters
@@ -230,7 +228,7 @@ def compute_mcmc_effective_size(sims: np.ndarray) -> float:
     acov_chains = []
     for i in range(chains):
         chain = sims[:, i]
-        acov = _autocovariance(chain)
+        acov = _acov(chain)
         acov_chains.append(acov)
     acov = np.column_stack(acov_chains)
 
@@ -275,13 +273,13 @@ def compute_mcmc_effective_size(sims: np.ndarray) -> float:
     return float(ess)
 
 
-def _autocovariance(x: np.ndarray) -> np.ndarray:
+def _acov(x: np.ndarray) -> np.ndarray:
     """Compute autocovariance estimates for every lag."""
     n = len(x)
     if n < 2:
         raise ValueError("Array too short")
 
-    n_fft = _fft_next_good_size(2 * n)
+    n_fft = _fft_next_size(2 * n)
 
     x = x - np.mean(x)
     var = np.var(x, ddof=1)
@@ -300,7 +298,7 @@ def _autocovariance(x: np.ndarray) -> np.ndarray:
     return acf
 
 
-def _fft_next_good_size(n: int) -> int:
+def _fft_next_size(n: int) -> int:
     """Find optimal next size for FFT."""
     if n <= 2:
         return 2
@@ -318,7 +316,7 @@ def _fft_next_good_size(n: int) -> int:
         n += 1
 
 
-def _convert_matrix_to_chains(mat: np.ndarray, chain_id: np.ndarray) -> np.ndarray:
+def _mat_to_chains(mat: np.ndarray, chain_id: np.ndarray) -> np.ndarray:
     """Convert matrix of MCMC draws to 3-D array organized by chain."""
     chain_id = np.asarray(chain_id)
     if len(chain_id) != mat.shape[0]:
