@@ -50,16 +50,16 @@ def rel_eff(
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pyloo import compute_relative_efficiency
+           ...: from pyloo import rel_eff
            ...: # Generate fake MCMC samples
            ...: samples = np.random.normal(size=(1000, 4, 10))  # 1000 iterations, 4 chains, 10 parameters
-           ...: r_eff = compute_relative_efficiency(samples)
+           ...: r_eff = rel_eff(samples)
            ...: print(f"Mean relative efficiency: {r_eff.mean():.3f}")
 
     See Also
     --------
-    compute_mcmc_effective_size : Calculate raw effective sample size
-    compute_psis_effective_size : Compute effective sample size for PSIS
+    mcmc_eff_size : Calculate raw effective sample size
+    psis_eff_size : Compute effective sample size for PSIS
     """
     if callable(x):
         return _relative_eff_function(x, chain_id, cores, data, draws)
@@ -141,17 +141,17 @@ def psis_eff_size(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = Non
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pyloo import compute_psis_effective_size
+           ...: from pyloo import psis_eff_size
            ...: # Generate fake importance weights
            ...: weights = np.random.gamma(1, 1, size=(1000, 100))
            ...: weights /= weights.sum(axis=0)  # normalize
-           ...: n_eff = compute_psis_effective_size(weights)
+           ...: n_eff = psis_eff_size(weights)
            ...: print(f"Mean effective sample size: {n_eff.mean():.1f}")
 
     See Also
     --------
-    compute_relative_efficiency : Compute MCMC relative efficiency
-    compute_mcmc_effective_size : Calculate raw effective sample size
+    rel_eff : Compute MCMC relative efficiency
+    mcmc_eff_size : Calculate raw effective sample size
     """
     w = np.asarray(w)
     if w.ndim == 1:
@@ -202,16 +202,16 @@ def mcmc_eff_size(sims: np.ndarray) -> float:
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pyloo import compute_mcmc_effective_size
+           ...: from pyloo import mcmc_eff_size
            ...: # Generate fake MCMC samples
            ...: samples = np.random.normal(size=(1000, 4))  # 1000 iterations, 4 chains
-           ...: ess = compute_mcmc_effective_size(samples)
+           ...: ess = mcmc_eff_size(samples)
            ...: print(f"Effective sample size: {ess:.1f}")
 
     See Also
     --------
-    compute_relative_efficiency : Compute relative efficiency
-    compute_psis_effective_size : Compute effective sample size for PSIS
+    rel_eff : Compute relative efficiency
+    psis_eff_size : Compute effective sample size for PSIS
 
     References
     ----------
