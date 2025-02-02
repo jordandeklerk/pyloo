@@ -1,5 +1,5 @@
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_light.png#gh-light-mode-only" width=200></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_dark.png#gh-dark-mode-only" width=200></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_dark.png#gh-light-mode-only" width=200></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo_light.png#gh-dark-mode-only" width=200></img>
 
 🚧 **Work in Progress** 🚧
 
