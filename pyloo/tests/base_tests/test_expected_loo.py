@@ -50,12 +50,8 @@ def test_e_loo_vector():
 def test_e_loo_matrix():
     """Test e_loo with matrix inputs."""
     x = np.array([[1.0, 2.0], [2.0, 3.0], [3.0, 4.0], [4.0, 5.0], [5.0, 6.0]])
-    log_weights = np.array(
-        [[-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0]]
-    )
-    psis_obj = PSISObject(
-        log_weights=log_weights, pareto_k=np.array([0.0, 0.0]), tail_len=2
-    )
+    log_weights = np.array([[-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0]])
+    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0, 0.0]), tail_len=2)
 
     result = e_loo(x, psis_obj, type="mean")
     assert isinstance(result, ExpectationResult)
@@ -130,9 +126,7 @@ def test_pareto_k_estimation():
     log_weights = np.random.pareto(3, size=n_samples)
     log_weights = np.log(log_weights) - np.max(np.log(log_weights))
 
-    psis_obj = PSISObject(
-        log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples)
-    )
+    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples))
 
     test_cases = [
         x,
@@ -172,9 +166,7 @@ def test_numerical_stability():
     x = np.random.normal(size=n_samples)
 
     log_weights = np.array([-1000.0] * (n_samples - 1) + [0.0])
-    psis_obj = PSISObject(
-        log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples)
-    )
+    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples))
 
     for type in ["mean", "variance", "sd"]:
         result = e_loo(x, psis_obj, type=type)
@@ -186,19 +178,11 @@ def test_numerical_stability():
 
 def test_eight_schools_expectations(centered_eight, non_centered_eight):
     """Test E_loo functions with eight schools data from both parameterizations."""
-    centered_loglik = centered_eight.log_likelihood.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
-    non_centered_loglik = non_centered_eight.log_likelihood.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
+    centered_loglik = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")).values.T
+    non_centered_loglik = non_centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")).values.T
 
-    centered_loglik_norm = centered_loglik - _logsumexp(
-        centered_loglik, axis=1, keepdims=True
-    )
-    non_centered_loglik_norm = non_centered_loglik - _logsumexp(
-        non_centered_loglik, axis=1, keepdims=True
-    )
+    centered_loglik_norm = centered_loglik - _logsumexp(centered_loglik, axis=1, keepdims=True)
+    non_centered_loglik_norm = non_centered_loglik - _logsumexp(non_centered_loglik, axis=1, keepdims=True)
 
     n_samples = centered_loglik.shape[1]
     tail_len = max(20, int(0.2 * n_samples))
@@ -215,25 +199,17 @@ def test_eight_schools_expectations(centered_eight, non_centered_eight):
         tail_len=tail_len,
     )
 
-    centered_y = centered_eight.posterior_predictive.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
-    non_centered_y = non_centered_eight.posterior_predictive.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
+    centered_y = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw")).values.T
+    non_centered_y = non_centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw")).values.T
 
     for type in ["mean", "variance", "sd"]:
-        result_centered = e_loo(
-            centered_y, centered_psis, type=type, log_ratios=centered_loglik
-        )
+        result_centered = e_loo(centered_y, centered_psis, type=type, log_ratios=centered_loglik)
         assert result_centered.value.shape == (8,)
         assert result_centered.pareto_k.shape == (8,)
         assert np.all(np.isfinite(result_centered.value))
         assert np.all(np.isfinite(result_centered.pareto_k))
 
-        result_non_centered = e_loo(
-            non_centered_y, non_centered_psis, type=type, log_ratios=non_centered_loglik
-        )
+        result_non_centered = e_loo(non_centered_y, non_centered_psis, type=type, log_ratios=non_centered_loglik)
         assert result_non_centered.value.shape == (8,)
         assert result_non_centered.pareto_k.shape == (8,)
         assert np.all(np.isfinite(result_non_centered.value))
@@ -241,9 +217,7 @@ def test_eight_schools_expectations(centered_eight, non_centered_eight):
 
     probs = [0.1, 0.5, 0.9]
     result_centered = e_loo(centered_y, centered_psis, type="quantile", probs=probs)
-    result_non_centered = e_loo(
-        non_centered_y, non_centered_psis, type="quantile", probs=probs
-    )
+    result_non_centered = e_loo(non_centered_y, non_centered_psis, type="quantile", probs=probs)
 
     assert result_centered.value.shape == (len(probs), 8)
     assert result_non_centered.value.shape == (len(probs), 8)
@@ -280,9 +254,7 @@ def test_constant_values():
     log_weights = np.random.normal(size=100)
     log_weights -= np.max(log_weights)
 
-    psis_obj = PSISObject(
-        log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=20
-    )
+    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=20)
 
     result_mean = e_loo(x, psis_obj, type="mean")
     assert_arrays_allclose(result_mean.value, 1.0)

@@ -151,13 +151,7 @@ def _e_loo_khat(
         exp_cutoff = np.exp(np.log(x_tail[-1]))
         khat_r, _ = _gpdfit(x_tail - exp_cutoff)
 
-    if (
-        x is None
-        or np.allclose(x, x[0])
-        or len(np.unique(x)) == 2
-        or np.any(np.isnan(x))
-        or np.any(np.isinf(x))
-    ):
+    if x is None or np.allclose(x, x[0]) or len(np.unique(x)) == 2 or np.any(np.isnan(x)) or np.any(np.isinf(x)):
         return khat_r
 
     # Handle both tails of h*r
@@ -212,13 +206,9 @@ def e_loo(
     """
     x = np.asarray(x)
     if x.ndim == 1:
-        return _e_loo_vector(
-            x, psis_object, type=type, probs=probs, log_ratios=log_ratios
-        )
+        return _e_loo_vector(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
     elif x.ndim == 2:
-        return _e_loo_matrix(
-            x, psis_object, type=type, probs=probs, log_ratios=log_ratios
-        )
+        return _e_loo_matrix(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
     else:
         raise ValueError("x must be 1D or 2D")
 
@@ -334,11 +324,7 @@ def _e_loo_matrix(
             _e_loo_khat(
                 None if h is None else h[:, i],
                 log_ratios[:, i],
-                (
-                    psis_object.tail_len[i]
-                    if isinstance(psis_object.tail_len, np.ndarray)
-                    else psis_object.tail_len
-                ),
+                (psis_object.tail_len[i] if isinstance(psis_object.tail_len, np.ndarray) else psis_object.tail_len),
             )
             for i in range(n_cols)
         ]

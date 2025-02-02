@@ -1,9 +1,10 @@
 """Functions for Pareto smoothed importance sampling (PSIS)."""
 
-import numpy as np
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
-from collections.abc import Sequence
+
+import numpy as np
 
 
 @dataclass
@@ -93,13 +94,9 @@ def psislw(
     if isinstance(r_eff, (int, float)):
         r_eff = float(r_eff)
     elif len(r_eff) != n_obs:
-        raise ValueError(
-            "r_eff must be a scalar or have length equal to n_observations"
-        )
+        raise ValueError("r_eff must be a scalar or have length equal to n_observations")
 
-    tail_len = np.ceil(
-        np.minimum(0.2 * n_samples, 3 * np.sqrt(n_samples / r_eff))
-    ).astype(int)
+    tail_len = np.ceil(np.minimum(0.2 * n_samples, 3 * np.sqrt(n_samples / r_eff))).astype(int)
     smoothed_log_weights = log_ratios.copy()
     pareto_k = np.zeros(n_obs)
 
@@ -108,9 +105,7 @@ def psislw(
         x = x - np.max(x)
 
         sorted_idx = np.argsort(x)
-        cutoff_idx = (
-            -int(tail_len[i] if isinstance(tail_len, np.ndarray) else tail_len) - 1
-        )
+        cutoff_idx = -int(tail_len[i] if isinstance(tail_len, np.ndarray) else tail_len) - 1
         cutoff = np.maximum(x[sorted_idx[cutoff_idx]], np.log(np.finfo(float).tiny))
 
         tail_ids = np.where(x > cutoff)[0]
@@ -200,9 +195,7 @@ def _gpinv(probs: np.ndarray, kappa: float, sigma: float) -> np.ndarray:
     return x
 
 
-def _logsumexp(
-    ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, copy=True
-):
+def _logsumexp(ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, copy=True):
     """Stable logsumexp implementation."""
     ary = np.asarray(ary)
     if ary.dtype.kind == "i":
@@ -218,19 +211,11 @@ def _logsumexp(
         axis = axis if (axis is None) or (axis >= 0) else shape_len + axis
         agroup = (axis,)
 
-    shape_max = (
-        tuple(1 for _ in shape)
-        if axis is None
-        else tuple(1 if i in agroup else d for i, d in enumerate(shape))
-    )
+    shape_max = tuple(1 for _ in shape) if axis is None else tuple(1 if i in agroup else d for i, d in enumerate(shape))
 
     if out is None:
         if not keepdims:
-            out_shape = (
-                tuple()
-                if axis is None
-                else tuple(d for i, d in enumerate(shape) if i not in agroup)
-            )
+            out_shape = () if axis is None else tuple(d for i, d in enumerate(shape) if i not in agroup)
         else:
             out_shape = shape_max
         out = np.empty(out_shape, dtype=dtype)

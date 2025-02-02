@@ -3,6 +3,7 @@
 import logging
 import warnings
 from contextlib import contextmanager
+
 import numpy as np
 from numpy.testing import assert_allclose, assert_array_almost_equal
 
@@ -17,9 +18,7 @@ def does_not_warn(warning=Warning):
         yield
         for w in caught_warnings:
             if issubclass(w.category, warning):
-                raise AssertionError(
-                    f"Expected no {warning.__name__} but caught warning with message: {w.message}"
-                )
+                raise AssertionError(f"Expected no {warning.__name__} but caught warning with message: {w.message}")
 
 
 def generate_psis_data(rng, n_samples=1000, n_obs=8):
