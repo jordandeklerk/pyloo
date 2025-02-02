@@ -1,8 +1,9 @@
-# pyloo
+<img src="./assets/logo_light.png#gh-light-mode-only" width=200></img>
+<img src="./assets/logo_dark.png#gh-dark-mode-only" width=200></img>
 
 🚧 **Work in Progress** 🚧
 
-This is a Python implementation of the R package [loo](https://github.com/stan-dev/loo). This package intends to provide tools for Leave-One-Out Cross-Validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models in a framework agnostic way. 
+This is a Python implementation of the R package [loo](https://github.com/stan-dev/loo). This package intends to provide tools for Leave-One-Out Cross-Validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models in a framework agnostic way.
 
 Please note that this project is in its early stages and is in active development.
 
