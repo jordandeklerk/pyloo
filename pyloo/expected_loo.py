@@ -28,6 +28,67 @@ class ExpectationResult:
     pareto_k: Union[float, np.ndarray]
 
 
+def e_loo(
+    x: Union[np.ndarray, Sequence[float]],
+    psis_object: PSISObject,
+    *,
+    type: str = "mean",
+    probs: Optional[Union[float, Sequence[float]]] = None,
+    log_ratios: Optional[np.ndarray] = None,
+) -> ExpectationResult:
+    """Compute weighted expectations using importance sampling weights.
+
+    Parameters
+    ----------
+    x : array-like
+        Values to compute expectations for. Can be a vector or 2D array.
+    psis_object : PSISObject
+        Object containing importance sampling weights from PSIS.
+    type : str, optional
+        Type of expectation to compute. Options are:
+        - "mean": weighted mean (default)
+        - "variance": weighted variance
+        - "sd": weighted standard deviation
+        - "quantile": weighted quantiles
+    probs : array-like, optional
+        Probabilities for computing quantiles. Required if type="quantile".
+    log_ratios : array-like, optional
+        Raw (not smoothed) log ratios with same shape as x. If provided,
+        these are used to compute more accurate Pareto k diagnostics.
+
+    Returns
+    -------
+    ExpectationResult
+        Container with computed expectation value and diagnostics.
+
+    Examples
+    --------
+    Compute weighted mean using importance sampling:
+
+    .. ipython::
+
+        In [1]: import numpy as np
+           ...: from pyloo import psislw, e_loo
+           ...: # Generate fake data
+           ...: x = np.random.normal(size=(1000, 100))
+           ...: log_ratios = np.random.normal(size=(1000, 100))
+           ...: weights, k = psislw(log_ratios)
+           ...: result = e_loo(x, PSISObject(log_weights=weights, pareto_k=k))
+           ...: print(f"Mean value: {result.value.mean():.3f}")
+
+    See Also
+    --------
+    PSISObject : Container for PSIS results including diagnostics
+    """
+    x = np.asarray(x)
+    if x.ndim == 1:
+        return _e_loo_vector(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
+    elif x.ndim == 2:
+        return _e_loo_matrix(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
+    else:
+        raise ValueError("x must be 1D or 2D")
+
+
 def _validate_inputs(
     x: np.ndarray,
     psis_object: PSISObject,
@@ -64,7 +125,6 @@ def _validate_inputs(
             raise ValueError("probs must be between 0 and 1")
 
 
-# Core weighted statistics functions
 def _wmean(x: np.ndarray, w: np.ndarray) -> float:
     """Compute weighted mean."""
     return np.sum(w * x)
@@ -125,25 +185,9 @@ def _e_loo_khat(
     log_ratios: np.ndarray,
     tail_len: Union[int, np.ndarray],
 ) -> float:
-    """Compute Pareto k diagnostic.
-
-    Parameters
-    ----------
-    x : Optional[np.ndarray]
-        Values used in diagnostic calculation. If None, only importance ratios are used.
-    log_ratios : np.ndarray
-        Log importance ratios
-    tail_len : Union[int, np.ndarray]
-        Number of tail samples to use in fitting
-
-    Returns
-    -------
-    float
-        Estimated Pareto k parameter
-    """
+    """Compute Pareto k diagnostic."""
     r_theta = np.exp(log_ratios - np.max(log_ratios))
 
-    # Handle right tail of importance ratios
     x_tail = -np.sort(-r_theta)[:tail_len]
     if len(x_tail) < 5 or np.allclose(x_tail, x_tail[0]):
         khat_r = np.inf
@@ -154,7 +198,6 @@ def _e_loo_khat(
     if x is None or np.allclose(x, x[0]) or len(np.unique(x)) == 2 or np.any(np.isnan(x)) or np.any(np.isinf(x)):
         return khat_r
 
-    # Handle both tails of h*r
     hr = x * r_theta
     x_tail_left = np.sort(hr)[:tail_len]
     x_tail_right = -np.sort(-hr)[:tail_len]
@@ -171,48 +214,6 @@ def _e_loo_khat(
     return max(khat_hr, khat_r)
 
 
-def e_loo(
-    x: Union[np.ndarray, Sequence[float]],
-    psis_object: PSISObject,
-    *,
-    type: str = "mean",
-    probs: Optional[Union[float, Sequence[float]]] = None,
-    log_ratios: Optional[np.ndarray] = None,
-) -> ExpectationResult:
-    """Compute weighted expectations using importance sampling weights.
-
-    Parameters
-    ----------
-    x : array-like
-        Values to compute expectations for. Can be a vector or 2D array.
-    psis_object : PSISObject
-        Object containing importance sampling weights from PSIS.
-    type : str, optional
-        Type of expectation to compute. Options are:
-        - "mean": weighted mean (default)
-        - "variance": weighted variance
-        - "sd": weighted standard deviation
-        - "quantile": weighted quantiles
-    probs : array-like, optional
-        Probabilities for computing quantiles. Required if type="quantile".
-    log_ratios : array-like, optional
-        Raw (not smoothed) log ratios with same shape as x. If provided,
-        these are used to compute more accurate Pareto k diagnostics.
-
-    Returns
-    -------
-    ExpectationResult
-        Container with computed expectation value and diagnostics.
-    """
-    x = np.asarray(x)
-    if x.ndim == 1:
-        return _e_loo_vector(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
-    elif x.ndim == 2:
-        return _e_loo_matrix(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
-    else:
-        raise ValueError("x must be 1D or 2D")
-
-
 def _e_loo_vector(
     x: np.ndarray,
     psis_object: PSISObject,
@@ -221,26 +222,7 @@ def _e_loo_vector(
     probs: Optional[Union[float, Sequence[float]]] = None,
     log_ratios: Optional[np.ndarray] = None,
 ) -> ExpectationResult:
-    """Compute expectations for vector inputs.
-
-    Parameters
-    ----------
-    x : np.ndarray
-        1D array of values
-    psis_object : PSISObject
-        Object containing importance sampling weights
-    type : str, optional
-        Type of expectation to compute
-    probs : Optional[Union[float, Sequence[float]]], optional
-        Probabilities for quantile calculation
-    log_ratios : Optional[np.ndarray], optional
-        Raw log ratios for diagnostic calculation
-
-    Returns
-    -------
-    ExpectationResult
-        Container with computed expectation value and diagnostics
-    """
+    """Compute expectations for vector inputs."""
     _validate_inputs(x, psis_object, type, probs, log_ratios)
 
     log_weights = psis_object.log_weights - _logsumexp(psis_object.log_weights)
@@ -272,26 +254,7 @@ def _e_loo_matrix(
     probs: Optional[Union[float, Sequence[float]]] = None,
     log_ratios: Optional[np.ndarray] = None,
 ) -> ExpectationResult:
-    """Compute expectations for matrix inputs.
-
-    Parameters
-    ----------
-    x : np.ndarray
-        2D array of values
-    psis_object : PSISObject
-        Object containing importance sampling weights
-    type : str, optional
-        Type of expectation to compute
-    probs : Optional[Union[float, Sequence[float]]], optional
-        Probabilities for quantile calculation
-    log_ratios : Optional[np.ndarray], optional
-        Raw log ratios for diagnostic calculation
-
-    Returns
-    -------
-    ExpectationResult
-        Container with computed expectation value and diagnostics
-    """
+    """Compute expectations for matrix inputs."""
     _validate_inputs(x, psis_object, type, probs, log_ratios)
 
     w = np.exp(psis_object.log_weights - _logsumexp(psis_object.log_weights, axis=0))
