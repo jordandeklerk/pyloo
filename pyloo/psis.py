@@ -86,8 +86,14 @@ def psislw(
            (2024). Pareto smoothed importance sampling. Journal of Machine
            Learning Research, 25(72):1-58.
     """
+    if not isinstance(log_ratios, np.ndarray):
+        log_ratios = np.asarray(log_ratios)
+
     if log_ratios.ndim == 1:
         log_ratios = log_ratios.reshape(-1, 1)
+
+    if log_ratios.ndim != 2:
+        raise ValueError("log_ratios must be 1D or 2D array")
 
     n_samples, n_obs = log_ratios.shape
 
@@ -133,7 +139,7 @@ def psislw(
 
         smoothed_log_weights[:, i] = x - _logsumexp(x)
 
-    if log_ratios.ndim == 1:
+    if log_ratios.shape[1] == 1:
         smoothed_log_weights = smoothed_log_weights.ravel()
         pareto_k = pareto_k.ravel()
 

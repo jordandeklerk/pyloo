@@ -90,32 +90,6 @@ def rel_eff(
     return np.minimum(n_eff / S, 1.0)
 
 
-def _relative_eff_function(
-    func: Callable,
-    chain_id: np.ndarray,
-    cores: int,
-    data: np.ndarray,
-    draws: Optional[np.ndarray] = None,
-) -> np.ndarray:
-    """Compute relative efficiency for a function that returns likelihood values."""
-    if data is None:
-        raise ValueError("data required when x is a function")
-
-    N = data.shape[0]
-
-    def process_one(i: int) -> float:
-        val_i = func(data_i=data[i : i + 1], draws=draws)
-        return rel_eff(val_i, chain_id=chain_id, cores=1)[0]
-
-    if cores == 1:
-        n_eff = np.array([process_one(i) for i in range(N)])
-    else:
-        with mp.Pool(cores) as pool:
-            n_eff = np.array(pool.map(process_one, range(N)))
-
-    return n_eff
-
-
 def psis_eff_size(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None) -> Union[float, np.ndarray]:
     """Compute effective sample size for Pareto Smoothed Importance Sampling (PSIS).
 
@@ -271,6 +245,32 @@ def mcmc_eff_size(sims: np.ndarray) -> float:
     ess = ess / tau_hat
 
     return float(ess)
+
+
+def _relative_eff_function(
+    func: Callable,
+    chain_id: np.ndarray,
+    cores: int,
+    data: np.ndarray,
+    draws: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Compute relative efficiency for a function that returns likelihood values."""
+    if data is None:
+        raise ValueError("data required when x is a function")
+
+    N = data.shape[0]
+
+    def process_one(i: int) -> float:
+        val_i = func(data_i=data[i : i + 1], draws=draws)
+        return rel_eff(val_i, chain_id=chain_id, cores=1)[0]
+
+    if cores == 1:
+        n_eff = np.array([process_one(i) for i in range(N)])
+    else:
+        with mp.Pool(cores) as pool:
+            n_eff = np.array(pool.map(process_one, range(N)))
+
+    return n_eff
 
 
 def _acov(x: np.ndarray) -> np.ndarray:
