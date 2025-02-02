@@ -28,6 +28,42 @@ class ExpectationResult:
     pareto_k: Union[float, np.ndarray]
 
 
+def _validate_inputs(
+    x: np.ndarray,
+    psis_object: PSISObject,
+    type: str,
+    probs: Optional[Union[float, Sequence[float]]],
+    log_ratios: Optional[np.ndarray],
+) -> None:
+    """Validate input parameters."""
+    if not isinstance(psis_object, PSISObject):
+        raise TypeError("psis_object must be a PSISObject")
+
+    if x.ndim == 1:
+        if len(x) != len(psis_object.log_weights):
+            raise ValueError("x and psis_object must have same length")
+        if log_ratios is not None and len(log_ratios) != len(x):
+            raise ValueError("log_ratios must have same length as x")
+    else:  # x.ndim == 2
+        if x.shape != psis_object.log_weights.shape:
+            raise ValueError("x and psis_object must have same shape")
+        if log_ratios is not None and log_ratios.shape != x.shape:
+            raise ValueError("log_ratios must have same shape as x")
+
+    if not np.all(np.isfinite(psis_object.log_weights)):
+        raise ValueError("log weights must be finite")
+
+    if type not in ["mean", "variance", "sd", "quantile"]:
+        raise ValueError("type must be 'mean', 'variance', 'sd' or 'quantile'")
+
+    if type == "quantile":
+        if probs is None:
+            raise ValueError("probs must be provided for quantile calculation")
+        probs_array = np.asarray(probs)
+        if not np.all((probs_array > 0) & (probs_array < 1)):
+            raise ValueError("probs must be between 0 and 1")
+
+
 # Core weighted statistics functions
 def _wmean(x: np.ndarray, w: np.ndarray) -> float:
     """Compute weighted mean."""
@@ -139,42 +175,6 @@ def _e_loo_khat(
     if np.isnan(khat_hr) and np.isnan(khat_r):
         return np.nan
     return max(khat_hr, khat_r)
-
-
-def _validate_inputs(
-    x: np.ndarray,
-    psis_object: PSISObject,
-    type: str,
-    probs: Optional[Union[float, Sequence[float]]],
-    log_ratios: Optional[np.ndarray],
-) -> None:
-    """Validate input parameters."""
-    if not isinstance(psis_object, PSISObject):
-        raise TypeError("psis_object must be a PSISObject")
-
-    if x.ndim == 1:
-        if len(x) != len(psis_object.log_weights):
-            raise ValueError("x and psis_object must have same length")
-        if log_ratios is not None and len(log_ratios) != len(x):
-            raise ValueError("log_ratios must have same length as x")
-    else:  # x.ndim == 2
-        if x.shape != psis_object.log_weights.shape:
-            raise ValueError("x and psis_object must have same shape")
-        if log_ratios is not None and log_ratios.shape != x.shape:
-            raise ValueError("log_ratios must have same shape as x")
-
-    if not np.all(np.isfinite(psis_object.log_weights)):
-        raise ValueError("log weights must be finite")
-
-    if type not in ["mean", "variance", "sd", "quantile"]:
-        raise ValueError("type must be 'mean', 'variance', 'sd' or 'quantile'")
-
-    if type == "quantile":
-        if probs is None:
-            raise ValueError("probs must be provided for quantile calculation")
-        probs_array = np.asarray(probs)
-        if not np.all((probs_array > 0) & (probs_array < 1)):
-            raise ValueError("probs must be between 0 and 1")
 
 
 def e_loo(
