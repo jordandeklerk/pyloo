@@ -43,14 +43,6 @@ def compute_relative_efficiency(
         Vector of relative effective sample sizes, bounded between 0 and 1.
         Values closer to 1 indicate better mixing of the chains.
 
-    Notes
-    -----
-    The relative effective sample size is a diagnostic for assessing MCMC
-    convergence and mixing. It is computed as the ratio of the effective
-    sample size to the total number of samples. Values close to 1 indicate
-    good mixing, while values much less than 1 suggest poor mixing and
-    potential convergence issues.
-
     Examples
     --------
     Calculate relative efficiency for MCMC samples:
@@ -68,12 +60,6 @@ def compute_relative_efficiency(
     --------
     compute_mcmc_effective_size : Calculate raw effective sample size
     compute_psis_effective_size : Compute effective sample size for PSIS
-
-    References
-    ----------
-    .. [1] Vehtari, A., Gelman, A., & Gabry, J. (2017). Practical
-           Bayesian model evaluation using leave-one-out cross-validation
-           and WAIC. Statistics and Computing, 27(5), 1413-1432.
     """
     if callable(x):
         return _relative_eff_function(x, chain_id, cores, data, draws)
@@ -150,13 +136,6 @@ def compute_psis_effective_size(
         Effective sample size(s). Returns a float for 1-D input w,
         or an array of length ncol(w) for 2-D input.
 
-    Notes
-    -----
-    The effective sample size for importance sampling is computed as
-    1/sum(w^2) where w are the normalized importance weights. When
-    r_eff is provided, this is multiplied by r_eff to account for
-    the autocorrelation in the original MCMC draws.
-
     Examples
     --------
     Calculate PSIS effective sample size:
@@ -175,12 +154,6 @@ def compute_psis_effective_size(
     --------
     compute_relative_efficiency : Compute MCMC relative efficiency
     compute_mcmc_effective_size : Calculate raw effective sample size
-
-    References
-    ----------
-    .. [1] Vehtari, A., Simpson, D., Gelman, A., Yao, Y., & Gabry, J. (2024).
-           Pareto smoothed importance sampling. Journal of Machine Learning
-           Research, 25(72), 1-58.
     """
     w = np.asarray(w)
     if w.ndim == 1:
