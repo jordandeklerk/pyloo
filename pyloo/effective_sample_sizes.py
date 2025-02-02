@@ -6,7 +6,7 @@ from typing import Callable, Optional, Union
 import numpy as np
 
 
-def relative_eff(
+def compute_relative_efficiency(
     x: Union[np.ndarray, Callable],
     chain_id: Optional[np.ndarray] = None,
     cores: int = 1,
@@ -58,16 +58,16 @@ def relative_eff(
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pyloo import relative_eff
+           ...: from pyloo import compute_relative_efficiency
            ...: # Generate fake MCMC samples
            ...: samples = np.random.normal(size=(1000, 4, 10))  # 1000 iterations, 4 chains, 10 parameters
-           ...: r_eff = relative_eff(samples)
+           ...: r_eff = compute_relative_efficiency(samples)
            ...: print(f"Mean relative efficiency: {r_eff.mean():.3f}")
 
     See Also
     --------
-    ess_rfun : Calculate raw effective sample size
-    psis_n_eff : Compute effective sample size for PSIS
+    compute_mcmc_effective_size : Calculate raw effective sample size
+    compute_psis_effective_size : Compute effective sample size for PSIS
 
     References
     ----------
@@ -83,23 +83,23 @@ def relative_eff(
     if x.ndim == 1:
         x = x.reshape(-1, 1)
         if chain_id is not None:
-            x = _llmatrix_to_array(x, chain_id)
+            x = _convert_matrix_to_chains(x, chain_id)
         else:
             x = x.reshape(x.shape[0], 1, 1)
     elif x.ndim == 2:
         if chain_id is None:
             raise ValueError("chain_id required for 2-D input")
-        x = _llmatrix_to_array(x, chain_id)
+        x = _convert_matrix_to_chains(x, chain_id)
     elif x.ndim != 3:
         raise ValueError("Input must be 1-D, 2-D, or 3-D array")
 
     S = x.shape[0] * x.shape[1]
 
     if cores == 1:
-        n_eff = np.array([ess_rfun(x[:, :, i]) for i in range(x.shape[2])])
+        n_eff = np.array([compute_mcmc_effective_size(x[:, :, i]) for i in range(x.shape[2])])
     else:
         with mp.Pool(cores) as pool:
-            n_eff = np.array(pool.map(ess_rfun, [x[:, :, i] for i in range(x.shape[2])]))
+            n_eff = np.array(pool.map(compute_mcmc_effective_size, [x[:, :, i] for i in range(x.shape[2])]))
 
     return np.minimum(n_eff / S, 1.0)
 
@@ -119,7 +119,7 @@ def _relative_eff_function(
 
     def process_one(i: int) -> float:
         val_i = func(data_i=data[i : i + 1], draws=draws)
-        return relative_eff(val_i, chain_id=chain_id, cores=1)[0]
+        return compute_relative_efficiency(val_i, chain_id=chain_id, cores=1)[0]
 
     if cores == 1:
         n_eff = np.array([process_one(i) for i in range(N)])
@@ -130,7 +130,9 @@ def _relative_eff_function(
     return n_eff
 
 
-def psis_n_eff(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None) -> Union[float, np.ndarray]:
+def compute_psis_effective_size(
+    w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None
+) -> Union[float, np.ndarray]:
     """Compute effective sample size for Pareto Smoothed Importance Sampling (PSIS).
 
     Parameters
@@ -162,17 +164,17 @@ def psis_n_eff(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None) 
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pyloo import psis_n_eff
+           ...: from pyloo import compute_psis_effective_size
            ...: # Generate fake importance weights
            ...: weights = np.random.gamma(1, 1, size=(1000, 100))
            ...: weights /= weights.sum(axis=0)  # normalize
-           ...: n_eff = psis_n_eff(weights)
+           ...: n_eff = compute_psis_effective_size(weights)
            ...: print(f"Mean effective sample size: {n_eff.mean():.1f}")
 
     See Also
     --------
-    relative_eff : Compute MCMC relative efficiency
-    ess_rfun : Calculate raw effective sample size
+    compute_relative_efficiency : Compute MCMC relative efficiency
+    compute_mcmc_effective_size : Calculate raw effective sample size
 
     References
     ----------
@@ -200,7 +202,7 @@ def psis_n_eff(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None) 
     return (1.0 / ss) * r_eff
 
 
-def ess_rfun(sims: np.ndarray) -> float:
+def compute_mcmc_effective_size(sims: np.ndarray) -> float:
     """Calculate MCMC effective sample size using Stan's approach.
 
     Parameters
@@ -229,16 +231,16 @@ def ess_rfun(sims: np.ndarray) -> float:
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pyloo import ess_rfun
+           ...: from pyloo import compute_mcmc_effective_size
            ...: # Generate fake MCMC samples
            ...: samples = np.random.normal(size=(1000, 4))  # 1000 iterations, 4 chains
-           ...: ess = ess_rfun(samples)
+           ...: ess = compute_mcmc_effective_size(samples)
            ...: print(f"Effective sample size: {ess:.1f}")
 
     See Also
     --------
-    relative_eff : Compute relative efficiency
-    psis_n_eff : Compute effective sample size for PSIS
+    compute_relative_efficiency : Compute relative efficiency
+    compute_psis_effective_size : Compute effective sample size for PSIS
 
     References
     ----------
@@ -343,7 +345,7 @@ def _fft_next_good_size(n: int) -> int:
         n += 1
 
 
-def _llmatrix_to_array(mat: np.ndarray, chain_id: np.ndarray) -> np.ndarray:
+def _convert_matrix_to_chains(mat: np.ndarray, chain_id: np.ndarray) -> np.ndarray:
     """Convert matrix of MCMC draws to 3-D array organized by chain."""
     chain_id = np.asarray(chain_id)
     if len(chain_id) != mat.shape[0]:
