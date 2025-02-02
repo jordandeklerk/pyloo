@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - numpy>=1.20.0
   - scipy>=1.7.0
   - pandas>=1.3.0
+- Core modules implementation:
+  - psis.py: Pareto smoothed importance sampling core functions
+  - effective_sample_sizes.py: MCMC and importance sampling diagnostics
+  - expected_loo.py: Weighted expectations using importance sampling
 - Enhanced PSIS test suite:
   - Added comprehensive test coverage for multidimensional arrays
   - Added tests for extreme value handling and high Pareto k values
