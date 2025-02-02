@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ...e_loo import ExpectationResult, _wmean, _wquant, _wsd, _wvar, e_loo
+from ...expected_loo import ExpectationResult, _wmean, _wquant, _wsd, _wvar, e_loo
 from ...psis import PSISObject, _logsumexp
 from ..helpers import (
     assert_arrays_allclose,
