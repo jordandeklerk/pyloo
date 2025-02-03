@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from ...expected_loo import ExpectationResult, _wmean, _wquant, _wsd, _wvar, e_loo
-from ...psis import PSISObject, _logsumexp
+from ...psis import PSISObject
+from ...utils import _logsumexp
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,

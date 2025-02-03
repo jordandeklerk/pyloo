@@ -5,7 +5,8 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 
-from .psis import PSISObject, _gpdfit, _logsumexp
+from .psis import PSISObject, _gpdfit
+from .utils import _logsumexp
 
 
 @dataclass

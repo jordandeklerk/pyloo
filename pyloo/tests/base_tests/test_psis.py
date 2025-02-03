@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 from scipy.special import logsumexp
 
-from ...psis import PSISObject, _gpdfit, _gpinv, _logsumexp, psislw
+from ...psis import PSISObject, _gpdfit, _gpinv, psislw
+from ...utils import _logsumexp
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,
