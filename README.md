@@ -1,6 +1,6 @@
 <h1 align="center">
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-dark.png#gh-light-mode-only" width=300></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-light.png#gh-dark-mode-only" width=300></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-light.png#gh-light-mode-only" width=400></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-dark.png#gh-dark-mode-only" width=400></img>
 </h1><br>
 
 
