@@ -6,7 +6,7 @@
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
 pyloo is an open source Python implementation of the R package [loo](https://github.com/stan-dev/loo).
-This package intends to provide tools for Leave-One-Out Cross-Validation (LOO-CV)
+This package provides tools for Leave-One-Out Cross-Validation (LOO-CV)
 and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models in a framework agnostic way.
 
 Please note that this project is in its early stages and is in active development.
