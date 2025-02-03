@@ -1,11 +1,6 @@
-<h1 align="center">
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-light.png#gh-light-mode-only" width=400></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-dark.png#gh-dark-mode-only" width=400></img>
+<h1 align="left">
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-logo.png#gh-light-mode-only" width=150></img>
 </h1><br>
-
-
-[![codecov](https://codecov.io/gh/pyloo/branch/main/graph/badge.svg)](https://codecov.io/gh/pyloo/new)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
 🚧 **In Development** 🚧
 
