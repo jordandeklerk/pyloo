@@ -13,7 +13,7 @@ and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models in a framewor
 
 Please note that this project is in its early stages and is in active development. Our goal is to make reliable and robust model comparison accessible and straightforward for the Python-based Bayesian modeling community.
 
-## Roadmap
+## Tentative Roadmap
 
 Our vision is to provide a comprehensive, framework-agnostic workflow for Leave-One-Out Cross-Validation in Bayesian modeling. Here's what we're working on:
 

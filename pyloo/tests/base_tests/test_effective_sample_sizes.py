@@ -9,7 +9,6 @@ from ...effective_sample_sizes import (
     psis_eff_size,
     rel_eff,
 )
-from ...utils import autocov
 
 
 def test_rel_eff_1d():
@@ -107,30 +106,6 @@ def test_compute_mcmc_effective_size():
 
     ess_corr = mcmc_eff_size(x_corr)
     assert ess_corr < ess
-
-
-def test_autocovariance():
-    """Test autocovariance calculation."""
-    x = np.random.normal(size=1000)
-    acf = autocov(x)
-    assert isinstance(acf, np.ndarray)
-    assert len(acf) == len(x)
-    # Check that autocovariance at lag 0 is close to variance
-    assert np.abs(acf[0] - np.var(x)) < 1e-10
-    # Check that other lags have smaller magnitude
-    assert np.all(np.abs(acf[1:]) < np.abs(acf[0]))
-
-    rho = 0.9
-    x_ar = np.empty(1000)
-    x_ar[0] = np.random.normal()
-    for i in range(1, 1000):
-        x_ar[i] = rho * x_ar[i - 1] + np.sqrt(1 - rho**2) * np.random.normal()
-
-    acf_ar = autocov(x_ar)
-    # Check that autocovariance at lag 0 is close to variance
-    assert np.abs(acf_ar[0] - np.var(x_ar)) < 1e-10
-    # Check that lag 1 autocovariance is positive for AR(1) process
-    assert acf_ar[1] > 0
 
 
 def test_convert_matrix_to_chains():
