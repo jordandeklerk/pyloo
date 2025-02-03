@@ -5,6 +5,8 @@ from typing import Callable, Optional, Union
 
 import numpy as np
 
+from .utils import autocov
+
 
 def rel_eff(
     x: Union[np.ndarray, Callable],
@@ -202,7 +204,7 @@ def mcmc_eff_size(sims: np.ndarray) -> float:
     acov_chains = []
     for i in range(chains):
         chain = sims[:, i]
-        acov = _acov(chain)
+        acov = autocov(chain)
         acov_chains.append(acov)
     acov = np.column_stack(acov_chains)
 
@@ -271,49 +273,6 @@ def _relative_eff_function(
             n_eff = np.array(pool.map(process_one, range(N)))
 
     return n_eff
-
-
-def _acov(x: np.ndarray) -> np.ndarray:
-    """Compute autocovariance estimates for every lag."""
-    n = len(x)
-    if n < 2:
-        raise ValueError("Array too short")
-
-    n_fft = _fft_next_size(2 * n)
-
-    x = x - np.mean(x)
-    var = np.var(x, ddof=1)
-    if var == 0:
-        return np.zeros(n)
-
-    y = np.zeros(n_fft)
-    y[:n] = x
-
-    f = np.fft.fft(y)
-    acf = np.fft.ifft(f * np.conjugate(f))[:n]
-
-    acf = acf.real / (n * var)
-    acf[0] = 1.0
-
-    return acf
-
-
-def _fft_next_size(n: int) -> int:
-    """Find optimal next size for FFT."""
-    if n <= 2:
-        return 2
-
-    while True:
-        m = n
-        while (m % 2) == 0:
-            m //= 2
-        while (m % 3) == 0:
-            m //= 3
-        while (m % 5) == 0:
-            m //= 5
-        if m <= 1:
-            return n
-        n += 1
 
 
 def _mat_to_chains(mat: np.ndarray, chain_id: np.ndarray) -> np.ndarray:

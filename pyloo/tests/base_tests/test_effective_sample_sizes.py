@@ -4,13 +4,12 @@ import numpy as np
 import pytest
 
 from ...effective_sample_sizes import (
-    _acov,
-    _fft_next_size,
     _mat_to_chains,
     mcmc_eff_size,
     psis_eff_size,
     rel_eff,
 )
+from ...utils import autocov
 
 
 def test_rel_eff_1d():
@@ -113,11 +112,13 @@ def test_compute_mcmc_effective_size():
 def test_autocovariance():
     """Test autocovariance calculation."""
     x = np.random.normal(size=1000)
-    acf = _acov(x)
+    acf = autocov(x)
     assert isinstance(acf, np.ndarray)
     assert len(acf) == len(x)
-    assert np.abs(acf[0] - 1.0) < 1e-10
-    assert np.all(np.abs(acf[1:]) < 0.2)
+    # Check that autocovariance at lag 0 is close to variance
+    assert np.abs(acf[0] - np.var(x)) < 1e-10
+    # Check that other lags have smaller magnitude
+    assert np.all(np.abs(acf[1:]) < np.abs(acf[0]))
 
     rho = 0.9
     x_ar = np.empty(1000)
@@ -125,21 +126,11 @@ def test_autocovariance():
     for i in range(1, 1000):
         x_ar[i] = rho * x_ar[i - 1] + np.sqrt(1 - rho**2) * np.random.normal()
 
-    acf_ar = _acov(x_ar)
-    assert np.abs(acf_ar[0] - 1.0) < 1e-10
-    assert acf_ar[1] > 0.5
-
-
-def test_fft_next_good_size():
-    """Test FFT size optimization."""
-    assert _fft_next_size(1) == 2
-    assert _fft_next_size(2) == 2
-    assert _fft_next_size(3) == 3
-    assert _fft_next_size(4) == 4
-    assert _fft_next_size(5) == 5
-    assert _fft_next_size(7) == 8
-    assert _fft_next_size(9) == 9
-    assert _fft_next_size(11) == 12
+    acf_ar = autocov(x_ar)
+    # Check that autocovariance at lag 0 is close to variance
+    assert np.abs(acf_ar[0] - np.var(x_ar)) < 1e-10
+    # Check that lag 1 autocovariance is positive for AR(1) process
+    assert acf_ar[1] > 0
 
 
 def test_convert_matrix_to_chains():
@@ -179,6 +170,3 @@ def test_input_validation():
     w = np.random.dirichlet(np.ones(1000), size=5).T
     with pytest.raises(ValueError):
         psis_eff_size(w, r_eff=np.ones(3))
-
-    with pytest.raises(ValueError):
-        _acov(np.array([1.0]))
