@@ -9,7 +9,7 @@ pyloo is an open source Python implementation of the R package [loo](https://git
 This package provides tools for Leave-One-Out Cross-Validation (LOO-CV)
 and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models in a framework agnostic way.
 
-<br>
+<br><br>
 
 Please note that this project is in its early stages and is in active development. Our goal is to make reliable and robust model comparison accessible and straightforward for the Python-based Bayesian modeling community.
 
