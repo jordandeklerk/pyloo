@@ -1,5 +1,5 @@
 <h1 align="left">
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-logo.png#gh-light-mode-only" width=150></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-logo.png" width=150></img>
 </h1><br>
 
 🚧 **In Development** 🚧
