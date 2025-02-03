@@ -426,6 +426,24 @@ def smooth_data(obs_vals: np.ndarray, pp_vals: np.ndarray) -> Tuple[np.ndarray, 
     return obs_vals, pp_vals
 
 
+# Format constants following ArviZ
+BASE_FMT = """Computed from {{n_samples}} posterior samples and \
+{{n_points}} observations.
+
+{{pad:{width}}} Estimate       SE
+{{scale}}_{{kind}} {{estimate:8.2f}}  {{se:7.2f}}
+p_{{kind:{width}}} {{p_value:8.2f}}        -"""
+
+DIAGNOSTIC_FMT = """
+Pareto k diagnostic values:
+                         Count    Pct.
+(-Inf, {{k_thres:.2f}}]  (good)    {{counts[0]:4d}}  {{percentages[0]:5.1f}}%
+ ({{k_thres:.2f}}, 1.00]   (bad)    {{counts[1]:4d}}  {{percentages[1]:5.1f}}%
+  (1.00, Inf)   (very bad)  {{counts[2]:4d}}  {{percentages[2]:5.1f}}%"""
+
+SCALE_DICT = {"deviance": "deviance", "log": "elpd", "negative_log": "-elpd"}
+
+
 class ELPDData(pd.Series):
     """Class to contain ELPD (Expected Log Pointwise Predictive Density) data.
 
@@ -449,19 +467,6 @@ class ELPDData(pd.Series):
     - good_k: float, threshold for good Pareto k values (default: 0.7)
     """
 
-    _SCALE_DICT = {"deviance": "deviance", "log": "elpd", "negative_log": "-elpd"}
-    _BASE_FMT = """Computed from {n_samples} posterior samples and {n_points} observations.
-
-{pad:{width}} Estimate       SE
-{scale}_{kind} {estimate:8.2f}  {se:7.2f}
-p_{kind:{width}} {p_value:8.2f}        -"""
-    _DIAG_FMT = """
-Pareto k diagnostic values:
-                         Count    Pct.
-(-Inf, {k_thres:4.2f}]  (good)    {counts[0]:4d}  {percentages[0]:5.1f}%
- ({k_thres:4.2f}, 1.00]   (bad)    {counts[1]:4d}  {percentages[1]:5.1f}%
-  (1.00, Inf)   (very bad)  {counts[2]:4d}  {percentages[2]:5.1f}%"""
-
     @property
     def kind(self) -> str:
         kind = self.index[0].split("_")[1]
@@ -471,7 +476,7 @@ Pareto k diagnostic values:
 
     @property
     def scale_str(self) -> str:
-        return self._SCALE_DICT[self["scale"]]
+        return SCALE_DICT[self["scale"]]
 
     def has_warnings(self) -> bool:
         return hasattr(self, "warning") and self.warning
@@ -501,8 +506,8 @@ Pareto k diagnostic values:
         if missing:
             raise ValueError(f"Missing required fields: {missing}")
 
-        if self["scale"] not in self._SCALE_DICT:
-            raise ValueError(f"Invalid scale '{self['scale']}'. " f"Must be one of {list(self._SCALE_DICT.keys())}")
+        if self["scale"] not in SCALE_DICT:
+            raise ValueError(f"Invalid scale '{self['scale']}'. Must be one of {list(SCALE_DICT.keys())}")
 
     def __str__(self) -> str:
         self.validate()
@@ -511,16 +516,19 @@ Pareto k diagnostic values:
         elpd_key = f"elpd_{self.kind}"
         p_key = f"p_{self.kind}"
 
-        base = self._BASE_FMT.format(
+        # First format the width parameter
+        base_template = BASE_FMT.format(width=padding)
+
+        # Then format the rest of the parameters
+        base = base_template.format(
             pad="",
             kind=self.kind,
             scale=self.scale_str,
-            width=padding,
-            n_samples=self.n_samples,
-            n_points=self.n_data_points,
             estimate=self[elpd_key],
             se=self.get(f"{elpd_key}_se", 0.0),
             p_value=self[p_key],
+            n_samples=self.n_samples,
+            n_points=self.n_data_points,
         )
 
         if self.has_warnings():
@@ -528,7 +536,7 @@ Pareto k diagnostic values:
 
         if self.has_pareto_k():
             summary = self.get_pareto_k_summary()
-            diag = self._DIAG_FMT.format(
+            diag = DIAGNOSTIC_FMT.format(
                 k_thres=summary["k_threshold"], counts=summary["counts"], percentages=summary["percentages"]
             )
             base = "\n".join([base, diag])
