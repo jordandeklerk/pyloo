@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-logo.png" width="175" height="175" align="left">
+<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-logo.png" width="200" height="200" align="left">
 
 [![PyPI Downloads](https://img.shields.io/pypi/dm/pyloo.svg?label=Pypi%20downloads)](https://pypi.org/project/pyloo/)
 [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/pyloo.svg?label=Conda%20downloads)](https://anaconda.org/conda-forge/pyloo)
