@@ -1,6 +1,6 @@
 .. image:: https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/pyloo-logo.png
-  :width: 150
-  :height: 150
+  :width: 175
+  :height: 175
   :align: left
   :class: no-scaled-link
 
@@ -15,6 +15,7 @@
 
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
   :target: https://github.com/ambv/black
+
 
 pyloo is an open source Python implementation of the R package `loo <https://github.com/stan-dev/loo>`_.
 This package intends to provide tools for Leave-One-Out Cross-Validation (LOO-CV)
