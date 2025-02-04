@@ -15,11 +15,7 @@ try:
 except ImportError:
     tislw = None
 
-# TODO: Implement standard importance sampling (SIS)
-try:
-    from .sis import sislw
-except ImportError:
-    sislw = None
+from .sis import sislw
 
 
 class ImportanceSampling(ABC):
@@ -126,8 +122,6 @@ def do_importance_sampling(
             raise NotImplementedError("Truncated Importance Sampling (TIS) is not yet implemented")
         weights, diagnostics, ess = tislw(log_ratios, r_eff)
     elif method == "sis":
-        if sislw is None:
-            raise NotImplementedError("Standard Importance Sampling (SIS) is not yet implemented")
         weights, diagnostics, ess = sislw(log_ratios, r_eff)
     else:
         raise ValueError(f"Method {method} not properly implemented")
