@@ -303,13 +303,6 @@ def k_cut(k: np.ndarray, threshold: float) -> np.ndarray:
 def ps_khat_threshold(S: int) -> float:
     """Compute sample size dependent threshold for Pareto k values.
 
-    Given sample size S computes khat threshold for reliable Pareto smoothed estimate
-    (to have small probability of large error). Sample sizes 100, 320, 1000, 2200,
-    10000 correspond to thresholds 0.5, 0.6, 0.67, 0.7, 0.75. Although with bigger
-    sample size S we can achieve estimates with small probability of large error, it
-    is difficult to get accurate MCSE estimates as the bias starts to dominate when
-    k > 0.7. Thus the sample size dependent k-hat threshold is capped at 0.7.
-
     Parameters
     ----------
     S : int
@@ -319,6 +312,15 @@ def ps_khat_threshold(S: int) -> float:
     -------
     float
         Threshold value min(1 - 1/log10(S), 0.7)
+
+    Notes
+    -----
+    Given sample size S computes khat threshold for reliable Pareto smoothed estimate
+    (to have small probability of large error). Sample sizes 100, 320, 1000, 2200,
+    10000 correspond to thresholds 0.5, 0.6, 0.67, 0.7, 0.75. Although with bigger
+    sample size S we can achieve estimates with small probability of large error, it
+    is difficult to get accurate MCSE estimates as the bias starts to dominate when
+    k > 0.7. Thus the sample size dependent k-hat threshold is capped at 0.7.
     """
     if S <= 0:
         raise ValueError("Sample size must be positive")
