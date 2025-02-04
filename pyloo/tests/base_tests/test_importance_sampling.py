@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from ...importance_sampling import ImportanceSampling, do_importance_sampling
+from ...base import ImportanceSampling
+from ...importance_sampling import do_importance_sampling
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_equal,
