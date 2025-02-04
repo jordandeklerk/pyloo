@@ -114,6 +114,90 @@ def test_mcmc_eff_size(centered_eight, non_centered_eight):
     assert_positive(ess_non_centered)
 
 
+def test_mcmc_eff_size_methods(centered_eight):
+    """Test different ESS calculation methods."""
+    x = centered_eight.posterior.theta.values.reshape(-1, 8)
+
+    ess_bulk = mcmc_eff_size(x, method="bulk")
+    assert isinstance(ess_bulk, (float, np.floating))
+    assert_positive(ess_bulk)
+
+    ess_tail_default = mcmc_eff_size(x, method="tail")  # default prob=0.1
+    ess_tail_custom = mcmc_eff_size(x, method="tail", prob=0.05)
+    assert isinstance(ess_tail_default, (float, np.floating))
+    assert isinstance(ess_tail_custom, (float, np.floating))
+    assert_positive(ess_tail_default)
+    assert_positive(ess_tail_custom)
+
+    ess_mean = mcmc_eff_size(x, method="mean")
+    assert isinstance(ess_mean, (float, np.floating))
+    assert_positive(ess_mean)
+
+    ess_sd = mcmc_eff_size(x, method="sd")
+    assert isinstance(ess_sd, (float, np.floating))
+    assert_positive(ess_sd)
+
+    ess_median = mcmc_eff_size(x, method="median")
+    assert isinstance(ess_median, (float, np.floating))
+    assert_positive(ess_median)
+
+    ess_mad = mcmc_eff_size(x, method="mad")
+    assert isinstance(ess_mad, (float, np.floating))
+    assert_positive(ess_mad)
+
+    ess_local = mcmc_eff_size(x, method="local", prob=(0.25, 0.75))
+    assert isinstance(ess_local, (float, np.floating))
+    assert_positive(ess_local)
+
+
+def test_mcmc_eff_size_single_chain():
+    """Test ESS calculation with single chain input."""
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=1000)
+
+    methods = ["bulk", "tail", "mean", "sd", "median", "mad"]
+    for method in methods:
+        ess = mcmc_eff_size(x, method=method)
+        assert isinstance(
+            ess, (int, float, np.floating, np.integer)
+        ), f"ESS return type for method {method} is {type(ess)}"
+        assert_positive(ess)
+        assert ess <= len(x)
+
+    ess_local = mcmc_eff_size(x, method="local", prob=(0.25, 0.75))
+    assert isinstance(ess_local, (int, float, np.floating, np.integer))
+    assert_positive(ess_local)
+    assert ess_local <= len(x)
+
+
+def test_mcmc_eff_size_validation():
+    """Test input validation and error handling for ESS calculation."""
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=(100, 4))  # 100 iterations, 4 chains
+
+    with pytest.raises(ValueError, match="Unknown method"):
+        mcmc_eff_size(x, method="invalid")
+
+    with pytest.raises(ValueError, match="local method requires prob"):
+        mcmc_eff_size(x, method="local")
+
+    with pytest.raises(ValueError, match="local method requires prob"):
+        mcmc_eff_size(x, method="local", prob=0.5)  # should be tuple
+
+    with pytest.raises(ValueError):
+        mcmc_eff_size(x.reshape(4, 25, 4))  # 3D input not supported
+
+    with pytest.warns(RuntimeWarning, match="Input contains NaN values"):
+        x_nan = np.full((100, 4), np.nan)
+        ess = mcmc_eff_size(x_nan)
+        assert np.isnan(ess)
+
+    with pytest.warns(RuntimeWarning, match="Input contains infinite values"):
+        x_inf = np.full((100, 4), np.inf)
+        ess = mcmc_eff_size(x_inf)
+        assert np.isnan(ess)
+
+
 def test_mat_to_chains(centered_eight):
     """Test conversion from matrix to 3D array organized by chains using real data."""
     mat = centered_eight.posterior.theta.values.reshape(-1, 8)
@@ -162,3 +246,26 @@ def test_input_validation(multidim_data, rng):
 
     with pytest.raises(ValueError):
         psis_eff_size(w, r_eff=np.ones(3))
+
+
+def test_rel_eff_methods(centered_eight):
+    """Test rel_eff with different ESS calculation methods."""
+    x = centered_eight.posterior.theta.values.reshape(-1, 8)
+    chain_id = np.repeat(np.arange(1, centered_eight.posterior.chain.size + 1), centered_eight.posterior.draw.size)
+
+    methods = ["bulk", "tail", "mean", "sd", "median", "mad"]
+    for method in methods:
+        r_eff = rel_eff(x, chain_id, method=method)
+        assert isinstance(r_eff, np.ndarray)
+        assert r_eff.shape == (8,)
+        assert_bounded(r_eff, lower=0, upper=1)
+
+    r_eff_local = rel_eff(x, chain_id, method="local", prob=(0.25, 0.75))
+    assert isinstance(r_eff_local, np.ndarray)
+    assert r_eff_local.shape == (8,)
+    assert_bounded(r_eff_local, lower=0, upper=1)
+
+    r_eff_tail = rel_eff(x, chain_id, method="tail", prob=0.05)
+    assert isinstance(r_eff_tail, np.ndarray)
+    assert r_eff_tail.shape == (8,)
+    assert_bounded(r_eff_tail, lower=0, upper=1)

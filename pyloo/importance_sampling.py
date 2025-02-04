@@ -1,4 +1,4 @@
-"""Parent class and utilities for different importance sampling methods."""
+"""Base class and utilities for different importance sampling methods."""
 
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Union

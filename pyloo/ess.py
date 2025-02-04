@@ -1,9 +1,10 @@
-"""Functions for computing effective sample sizes and relative efficiencies."""
+"""ESS functions for pyloo with adaptations from Arviz."""
 
 import multiprocessing as mp
-from typing import Callable, Optional, Union
+from typing import Callable, Literal, Optional, Union
 
 import numpy as np
+from scipy import stats
 
 from .utils import autocov
 
@@ -14,6 +15,8 @@ def rel_eff(
     cores: int = 1,
     data: Optional[np.ndarray] = None,
     draws: Optional[np.ndarray] = None,
+    method: Literal["bulk", "tail", "mean", "sd", "median", "mad", "local"] = "bulk",
+    prob: Optional[Union[float, tuple[float, float]]] = None,
 ) -> np.ndarray:
     """Compute the MCMC effective sample size divided by the total sample size.
 
@@ -38,6 +41,19 @@ def rel_eff(
         Data array (only used if x is a function).
     draws : Optional[np.ndarray]
         Draws array (only used if x is a function).
+    method : str
+        Method to use for ESS calculation. Options are:
+        - "bulk": ESS for bulk of the distribution
+        - "tail": ESS focusing on distribution tails
+        - "mean": ESS for mean estimation
+        - "sd": ESS for standard deviation estimation
+        - "median": ESS for median estimation
+        - "mad": ESS for median absolute deviation
+        - "local": ESS for specific probability region
+    prob : Optional[Union[float, tuple[float, float]]]
+        Probability value(s) for tail or local ESS calculation.
+        For tail: single value p gives min(ESS(p), ESS(1-p))
+        For local: tuple (p1, p2) gives ESS for region between p1 and p2
 
     Returns
     -------
@@ -64,7 +80,7 @@ def rel_eff(
     psis_eff_size : Compute effective sample size for PSIS
     """
     if callable(x):
-        return _relative_eff_function(x, chain_id, cores, data, draws)
+        return _relative_eff_function(x, chain_id, cores, data, draws, method=method, prob=prob)
 
     x = np.asarray(x)
 
@@ -84,10 +100,10 @@ def rel_eff(
     S = x.shape[0] * x.shape[1]
 
     if cores == 1:
-        n_eff = np.array([mcmc_eff_size(x[:, :, i]) for i in range(x.shape[2])])
+        n_eff = np.array([mcmc_eff_size(x[:, :, i], method=method, prob=prob) for i in range(x.shape[2])])
     else:
         with mp.Pool(cores) as pool:
-            n_eff = np.array(pool.map(mcmc_eff_size, [x[:, :, i] for i in range(x.shape[2])]))
+            n_eff = np.array(pool.starmap(mcmc_eff_size, [(x[:, :, i], method, prob) for i in range(x.shape[2])]))
 
     return np.minimum(n_eff / S, 1.0)
 
@@ -149,14 +165,29 @@ def psis_eff_size(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = Non
     return (1.0 / ss) * r_eff
 
 
-def mcmc_eff_size(sims: np.ndarray) -> float:
-    """Calculate MCMC effective sample size using Stan's approach.
+def mcmc_eff_size(
+    sims: np.ndarray,
+    method: str = "bulk",
+    prob: Optional[Union[float, tuple[float, float]]] = None,
+) -> float:
+    """Calculate MCMC effective sample size using various methods.
 
     Parameters
     ----------
     sims : np.ndarray
         Array of MCMC draws. Can be 1-D (vector) or 2-D (matrix).
         For 2-D input, rows represent iterations and columns represent chains.
+    method : str
+        Method to use for ESS calculation. Options are:
+        - "bulk": ESS for bulk of the distribution (default)
+        - "tail": ESS focusing on distribution tails
+        - "mean": ESS for mean estimation
+        - "sd": ESS for standard deviation estimation
+        - "median": ESS for median estimation
+        - "mad": ESS for median absolute deviation
+        - "local": ESS for specific probability region
+    prob : Optional[Union[float, tuple[float, float]]]
+        Probability value(s) for tail or local ESS calculation.
 
     Returns
     -------
@@ -165,11 +196,10 @@ def mcmc_eff_size(sims: np.ndarray) -> float:
 
     Notes
     -----
-    This function implements Stan's approach to computing effective sample size,
-    which accounts for autocorrelation within chains and cross-chain correlation.
-    The implementation uses FFT for efficient computation of autocovariances
-    and includes adjustments to ensure reliable estimates even with relatively
-    few samples.
+    This function implements multiple approaches to computing effective sample size,
+    each suited for different aspects of the posterior distribution. The implementation
+    uses FFT for efficient computation of autocovariances and includes adjustments
+    to ensure reliable estimates even with relatively few samples.
 
     Examples
     --------
@@ -193,22 +223,138 @@ def mcmc_eff_size(sims: np.ndarray) -> float:
     ----------
     .. [1] Stan Development Team. (2024). Stan Reference Manual.
            https://mc-stan.org/docs/reference-manual/effective-sample-size.html
+    .. [2] Vehtari et al. (2021). Rank-normalization, folding, and
+           localization: An improved R-hat for assessing convergence of MCMC.
+           Bayesian Analysis, 16(2):667-718.
     """
     sims = np.asarray(sims)
     if sims.ndim == 1:
         sims = sims.reshape(-1, 1)
 
-    chains = sims.shape[1]
-    n_samples = sims.shape[0]
+    if not _is_valid_draws(sims):
+        return np.nan
 
-    acov_chains = []
-    for i in range(chains):
-        chain = sims[:, i]
-        acov = autocov(chain)
-        acov_chains.append(acov)
-    acov = np.column_stack(acov_chains)
+    if method == "bulk":
+        return _ess_bulk(sims)
+    elif method == "tail":
+        return _ess_tail(sims, prob)
+    elif method == "mean":
+        return _ess_mean(sims)
+    elif method == "sd":
+        return _ess_sd(sims)
+    elif method == "median":
+        return _ess_median(sims)
+    elif method == "mad":
+        return _ess_mad(sims)
+    elif method == "local":
+        if not isinstance(prob, tuple) or len(prob) != 2:
+            raise ValueError("local method requires prob=(lower, upper)")
+        return _ess_local(sims, prob)
+    else:
+        raise ValueError(f"Unknown method: {method}")
 
-    chain_mean = np.mean(sims, axis=0)
+
+def _is_valid_draws(x: np.ndarray, min_draws: int = 4, min_chains: int = 1) -> bool:
+    """Check if the input array has valid dimensions for ESS calculation."""
+    if x.size == 0:
+        return False
+    if np.any(~np.isfinite(x)):
+        import warnings
+
+        if np.any(np.isnan(x)):
+            warnings.warn("Input contains NaN values", RuntimeWarning, stacklevel=2)
+        if np.any(np.isinf(x)):
+            warnings.warn("Input contains infinite values", RuntimeWarning, stacklevel=2)
+        return False
+    if len(x.shape) > 2:
+        raise ValueError("Input array must be 1-D or 2-D")
+    if x.shape[0] < min_draws:
+        return False
+    if len(x.shape) > 1 and x.shape[1] < min_chains:
+        return False
+    return True
+
+
+def _z_scale(x: np.ndarray) -> np.ndarray:
+    """Apply rank normalization and z-score transformation."""
+    ranks = stats.rankdata(x.ravel(), method="average")
+    ranks = (ranks - 0.375) / (len(ranks) + 0.25)  # Blom transformation
+    return stats.norm.ppf(ranks).reshape(x.shape)
+
+
+def _split_chains(x: np.ndarray) -> np.ndarray:
+    """Split chains into first and second half."""
+    n_samples = x.shape[0]
+    split_point = n_samples // 2
+    if len(x.shape) == 1:
+        return np.vstack((x[:split_point], x[split_point:]))
+    return np.vstack((x[:split_point, :], x[split_point:, :]))
+
+
+def _ess_bulk(x: np.ndarray) -> float:
+    """Compute bulk ESS using rank normalization."""
+    z = _z_scale(_split_chains(x))
+    return min(_ess_raw(z), x.size)
+
+
+def _ess_tail(x: np.ndarray, prob: Optional[Union[float, tuple[float, float]]] = None) -> float:
+    """Compute tail ESS."""
+    if prob is None:
+        prob_low, prob_high = 0.05, 0.95
+    elif isinstance(prob, tuple):
+        prob_low, prob_high = prob
+    else:
+        prob_low, prob_high = prob, 1 - prob
+
+    q1 = np.quantile(x, prob_low)
+    q2 = np.quantile(x, prob_high)
+    return min(_ess_raw(_split_chains(x <= q1)), _ess_raw(_split_chains(x >= q2)), x.size)
+
+
+def _ess_mean(x: np.ndarray) -> float:
+    """Compute ESS for mean estimation."""
+    return min(_ess_raw(_split_chains(x)), x.size)
+
+
+def _ess_sd(x: np.ndarray) -> float:
+    """Compute ESS for standard deviation estimation."""
+    centered = x - np.mean(x)
+    return min(_ess_raw(_split_chains(centered**2)), x.size)
+
+
+def _ess_median(x: np.ndarray) -> float:
+    """Compute ESS for median estimation."""
+    median = np.median(x)
+    return min(_ess_raw(_split_chains(x <= median)), x.size)
+
+
+def _ess_mad(x: np.ndarray) -> float:
+    """Compute ESS for median absolute deviation."""
+    median = np.median(x)
+    mad = np.median(np.abs(x - median))
+    return min(_ess_raw(_split_chains(np.abs(x - median) <= mad)), x.size)
+
+
+def _ess_local(x: np.ndarray, prob: tuple[float, float]) -> float:
+    """Compute ESS for a specific probability region."""
+    lower, upper = prob
+    q1 = np.quantile(x, lower)
+    q2 = np.quantile(x, upper)
+    return min(_ess_raw(_split_chains((x >= q1) & (x <= q2))), x.size)
+
+
+def _ess_raw(x: np.ndarray) -> float:
+    """Core ESS calculation using Geyer's initial monotone sequence."""
+    chains = x.shape[1] if len(x.shape) > 1 else 1
+    n_samples = x.shape[0]
+
+    if chains == 1:
+        acov = autocov(x.ravel())
+    else:
+        acov_chains = [autocov(x[:, i]) for i in range(chains)]
+        acov = np.column_stack(acov_chains)
+
+    chain_mean = np.mean(x, axis=0)
     mean_var = np.mean(acov[0]) * n_samples / (n_samples - 1)
     var_plus = mean_var * (n_samples - 1) / n_samples
 
@@ -216,37 +362,38 @@ def mcmc_eff_size(sims: np.ndarray) -> float:
         var_plus += np.var(chain_mean, ddof=1)
 
     rho_hat_t = np.zeros(n_samples)
-    t = 0
     rho_hat_even = 1.0
-    rho_hat_t[t] = rho_hat_even
-    rho_hat_odd = 1.0 - (mean_var - np.mean(acov[t + 1])) / var_plus
-    rho_hat_t[t + 1] = rho_hat_odd
+    rho_hat_t[0] = rho_hat_even
+    rho_hat_odd = 1.0 - (mean_var - np.mean(acov[1])) / var_plus
+    rho_hat_t[1] = rho_hat_odd
 
-    while t < len(acov) - 5 and not np.isnan(rho_hat_even + rho_hat_odd) and (rho_hat_even + rho_hat_odd > 0):
-        t += 2
-        rho_hat_even = 1.0 - (mean_var - np.mean(acov[t])) / var_plus
-        rho_hat_odd = 1.0 - (mean_var - np.mean(acov[t + 1])) / var_plus
+    # Geyer's initial positive sequence
+    t = 1
+    while t < (n_samples - 3) and (rho_hat_even + rho_hat_odd) > 0:
+        rho_hat_even = 1.0 - (mean_var - np.mean(acov[t + 1])) / var_plus
+        rho_hat_odd = 1.0 - (mean_var - np.mean(acov[t + 2])) / var_plus
         if (rho_hat_even + rho_hat_odd) >= 0:
-            rho_hat_t[t] = rho_hat_even
-            rho_hat_t[t + 1] = rho_hat_odd
-
-    max_t = t
-    if rho_hat_even > 0:
-        rho_hat_t[max_t] = rho_hat_even
-
-    t = 0
-    while t <= max_t - 4:
+            rho_hat_t[t + 1] = rho_hat_even
+            rho_hat_t[t + 2] = rho_hat_odd
         t += 2
-        if rho_hat_t[t] + rho_hat_t[t + 1] > rho_hat_t[t - 2] + rho_hat_t[t - 1]:
-            rho_hat_t[t] = (rho_hat_t[t - 2] + rho_hat_t[t - 1]) / 2
-            rho_hat_t[t + 1] = rho_hat_t[t]
+
+    max_t = t - 2
+    if rho_hat_even > 0:
+        rho_hat_t[max_t + 1] = rho_hat_even
+
+    # Geyer's initial monotone sequence
+    t = 1
+    while t <= max_t - 2:
+        if (rho_hat_t[t + 1] + rho_hat_t[t + 2]) > (rho_hat_t[t - 1] + rho_hat_t[t]):
+            rho_hat_t[t + 1] = (rho_hat_t[t - 1] + rho_hat_t[t]) / 2
+            rho_hat_t[t + 2] = rho_hat_t[t + 1]
+        t += 2
 
     ess = chains * n_samples
-    tau_hat = -1.0 + 2.0 * np.sum(rho_hat_t[:max_t]) + rho_hat_t[max_t]
+    tau_hat = -1.0 + 2.0 * np.sum(rho_hat_t[: max_t + 1]) + rho_hat_t[max_t + 1]
     tau_hat = max(tau_hat, 1.0 / np.log10(ess))
-    ess = ess / tau_hat
 
-    return float(ess)
+    return ess / tau_hat
 
 
 def _relative_eff_function(
@@ -255,6 +402,8 @@ def _relative_eff_function(
     cores: int,
     data: np.ndarray,
     draws: Optional[np.ndarray] = None,
+    method: Literal["bulk", "tail", "mean", "sd", "median", "mad", "local"] = "bulk",
+    prob: Optional[Union[float, tuple[float, float]]] = None,
 ) -> np.ndarray:
     """Compute relative efficiency for a function that returns likelihood values."""
     if data is None:
@@ -264,7 +413,7 @@ def _relative_eff_function(
 
     def process_one(i: int) -> float:
         val_i = func(data_i=data[i : i + 1], draws=draws)
-        return rel_eff(val_i, chain_id=chain_id, cores=1)[0]
+        return rel_eff(val_i, chain_id=chain_id, cores=1, method=method, prob=prob)[0]
 
     if cores == 1:
         n_eff = np.array([process_one(i) for i in range(N)])
