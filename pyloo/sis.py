@@ -4,8 +4,8 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 
+from .base import ImportanceSampling
 from .ess import mcmc_eff_size
-from .importance_sampling import ImportanceSampling
 from .utils import _logsumexp
 
 
