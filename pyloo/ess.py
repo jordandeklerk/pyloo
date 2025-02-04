@@ -1,7 +1,7 @@
 """ESS functions for pyloo with adaptations from Arviz."""
 
 import multiprocessing as mp
-from typing import Callable, Literal, Optional, Union
+from typing import Callable, Literal, Optional, Tuple, Union
 
 import numpy as np
 from scipy import stats
@@ -16,7 +16,7 @@ def rel_eff(
     data: Optional[np.ndarray] = None,
     draws: Optional[np.ndarray] = None,
     method: Literal["bulk", "tail", "mean", "sd", "median", "mad", "local"] = "bulk",
-    prob: Optional[Union[float, tuple[float, float]]] = None,
+    prob: Optional[Union[float, Tuple[float, float]]] = None,
 ) -> np.ndarray:
     """Compute the MCMC effective sample size divided by the total sample size.
 
@@ -168,7 +168,7 @@ def psis_eff_size(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = Non
 def mcmc_eff_size(
     sims: np.ndarray,
     method: str = "bulk",
-    prob: Optional[Union[float, tuple[float, float]]] = None,
+    prob: Optional[Union[float, Tuple[float, float]]] = None,
 ) -> float:
     """Calculate MCMC effective sample size using various methods.
 
@@ -297,7 +297,7 @@ def _ess_bulk(x: np.ndarray) -> float:
     return min(_ess_raw(z), x.size)
 
 
-def _ess_tail(x: np.ndarray, prob: Optional[Union[float, tuple[float, float]]] = None) -> float:
+def _ess_tail(x: np.ndarray, prob: Optional[Union[float, Tuple[float, float]]] = None) -> float:
     """Compute tail ESS."""
     if prob is None:
         prob_low, prob_high = 0.05, 0.95
@@ -335,7 +335,7 @@ def _ess_mad(x: np.ndarray) -> float:
     return min(_ess_raw(_split_chains(np.abs(x - median) <= mad)), x.size)
 
 
-def _ess_local(x: np.ndarray, prob: tuple[float, float]) -> float:
+def _ess_local(x: np.ndarray, prob: Tuple[float, float]) -> float:
     """Compute ESS for a specific probability region."""
     lower, upper = prob
     q1 = np.quantile(x, lower)
