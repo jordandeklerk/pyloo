@@ -251,12 +251,10 @@ def plot_diagnostic(
         y = k
         ylabel = "Pareto shape k"
 
-    # Plot points
     x_coords = np.arange(len(y))
     colors = np.where(k <= k_threshold, "#6497b1", np.where(k <= 1, "#005b96", "#03396c"))
     ax.scatter(x_coords, y, c=colors, marker="x", s=20, alpha=0.6)
 
-    # Add reference lines for k plot
     if diagnostic.lower() == "k":
         ymin, ymax = ax.get_ylim()
         for val, style in [(0, "darkgray"), (k_threshold, "#C79999"), (1.0, "#7C0000")]:
