@@ -403,7 +403,7 @@ def _relative_eff_function(
     data: np.ndarray,
     draws: Optional[np.ndarray] = None,
     method: Literal["bulk", "tail", "mean", "sd", "median", "mad", "local"] = "bulk",
-    prob: Optional[Union[float, tuple[float, float]]] = None,
+    prob: Optional[Union[float, Tuple[float, float]]] = None,
 ) -> np.ndarray:
     """Compute relative efficiency for a function that returns likelihood values."""
     if data is None:
