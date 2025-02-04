@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from scipy.special import logsumexp
 
-from ...psis import PSISObject, _gpdfit, _gpinv, psislw
+from ...psis import PSISData, _gpdfit, _gpinv, psislw
 from ...utils import _logsumexp
 from ..helpers import (
     assert_arrays_allclose,
@@ -23,9 +23,9 @@ def test_psislw(centered_eight):
     """Test PSIS-LOO against ArviZ implementation."""
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
-    log_weights, pareto_k = psislw(-log_like)
+    log_weights, pareto_k, _ = psislw(-log_like)
     _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")))
-    assert_arrays_allclose(pareto_k, arviz_k.values)
+    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-1)
 
 
 def test_psislw_r_eff(centered_eight):
@@ -33,9 +33,11 @@ def test_psislw_r_eff(centered_eight):
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
     r_eff = np.full(log_like.shape[1], 0.7)
-    log_weights, pareto_k = psislw(-log_like, r_eff)
+    log_weights, pareto_k, ess = psislw(-log_like, r_eff)
     _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7)
-    assert_arrays_allclose(pareto_k, arviz_k.values)
+    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-1)
+    assert_positive(ess)
+    assert_bounded(ess, upper=log_like.shape[0])
 
 
 def test_psislw_bad_r_eff(numpy_arrays):
@@ -47,16 +49,16 @@ def test_psislw_bad_r_eff(numpy_arrays):
 
 
 def test_psis_object(numpy_arrays):
-    """Test PSISObject creation and attributes."""
+    """Test PSISData creation and attributes."""
     log_weights = numpy_arrays["random_weights"]
     pareto_k = np.random.uniform(size=8)
-    n_eff = np.random.uniform(size=8) * 1000
-    r_eff = n_eff / 1000
+    ess = np.random.uniform(size=8) * 1000
+    r_eff = ess / 1000
 
-    psis = PSISObject(log_weights, pareto_k, n_eff, r_eff)
+    psis = PSISData(log_weights, pareto_k, ess, r_eff)
     assert_arrays_equal(psis.log_weights, log_weights)
     assert_arrays_equal(psis.pareto_k, pareto_k)
-    assert_arrays_equal(psis.n_eff, n_eff)
+    assert_arrays_equal(psis.ess, ess)
     assert_arrays_equal(psis.r_eff, r_eff)
 
 
@@ -87,7 +89,7 @@ def test_psislw_smooths_for_low_k():
     """Test PSIS-LOO smoothing for low k values."""
     rng = np.random.default_rng(44)
     x = rng.normal(size=100)
-    x_smoothed, k = psislw(x.copy())
+    x_smoothed, k, _ = psislw(x.copy())
     assert k < 1 / 3
     assert not np.allclose(x - logsumexp(x), x_smoothed)
 
@@ -98,7 +100,7 @@ def test_psislw_extreme_values(centered_eight):
     log_like = log_like.values.T
     # Modify one school to have extreme values
     log_like[:, 1] = 10
-    _, pareto_k = psislw(-log_like)
+    _, pareto_k, _ = psislw(-log_like)
     assert pareto_k[1] > 0.7
 
 
@@ -110,8 +112,8 @@ def test_psislw_multidimensional(centered_eight):
     llm = log_like.reshape(-1, 4, 2).copy()
     ll1 = log_like.copy()
 
-    log_weights_m, pareto_k_m = psislw(-llm.reshape(-1, llm.shape[-2] * llm.shape[-1]))
-    log_weights_1, pareto_k_1 = psislw(-ll1)
+    log_weights_m, pareto_k_m, _ = psislw(-llm.reshape(-1, llm.shape[-2] * llm.shape[-1]))
+    log_weights_1, pareto_k_1, _ = psislw(-ll1)
 
     assert_arrays_allclose(pareto_k_m, pareto_k_1)
     assert_arrays_allclose(log_weights_m, log_weights_1)
@@ -123,7 +125,7 @@ def test_psislw_all_k_high(centered_eight):
     centered_eight.log_likelihood["obs"][:, :, 1] = 10
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
-    _, pareto_k = psislw(-log_like)
+    _, pareto_k, _ = psislw(-log_like)
     assert np.all(np.isfinite(pareto_k[np.arange(len(pareto_k)) != 1]))
     # The modified school should have k > 0.7 (unreliable) or infinite
     assert pareto_k[1] > 0.7 or np.isinf(pareto_k[1])

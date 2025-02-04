@@ -5,11 +5,12 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 
+from .effective_sample_sizes import psis_eff_size
 from .utils import _logsumexp
 
 
 @dataclass
-class PSISObject:
+class PSISData:
     """Object containing smoothed log weights and diagnostics from PSIS calculations.
 
     Attributes
@@ -18,25 +19,31 @@ class PSISObject:
         Smoothed log weights
     pareto_k : np.ndarray
         Estimated shape parameters for the generalized Pareto distribution
-    n_eff : Optional[np.ndarray]
+    ess : Optional[np.ndarray]
         Effective sample size estimate (if computed)
     r_eff : Optional[np.ndarray]
         Relative efficiency estimate (if provided)
     tail_len : Optional[Union[int, np.ndarray]]
         Length of the tail for Pareto smoothing. Can be a scalar or array.
+    mcse_elpd_loo : Optional[np.ndarray]
+        Monte Carlo standard error estimates for PSIS-LOO
+    influence_pareto_k : Optional[np.ndarray]
+        Pareto k influence values
     """
 
     log_weights: np.ndarray
     pareto_k: np.ndarray
-    n_eff: Optional[np.ndarray] = None
+    ess: Optional[np.ndarray] = None
     r_eff: Optional[np.ndarray] = None
     tail_len: Optional[Union[int, np.ndarray]] = None
+    mcse_elpd_loo: Optional[np.ndarray] = None
+    influence_pareto_k: Optional[np.ndarray] = None
 
 
 def psislw(
     log_ratios: np.ndarray,
     r_eff: Union[float, np.ndarray] = 1.0,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute Pareto smoothed importance sampling (PSIS) log weights.
 
     Parameters
@@ -79,7 +86,7 @@ def psislw(
 
     See Also
     --------
-    PSISObject : Container for PSIS results including diagnostics
+    PSISData : Container for PSIS results including diagnostics
 
     References
     ----------
@@ -140,11 +147,18 @@ def psislw(
 
         smoothed_log_weights[:, i] = x - _logsumexp(x)
 
+    # Compute effective sample size
+    ess = np.zeros(n_obs)
+    for i in range(n_obs):
+        weights = np.exp(smoothed_log_weights[:, i])
+        ess[i] = psis_eff_size(weights, r_eff[i] if isinstance(r_eff, np.ndarray) else r_eff)
+
     if log_ratios.shape[1] == 1:
         smoothed_log_weights = smoothed_log_weights.ravel()
         pareto_k = pareto_k.ravel()
+        ess = ess.ravel()
 
-    return smoothed_log_weights, pareto_k
+    return smoothed_log_weights, pareto_k, ess
 
 
 def _gpdfit(x: np.ndarray) -> Tuple[float, float]:

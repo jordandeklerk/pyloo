@@ -1,11 +1,9 @@
 import arviz as az
 import numpy as np
-import pandas as pd
 import pytest
 import xarray as xr
 
 from ...utils import (
-    ELPDData,
     autocorr,
     autocov,
     compute_estimates,
@@ -153,7 +151,6 @@ def test_validate_data_conversion():
     validated = validate_data(idata, min_chains=1, min_draws=1)
     assert isinstance(validated, az.InferenceData)
     assert hasattr(validated, "log_likelihood")
-    assert hasattr(validated, "log_likelihood")
 
 
 def test_reshape_draws(multidim_data):
@@ -263,81 +260,6 @@ def test_get_log_likelihood(centered_eight):
 
     with pytest.raises(TypeError, match="No log likelihood data named"):
         get_log_likelihood(centered_eight, var_name="nonexistent")
-
-
-def test_elpd_data():
-    data = {
-        "elpd_loo": -5.0,
-        "p_loo": 2.5,
-        "scale": "log",
-        "n_samples": 1000,
-        "n_data_points": 100,
-        "warning": False,
-    }
-    elpd = ELPDData(data)
-
-    assert elpd.kind == "loo"
-    assert elpd.scale_str == "elpd"
-    assert not elpd.has_warnings()
-    assert not elpd.has_pareto_k()
-
-    str_repr = str(elpd)
-    assert "Computed from 1000 posterior samples" in str_repr
-    assert "100 observations" in str_repr
-    assert "elpd_loo" in str_repr
-    assert "p_loo" in str_repr
-
-    elpd.validate()
-
-    invalid_data = data.copy()
-    invalid_data["scale"] = "invalid"
-    with pytest.raises(ValueError, match="Invalid scale"):
-        ELPDData(invalid_data).validate()
-
-    missing_data = {k: v for k, v in data.items() if k != "n_samples"}
-    with pytest.raises(ValueError, match="Missing required fields"):
-        ELPDData(missing_data).validate()
-
-    warn_data = data.copy()
-    warn_data["warning"] = True
-    warn_elpd = ELPDData(warn_data)
-    assert warn_elpd.has_warnings()
-    assert "Warning" in str(warn_elpd)
-
-    k_data = data.copy()
-    k_values = np.array([0.1, 0.5, 0.8, 1.2])
-    k_data["pareto_k"] = pd.Series(k_values)
-    k_data["good_k"] = 0.6
-    k_elpd = ELPDData(k_data)
-
-    assert k_elpd.has_pareto_k()
-
-    summary = k_elpd.get_pareto_k_summary()
-    assert summary["k_threshold"] == 0.6
-    assert len(summary["counts"]) == 3
-
-    assert summary["counts"][0] == 2
-    assert summary["counts"][1] == 1
-    assert summary["counts"][2] == 1
-    assert np.allclose(summary["percentages"], [50, 25, 25])
-
-    k_str = str(k_elpd)
-    assert "Pareto k diagnostic values" in k_str
-    assert "good" in k_str
-    assert "bad" in k_str
-    assert "very bad" in k_str
-
-    copied = k_elpd.copy(deep=True)
-    assert isinstance(copied, ELPDData)
-    assert copied.has_pareto_k()
-    assert np.array_equal(copied.pareto_k, k_elpd.pareto_k)
-    copied.pareto_k[0] = 999
-    assert not np.array_equal(copied.pareto_k, k_elpd.pareto_k)
-
-    shallow = k_elpd.copy(deep=False)
-    assert isinstance(shallow, ELPDData)
-    shallow.pareto_k[0] = 999
-    assert np.array_equal(shallow.pareto_k, k_elpd.pareto_k)
 
 
 def test_validate_data_enhanced(numpy_arrays):

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from ...expected_loo import ExpectationResult, _wmean, _wquant, _wsd, _wvar, e_loo
-from ...psis import PSISObject
+from ...psis import PSISData
 from ...utils import _logsumexp
 from ..helpers import (
     assert_arrays_allclose,
@@ -22,7 +22,7 @@ def make_test_data(n_samples=1000, n_obs=1):
     pareto_k = np.zeros(n_obs)
     tail_len = np.minimum(20, int(0.2 * n_samples))
 
-    psis_obj = PSISObject(log_weights=log_weights, pareto_k=pareto_k, tail_len=tail_len)
+    psis_obj = PSISData(log_weights=log_weights, pareto_k=pareto_k, tail_len=tail_len)
 
     return x, psis_obj
 
@@ -31,7 +31,7 @@ def test_e_loo_vector():
     """Test e_loo with vector inputs."""
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     log_weights = np.array([-1.0, -1.0, -1.0, -1.0, -1.0])
-    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=2)
+    psis_obj = PSISData(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=2)
 
     result = e_loo(x, psis_obj, type="mean")
     assert isinstance(result, ExpectationResult)
@@ -52,7 +52,7 @@ def test_e_loo_matrix():
     """Test e_loo with matrix inputs."""
     x = np.array([[1.0, 2.0], [2.0, 3.0], [3.0, 4.0], [4.0, 5.0], [5.0, 6.0]])
     log_weights = np.array([[-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0]])
-    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0, 0.0]), tail_len=2)
+    psis_obj = PSISData(log_weights=log_weights, pareto_k=np.array([0.0, 0.0]), tail_len=2)
 
     result = e_loo(x, psis_obj, type="mean")
     assert isinstance(result, ExpectationResult)
@@ -75,7 +75,7 @@ def test_e_loo_errors():
     """Test error handling in e_loo."""
     x = np.array([1.0, 2.0, 3.0])
     log_weights = np.array([-1.0, -1.0, -1.0])
-    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=2)
+    psis_obj = PSISData(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=2)
 
     with pytest.raises(ValueError, match="type must be"):
         e_loo(x, psis_obj, type="invalid")
@@ -92,7 +92,7 @@ def test_e_loo_errors():
     with pytest.raises(ValueError):
         e_loo(np.array([]), psis_obj)
 
-    bad_psis = PSISObject(
+    bad_psis = PSISData(
         log_weights=np.array([np.inf, -np.inf, np.nan]),
         pareto_k=np.array([0.0]),
         tail_len=2,
@@ -127,7 +127,7 @@ def test_pareto_k_estimation():
     log_weights = np.random.pareto(3, size=n_samples)
     log_weights = np.log(log_weights) - np.max(np.log(log_weights))
 
-    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples))
+    psis_obj = PSISData(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples))
 
     test_cases = [
         x,
@@ -167,7 +167,7 @@ def test_numerical_stability():
     x = np.random.normal(size=n_samples)
 
     log_weights = np.array([-1000.0] * (n_samples - 1) + [0.0])
-    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples))
+    psis_obj = PSISData(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=int(0.2 * n_samples))
 
     for type in ["mean", "variance", "sd"]:
         result = e_loo(x, psis_obj, type=type)
@@ -188,13 +188,13 @@ def test_eight_schools_expectations(centered_eight, non_centered_eight):
     n_samples = centered_loglik.shape[1]
     tail_len = max(20, int(0.2 * n_samples))
 
-    centered_psis = PSISObject(
+    centered_psis = PSISData(
         log_weights=centered_loglik_norm,
         pareto_k=np.zeros(centered_loglik.shape[0]),
         tail_len=tail_len,
     )
 
-    non_centered_psis = PSISObject(
+    non_centered_psis = PSISData(
         log_weights=non_centered_loglik_norm,
         pareto_k=np.zeros(non_centered_loglik.shape[0]),
         tail_len=tail_len,
@@ -255,7 +255,7 @@ def test_constant_values():
     log_weights = np.random.normal(size=100)
     log_weights -= np.max(log_weights)
 
-    psis_obj = PSISObject(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=20)
+    psis_obj = PSISData(log_weights=log_weights, pareto_k=np.array([0.0]), tail_len=20)
 
     result_mean = e_loo(x, psis_obj, type="mean")
     assert_arrays_allclose(result_mean.value, 1.0)

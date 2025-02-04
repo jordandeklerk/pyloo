@@ -5,7 +5,7 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 
-from .psis import PSISObject, _gpdfit
+from .psis import PSISData, _gpdfit
 from .utils import _logsumexp
 
 
@@ -31,7 +31,7 @@ class ExpectationResult:
 
 def e_loo(
     x: Union[np.ndarray, Sequence[float]],
-    psis_object: PSISObject,
+    psis_object: PSISData,
     *,
     type: str = "mean",
     probs: Optional[Union[float, Sequence[float]]] = None,
@@ -43,7 +43,7 @@ def e_loo(
     ----------
     x : array-like
         Values to compute expectations for. Can be a vector or 2D array.
-    psis_object : PSISObject
+    psis_object : PSISData
         Object containing importance sampling weights from PSIS.
     type : str, optional
         Type of expectation to compute. Options are:
@@ -74,12 +74,12 @@ def e_loo(
            ...: x = np.random.normal(size=(1000, 100))
            ...: log_ratios = np.random.normal(size=(1000, 100))
            ...: weights, k = psislw(log_ratios)
-           ...: result = e_loo(x, PSISObject(log_weights=weights, pareto_k=k))
+           ...: result = e_loo(x, PSISData(log_weights=weights, pareto_k=k))
            ...: print(f"Mean value: {result.value.mean():.3f}")
 
     See Also
     --------
-    PSISObject : Container for PSIS results including diagnostics
+    PSISData : Container for PSIS results including diagnostics
     """
     x = np.asarray(x)
     if x.ndim == 1:
@@ -92,14 +92,14 @@ def e_loo(
 
 def _validate_inputs(
     x: np.ndarray,
-    psis_object: PSISObject,
+    psis_object: PSISData,
     type: str,
     probs: Optional[Union[float, Sequence[float]]],
     log_ratios: Optional[np.ndarray],
 ) -> None:
     """Validate input parameters."""
-    if not isinstance(psis_object, PSISObject):
-        raise TypeError("psis_object must be a PSISObject")
+    if not isinstance(psis_object, PSISData):
+        raise TypeError("psis_object must be a PSISData")
 
     if x.ndim == 1:
         if len(x) != len(psis_object.log_weights):
@@ -217,7 +217,7 @@ def _e_loo_khat(
 
 def _e_loo_vector(
     x: np.ndarray,
-    psis_object: PSISObject,
+    psis_object: PSISData,
     *,
     type: str = "mean",
     probs: Optional[Union[float, Sequence[float]]] = None,
@@ -249,7 +249,7 @@ def _e_loo_vector(
 
 def _e_loo_matrix(
     x: np.ndarray,
-    psis_object: PSISObject,
+    psis_object: PSISData,
     *,
     type: str = "mean",
     probs: Optional[Union[float, Sequence[float]]] = None,
