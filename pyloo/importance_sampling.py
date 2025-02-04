@@ -5,7 +5,7 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 
-from .effective_sample_sizes import psis_eff_size
+from .ess import psis_eff_size
 from .psis import psislw
 from .utils import _logsumexp
 
