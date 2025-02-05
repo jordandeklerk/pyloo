@@ -137,17 +137,3 @@ def importance_sampling_object(
         "dims": log_weights.shape,
         "method": method,
     }
-
-
-def _get_weights(
-    obj: dict,
-    log: bool = True,
-    normalize: bool = True,
-) -> np.ndarray:
-    """Extract importance sampling weights from results object."""
-    weights = obj["log_weights"].copy()
-    if normalize:
-        weights = weights - obj["norm_const_log"]
-    if not log:
-        weights = np.exp(weights)
-    return weights
