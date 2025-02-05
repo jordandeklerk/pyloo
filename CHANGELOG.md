@@ -1,38 +1,41 @@
-# Changelog
+# Change Log
 
-All notable changes to this project will be documented in this file.
+## Unreleased
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Added
-- Initial project setup
-- Basic package structure
-- Development environment configuration
-- Core dependencies:
-  - numpy>=1.20.0
-  - scipy>=1.7.0
-  - pandas>=1.3.0
-- Core modules implementation:
-  - psis.py: Pareto smoothed importance sampling core functions
-  - effective_sample_sizes.py: MCMC and importance sampling diagnostics
-  - expected_loo.py: Weighted expectations using importance sampling
+### New features
+- Added comprehensive PSIS diagnostic tools and visualizations in `diagnostics.py`
+- Added base class for ELPD calculations in `elpd.py`
+- Added ESS functions with ArviZ adaptations in `ess.py`
+- Added multiple importance sampling methods:
+  - Standard Importance Sampling (SIS) implementation in `sis.py`
+  - Truncated Importance Sampling (TIS) implementation in `tis.py`
+  - Unified importance sampling interface in `importance_sampling.py`
+- Added helper utilities adapted from ArviZ in `utils.py`
 - Enhanced PSIS test suite:
   - Added comprehensive test coverage for multidimensional arrays
   - Added tests for extreme value handling and high Pareto k values
   - Added parametrized tests for GPD inverse function
   - Added test cases matching ArviZ's test coverage
+
+### Maintenance and fixes
 - Updated test dependencies:
   - Updated arviz to version 0.20.0 for test compatibility
   - Added numpy>=1.21.0 and scipy>=1.7.0 as explicit test requirements
+- Core dependencies:
+  - numpy>=1.20.0
+  - scipy>=1.7.0
+  - pandas>=1.3.0
 
-## v[0.1.0] (2025-01-29)
+### Documentation
+- Basic package structure and documentation setup
+- Development environment configuration
 
-### Added
-- Project initialization
-- Basic repository structure
+## v0.1.0 (2025-01-29)
+
+### New features
+- Project initialization and basic repository structure
+
+### Maintenance and fixes
 - Development tooling setup:
   - pytest for testing
   - black for code formatting
