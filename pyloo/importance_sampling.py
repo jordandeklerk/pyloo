@@ -17,7 +17,7 @@ except ImportError:
 from .sis import sislw
 
 
-def do_importance_sampling(
+def ImportanceSampling(
     log_ratios: np.ndarray, r_eff: Union[float, np.ndarray], method: str = "psis"
 ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
     """Perform importance sampling using the specified method.
@@ -139,27 +139,12 @@ def importance_sampling_object(
     }
 
 
-def get_weights(
+def _get_weights(
     obj: dict,
     log: bool = True,
     normalize: bool = True,
 ) -> np.ndarray:
-    """Extract importance sampling weights from results object.
-
-    Parameters
-    ----------
-    obj : dict
-        Importance sampling results object
-    log : bool, optional
-        Whether to return weights on log scale. Default is True.
-    normalize : bool, optional
-        Whether to normalize the weights. Default is True.
-
-    Returns
-    -------
-    np.ndarray
-        Array of weights with same shape as input log weights
-    """
+    """Extract importance sampling weights from results object."""
     weights = obj["log_weights"].copy()
     if normalize:
         weights = weights - obj["norm_const_log"]

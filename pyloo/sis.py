@@ -1,10 +1,9 @@
 """Standard Importance Sampling (SIS) implementation."""
 
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 import numpy as np
 
-from .base import ImportanceSampling
 from .ess import mcmc_eff_size
 from .utils import _logsumexp
 
@@ -88,35 +87,3 @@ def sislw(
         ess = ess.reshape(())
 
     return log_weights, pareto_k, ess
-
-
-class StandardImportanceSampling(ImportanceSampling):
-    """Standard Importance Sampling implementation."""
-
-    def compute_weights(
-        self,
-        log_ratios: np.ndarray,
-        r_eff: Optional[Union[float, np.ndarray]] = None,
-        **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
-        """Compute standard importance sampling weights.
-
-        Parameters
-        ----------
-        log_ratios : np.ndarray
-            Array of shape (n_samples, n_observations) containing log importance
-            ratios (for example, log-likelihood values).
-        r_eff : Optional[Union[float, np.ndarray]], optional
-            Relative MCMC efficiency (effective sample size / total samples).
-            Can be a scalar or array of length n_observations. Default is None.
-        **kwargs
-            Additional keyword arguments (not used in SIS).
-
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]
-            - Array of log weights
-            - Array of zeros (Pareto k values, not used in SIS)
-            - Array of effective sample sizes
-        """
-        return sislw(log_ratios, r_eff if r_eff is not None else 1.0)

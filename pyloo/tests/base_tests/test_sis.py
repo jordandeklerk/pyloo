@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ...sis import StandardImportanceSampling, sislw
+from ...sis import sislw
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,
@@ -86,17 +86,18 @@ def test_sislw_with_real_data(log_likelihood_data):
 
 def test_standardimportancesampling_class():
     """Test StandardImportanceSampling class functionality."""
-    sis = StandardImportanceSampling()
     data = generate_psis_data(np.random.default_rng(42))
+    log_ratios = data["log_ratios"]
+    r_eff = data["r_eff"]
 
-    log_weights1, pareto_k1, ess1 = sis.compute_weights(data["log_ratios"])
+    log_weights1, pareto_k1, ess1 = sislw(log_ratios)
     assert_finite(log_weights1)
-    assert_arrays_equal(pareto_k1, np.zeros(data["log_ratios"].shape[1]))
+    assert_arrays_equal(pareto_k1, np.zeros(log_ratios.shape[1]))
     assert_positive(ess1)
 
-    log_weights2, pareto_k2, ess2 = sis.compute_weights(data["log_ratios"], r_eff=data["r_eff"])
+    log_weights2, pareto_k2, ess2 = sislw(log_ratios, r_eff=r_eff)
     assert_finite(log_weights2)
-    assert_arrays_equal(pareto_k2, np.zeros(data["log_ratios"].shape[1]))
+    assert_arrays_equal(pareto_k2, np.zeros(log_ratios.shape[1]))
     assert_positive(ess2)
 
     assert_arrays_allclose(log_weights1, log_weights2)
