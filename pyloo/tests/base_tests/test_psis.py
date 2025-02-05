@@ -23,7 +23,7 @@ def test_psislw(centered_eight):
     """Test PSIS-LOO against ArviZ implementation."""
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
-    log_weights, pareto_k, _ = psislw(-log_like)
+    _, pareto_k, _ = psislw(-log_like)
     _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")))
     assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-1)
 
@@ -33,7 +33,7 @@ def test_psislw_r_eff(centered_eight):
     log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_like = log_like.values.T
     r_eff = np.full(log_like.shape[1], 0.7)
-    log_weights, pareto_k, ess = psislw(-log_like, r_eff)
+    _, pareto_k, ess = psislw(-log_like, r_eff)
     _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7)
     assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-1)
     assert_positive(ess)
