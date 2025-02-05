@@ -70,8 +70,6 @@ def ImportanceSampling(
     if method == "psis":
         weights, diagnostics, ess = psislw(log_ratios, r_eff)
     elif method == "tis":
-        if tislw is None:
-            raise NotImplementedError("Truncated Importance Sampling (TIS) is not yet implemented")
         weights, diagnostics, ess = tislw(log_ratios, r_eff)
     elif method == "sis":
         weights, diagnostics, ess = sislw(log_ratios, r_eff)
