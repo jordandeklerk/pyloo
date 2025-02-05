@@ -1,4 +1,5 @@
 """Base class for expected log pointwise predictive density (ELPD) calculations."""
+
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Union
 
