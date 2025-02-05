@@ -34,7 +34,7 @@ def test_ImportanceSampling_methods(log_likelihood_data):
     """Test different importance sampling methods."""
     log_ratios = -log_likelihood_data.values.T
     r_eff = np.ones(log_ratios.shape[1])
-    methods = ["psis", "sis"]  # TIS not implemented yet
+    methods = ["psis", "tis", "sis"]
 
     for method in methods:
         weights, diagnostics, ess = ImportanceSampling(log_ratios, r_eff=r_eff, method=method)
@@ -42,15 +42,20 @@ def test_ImportanceSampling_methods(log_likelihood_data):
         assert_shape_equal(weights, log_ratios)
         assert len(diagnostics) == log_ratios.shape[1]
         assert_finite(weights)
+        assert ess is not None
+        assert_finite(ess)
 
         if method == "psis":
-            assert ess is not None
             assert_finite(diagnostics)
-        elif method in ["tis", "sis"]:
-            assert np.all(diagnostics == 0)
+        else:
+            assert_arrays_equal(diagnostics, np.zeros(log_ratios.shape[1]))
+
+        exp_weights = np.exp(weights)
+        weight_sums = np.sum(exp_weights, axis=0)
+        assert_arrays_allclose(weight_sums, np.ones_like(weight_sums))
 
 
-def test_ImportanceSampling_extreme_data(extreme_data):
+def test_ImportanceSampling_extreme_values(extreme_data):
     """Test importance sampling with extreme values."""
     r_eff = np.ones(extreme_data.shape[1])
 

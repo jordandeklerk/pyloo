@@ -6,15 +6,9 @@ import numpy as np
 
 from .ess import psis_eff_size
 from .psis import psislw
-from .utils import _logsumexp
-
-# TODO: Implement truncated importance sampling (TIS)
-try:
-    from .tis import tislw
-except ImportError:
-    tislw = None
-
 from .sis import sislw
+from .tis import tislw
+from .utils import _logsumexp
 
 
 def ImportanceSampling(
