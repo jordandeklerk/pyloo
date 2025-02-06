@@ -25,7 +25,7 @@ def test_psislw(centered_eight):
     log_like = log_like.values.T
     _, pareto_k, _ = psislw(-log_like)
     _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")))
-    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-1)
+    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-9)
 
 
 def test_psislw_r_eff(centered_eight):
@@ -35,7 +35,7 @@ def test_psislw_r_eff(centered_eight):
     r_eff = np.full(log_like.shape[1], 0.7)
     _, pareto_k, ess = psislw(-log_like, r_eff)
     _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7)
-    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-1)
+    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-9)
     assert_positive(ess)
     assert_bounded(ess, upper=log_like.shape[0])
 
