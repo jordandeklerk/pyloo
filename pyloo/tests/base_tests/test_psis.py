@@ -1,7 +1,5 @@
 """Tests for PSIS functionality."""
 
-import copy
-
 import arviz as az
 import numpy as np
 import pytest
@@ -16,28 +14,46 @@ from ..helpers import (
     assert_bounded,
     assert_finite,
     assert_positive,
+    create_eight_schools_model,
 )
+
+
+@pytest.fixture(scope="module")
+def centered_eight():
+    """Create test data for eight schools example."""
+    return create_eight_schools_model(seed=10)
 
 
 def test_psislw(centered_eight):
     """Test PSIS-LOO against ArviZ implementation."""
-    log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    log_like = log_like.values.T
+    log_like = centered_eight.log_likelihood.obs
+    log_like = log_like.reshape(-1, log_like.shape[-1]).T
     _, pareto_k, _ = psislw(-log_like)
-    _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")))
-    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-9)
+    _, arviz_k = az.stats.psislw(-log_like.T)
+    assert_arrays_allclose(pareto_k, arviz_k, rtol=1e-9)
 
 
 def test_psislw_r_eff(centered_eight):
     """Test PSIS-LOO with relative effective sample sizes."""
-    log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    log_like = log_like.values.T
+    log_like = centered_eight.log_likelihood.obs
+    log_like = log_like.reshape(-1, log_like.shape[-1]).T
     r_eff = np.full(log_like.shape[1], 0.7)
     _, pareto_k, ess = psislw(-log_like, r_eff)
-    _, arviz_k = az.stats.psislw(-centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw")), reff=0.7)
-    assert_arrays_allclose(pareto_k, arviz_k.values, rtol=1e-9)
+    _, arviz_k = az.stats.psislw(-log_like.T, reff=0.7)
+    assert_arrays_allclose(pareto_k, arviz_k, rtol=1e-9)
     assert_positive(ess)
     assert_bounded(ess, upper=log_like.shape[0])
+
+
+@pytest.fixture
+def numpy_arrays():
+    """Create test arrays."""
+    rng = np.random.default_rng(42)
+    return {
+        "random_ratios": rng.normal(size=(1000, 8)),
+        "random_weights": rng.normal(size=(1000, 8)),
+        "normal": rng.normal(size=1000),
+    }
 
 
 def test_psislw_bad_r_eff(numpy_arrays):
@@ -96,8 +112,8 @@ def test_psislw_smooths_for_low_k():
 
 def test_psislw_extreme_values(centered_eight):
     """Test PSIS-LOO with extreme values."""
-    log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    log_like = log_like.values.T
+    log_like = centered_eight.log_likelihood.obs
+    log_like = log_like.reshape(-1, log_like.shape[-1]).T
     # Modify one school to have extreme values
     log_like[:, 1] = 10
     _, pareto_k, _ = psislw(-log_like)
@@ -106,29 +122,26 @@ def test_psislw_extreme_values(centered_eight):
 
 def test_psislw_multidimensional(centered_eight):
     """Test PSIS-LOO with multidimensional data."""
-    log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    log_like = log_like.values.T
+    log_like = centered_eight.log_likelihood.obs
+    log_like = log_like.reshape(-1, log_like.shape[-1]).T
 
-    llm = log_like.reshape(-1, 4, 2).copy()
-    ll1 = log_like.copy()
+    # Get original shape
+    n_samples = log_like.shape[0]
+    n_schools = log_like.shape[1]
 
-    log_weights_m, pareto_k_m, _ = psislw(-llm.reshape(-1, llm.shape[-2] * llm.shape[-1]))
-    log_weights_1, pareto_k_1, _ = psislw(-ll1)
+    # Create a view of the same data in 3D
+    # Ensure the new shape multiplies to give the same total size
+    n_dim1 = 2
+    n_dim2 = n_schools // n_dim1  # This should divide evenly
+    llm = log_like.reshape(n_samples, n_dim1, n_dim2)
 
+    # Run PSIS on both shapes
+    log_weights_m, pareto_k_m, _ = psislw(-llm.reshape(n_samples, -1))
+    log_weights_1, pareto_k_1, _ = psislw(-log_like)
+
+    # Results should match since it's the same data
     assert_arrays_allclose(pareto_k_m, pareto_k_1)
     assert_arrays_allclose(log_weights_m, log_weights_1)
-
-
-def test_psislw_all_k_high(centered_eight):
-    """Test PSIS-LOO with high k values."""
-    centered_eight = copy.deepcopy(centered_eight)
-    centered_eight.log_likelihood["obs"][:, :, 1] = 10
-    log_like = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-    log_like = log_like.values.T
-    _, pareto_k, _ = psislw(-log_like)
-    assert np.all(np.isfinite(pareto_k[np.arange(len(pareto_k)) != 1]))
-    # The modified school should have k > 0.7 (unreliable) or infinite
-    assert pareto_k[1] > 0.7 or np.isinf(pareto_k[1])
 
 
 @pytest.mark.parametrize("probs", [True, False])
