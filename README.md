@@ -12,23 +12,3 @@ and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models in a framewor
 <br><br>
 
 Please note that this project is in its early stages and is in active development. Our goal is to make reliable and robust model comparison accessible and straightforward for the Python-based Bayesian modeling community.
-
-## Tentative Roadmap
-
-Our vision is to provide a comprehensive, framework-agnostic workflow for Leave-One-Out Cross-Validation in Bayesian modeling. Here's what we're working on:
-
-### Core PSIS-LOO-CV Implementation 🎯
-- **Framework Agnosticism**: Support for any Bayesian modeling framework (PyMC, NumPyro, Stan, etc.) through a unified interface
-- **Efficient LOO-CV**: Implementation of PSIS-LOO-CV for computationally efficient model assessment
-- **Diagnostic Tools**: Comprehensive diagnostics including Pareto k values, effective sample size, Monte Carlo standard errors, and more
-- **Model Comparison**: Modules implementing entire workflows for comparing multiple Bayesian models using LOO-CV techniques
-
-### Advanced Features ⚡
-- **Exact Refitting**: Implementation of exact model refitting for observations with problematic Pareto k values
-- **Moment Matching**: Support for moment matching techniques to avoid the computational cost of exact refitting
-- **Mixture Importance Sampling**: Implementation of mixture importance sampling as an alternative approach to handle challenging cases in high-dimensional settings
-
-### Extended Functionality 🚀
-- **K-Fold Cross-Validation**: Support for K-fold CV when LOO-CV is not suitable
-- **Pointwise Diagnostics**: Detailed diagnostics for identifying influential observations
-- **Visualization Tools**: Built-in plotting functions for pragmatic diagnostics and model comparison
