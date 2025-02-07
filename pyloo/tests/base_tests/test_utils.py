@@ -8,7 +8,6 @@ from ...utils import (
     autocov,
     compute_estimates,
     compute_log_mean_exp,
-    extract_log_likelihood,
     get_log_likelihood,
     is_constant,
     reshape_draws,
@@ -16,12 +15,7 @@ from ...utils import (
     to_inference_data,
     validate_data,
 )
-from ..helpers import (
-    assert_arrays_allclose,
-    assert_arrays_equal,
-    assert_finite,
-    assert_shape_equal,
-)
+from ..helpers import assert_arrays_allclose, assert_arrays_equal, assert_shape_equal
 
 
 def test_to_inference_data_real(centered_eight, non_centered_eight):
@@ -37,44 +31,6 @@ def test_to_inference_data_invalid():
         to_inference_data([1, 2, 3])
     with pytest.raises(ValueError):
         to_inference_data({"a": 1})
-
-
-def test_extract_log_likelihood_real(centered_eight, non_centered_eight):
-    log_lik_c, chain_ids_c = extract_log_likelihood(centered_eight)
-    assert_finite(log_lik_c)
-    assert log_lik_c.shape[1] == len(centered_eight.observed_data.obs)
-
-    log_lik_nc, chain_ids_nc = extract_log_likelihood(non_centered_eight)
-    assert_finite(log_lik_nc)
-    assert log_lik_nc.shape[1] == len(non_centered_eight.observed_data.obs)
-
-    n_chains_c = centered_eight.posterior.chain.size
-    n_draws_c = centered_eight.posterior.draw.size
-
-    n_chains_nc = non_centered_eight.posterior.chain.size
-    n_draws_nc = non_centered_eight.posterior.draw.size
-
-    expected_ids_c = np.repeat(np.arange(1, n_chains_c + 1), n_draws_c)
-    expected_ids_nc = np.repeat(np.arange(1, n_chains_nc + 1), n_draws_nc)
-
-    assert_arrays_equal(chain_ids_c, expected_ids_c)
-    assert_arrays_equal(chain_ids_nc, expected_ids_nc)
-
-
-def test_extract_log_likelihood_synthetic(rng):
-    draws, chains, obs = 100, 4, 8
-    log_like = rng.normal(size=(chains, draws, obs))
-
-    dataset = xr.Dataset(
-        data_vars={"obs": (["chain", "draw", "observation"], log_like)},
-        coords={"chain": np.arange(chains), "draw": np.arange(draws), "observation": np.arange(obs)},
-    )
-
-    idata = az.InferenceData(log_likelihood=dataset)
-
-    log_lik, chain_ids = extract_log_likelihood(idata, var_name="obs")
-    assert_shape_equal(log_lik, rng.normal(size=(chains * draws, obs)))
-    assert len(chain_ids) == chains * draws
 
 
 def test_compute_log_mean_exp(numpy_arrays):
