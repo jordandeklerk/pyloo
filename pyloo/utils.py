@@ -127,48 +127,6 @@ def to_inference_data(obj: Any) -> InferenceData:
         ) from e
 
 
-def extract_log_likelihood(idata: InferenceData, var_name: str = "obs") -> Tuple[np.ndarray, np.ndarray]:
-    """Extract log likelihood values and chain IDs from InferenceData.
-
-    Parameters
-    ----------
-    idata : InferenceData
-        ArviZ InferenceData object
-    var_name : str, optional
-        Name of log likelihood variable in log_likelihood group
-        Default is "obs" as it's commonly used in ArviZ
-
-    Returns
-    -------
-    tuple
-        (log_likelihood_array, chain_ids)
-        - log_likelihood_array: Array with shape (chains*draws, observations)
-        - chain_ids: Array of chain IDs for each draw
-
-    Raises
-    ------
-    ValueError
-        If log likelihood values cannot be extracted
-    """
-    if not hasattr(idata, "log_likelihood"):
-        raise ValueError("InferenceData object must have log_likelihood group")
-
-    if var_name not in idata.log_likelihood.data_vars:
-        raise ValueError(f"Variable '{var_name}' not found in log_likelihood group")
-
-    log_lik = idata.log_likelihood[var_name]
-
-    if log_lik.ndim == 2:
-        return log_lik.values, np.ones(len(log_lik))
-
-    n_chains = log_lik.shape[0]
-    n_draws = log_lik.shape[1]
-    chain_ids = np.repeat(np.arange(1, n_chains + 1), n_draws)
-
-    reshaped_values = log_lik.values.reshape(-1, log_lik.shape[-1])
-    return reshaped_values, chain_ids
-
-
 def compute_log_mean_exp(x: np.ndarray, axis: Optional[int] = None) -> Union[float, np.ndarray]:
     """Compute log(mean(exp(x))) in a numerically stable way."""
     if axis is None:
