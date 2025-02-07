@@ -12,6 +12,7 @@ from .psis import psislw
 from .utils import _logsumexp, get_log_likelihood
 
 
+# Mainly taken from https://github.com/arviz-devs/arviz/blob/main/arviz/stats/stats.py
 def loo(
     data,
     pointwise: Optional[bool] = None,
