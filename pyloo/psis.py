@@ -1,11 +1,11 @@
 """Functions for Pareto smoothed importance sampling (PSIS)."""
 
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import numpy as np
 
-from .ess import psis_eff_size
 from .utils import _logsumexp
 
 
@@ -41,124 +41,112 @@ class PSISData:
 
 
 def psislw(
-    log_ratios: np.ndarray,
-    r_eff: Union[float, np.ndarray] = 1.0,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute Pareto smoothed importance sampling (PSIS) log weights.
+    log_weights: np.ndarray,
+    reff: float = 1.0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Pareto smoothed importance sampling (PSIS).
 
     Parameters
     ----------
-    log_ratios : np.ndarray
-        Array of shape (n_samples, n_observations) containing log importance
-        ratios (for example, log-likelihood values).
-    r_eff : Union[float, np.ndarray], optional
-        Relative MCMC efficiency (effective sample size / total samples) used in
-        tail length calculation. Can be a scalar or array of length
-        n_observations. Default is 1.0 (for independent draws).
+    log_weights : np.ndarray
+        Array of size (n_observations, n_samples)
+    reff : float, default 1
+        relative MCMC efficiency, ``ess / n``
 
     Returns
     -------
-    smoothed_log_weights : np.ndarray
-        Array of same shape as log_ratios containing smoothed log weights
-    pareto_k : np.ndarray
-        Array of length n_observations containing estimated shape parameters for
-        the generalized Pareto distribution fit to the tail of the log ratios
-
-    Notes
-    -----
-    The Pareto k diagnostic values indicate the reliability of the importance
-    sampling estimates:
-    * k < 0.5   : excellent
-    * 0.5 <= k <= 0.7 : good
-    * k > 0.7   : unreliable
-
-    Examples
-    --------
-    Calculate PSIS weights for log-likelihood values:
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from pyloo import psislw
-           ...: log_liks = np.random.normal(size=(1000, 100))
-           ...: weights, k = psislw(log_liks)
-           ...: print(f"Mean Pareto k: {k.mean():.3f}")
-
-    See Also
-    --------
-    PSISData : Container for PSIS results including diagnostics
+    lw_out : np.ndarray
+        Smoothed, truncated and normalized log weights.
+    kss : np.ndarray
+        Estimates of the shape parameter *k* of the generalized Pareto
+        distribution.
 
     References
     ----------
-    .. [1] Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P. C.
-           (2024). Pareto smoothed importance sampling. Journal of Machine
-           Learning Research, 25(72):1-58.
+    * Vehtari et al. (2024). Pareto smoothed importance sampling. Journal of Machine
+      Learning Research, 25(72):1-58.
+
+    See Also
+    --------
+    loo : Compute Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO-CV).
     """
-    if not isinstance(log_ratios, np.ndarray):
-        log_ratios = np.asarray(log_ratios)
+    log_weights = deepcopy(log_weights)
 
-    if log_ratios.ndim == 1:
-        log_ratios = log_ratios.reshape(-1, 1)
+    if log_weights.ndim == 1:
+        log_weights = log_weights.reshape(-1, 1)
+    elif log_weights.ndim != 2:
+        raise ValueError("log_weights must be 1D or 2D array")
 
-    if log_ratios.ndim != 2:
-        raise ValueError("log_ratios must be 1D or 2D array")
+    n_samples = log_weights.shape[-1]
+    shape = log_weights.shape[:-1]
 
-    n_samples, n_obs = log_ratios.shape
+    cutoff_ind = -int(np.ceil(min(n_samples / 5.0, 3 * (n_samples / reff) ** 0.5))) - 1
+    cutoffmin = np.log(np.finfo(float).tiny)
 
-    if isinstance(r_eff, (int, float)):
-        r_eff = float(r_eff)
-    elif len(r_eff) != n_obs:
-        raise ValueError("r_eff must be a scalar or have length equal to n_observations")
+    smoothed_log_weights = np.empty_like(log_weights)
+    pareto_k = np.empty(shape)
 
-    tail_len = np.ceil(np.minimum(0.2 * n_samples, 3 * np.sqrt(n_samples / r_eff))).astype(int)
-    smoothed_log_weights = log_ratios.copy()
-    pareto_k = np.zeros(n_obs)
+    for idx in np.ndindex(shape):
+        x = log_weights[idx]
+        smoothed_log_weights[idx], pareto_k[idx] = _psislw(x, cutoff_ind, cutoffmin)
 
-    for i in range(n_obs):
-        x = smoothed_log_weights[:, i]
-        x = x - np.max(x)
-
-        sorted_idx = np.argsort(x)
-        cutoff_idx = -int(tail_len[i] if isinstance(tail_len, np.ndarray) else tail_len) - 1
-        cutoff = np.maximum(x[sorted_idx[cutoff_idx]], np.log(np.finfo(float).tiny))
-
-        tail_ids = np.where(x > cutoff)[0]
-        n_tail = len(tail_ids)
-
-        if n_tail <= 4:
-            # Not enough tail samples for GPD fit
-            pareto_k[i] = np.inf
-        else:
-            tail_order = np.argsort(x[tail_ids])
-            x_tail = x[tail_ids][tail_order]
-            exp_cutoff = np.exp(cutoff)
-            x_tail = np.exp(x_tail) - exp_cutoff
-
-            k, sigma = _gpdfit(x_tail)
-            pareto_k[i] = k
-
-            if np.isfinite(k):
-                sti = np.arange(0.5, n_tail) / n_tail
-                smoothed_tail = _gpinv(sti, k, sigma)
-                smoothed_tail = np.log(smoothed_tail + exp_cutoff)
-
-                x[tail_ids[tail_order]] = smoothed_tail
-                x[x > 0] = 0
-
-        smoothed_log_weights[:, i] = x - _logsumexp(x)
-
-    # Compute effective sample size
-    ess = np.zeros(n_obs)
-    for i in range(n_obs):
-        weights = np.exp(smoothed_log_weights[:, i])
-        ess[i] = psis_eff_size(weights, r_eff[i] if isinstance(r_eff, np.ndarray) else r_eff)
-
-    if log_ratios.shape[1] == 1:
+    if log_weights.shape[0] == 1:
         smoothed_log_weights = smoothed_log_weights.ravel()
         pareto_k = pareto_k.ravel()
-        ess = ess.ravel()
 
-    return smoothed_log_weights, pareto_k, ess
+    return smoothed_log_weights, pareto_k
+
+
+def _psislw(log_weights: np.ndarray, cutoff_ind: int, cutoffmin: float) -> Tuple[np.ndarray, float]:
+    """Pareto smoothed importance sampling (PSIS) for a 1D vector.
+
+    Parameters
+    ----------
+    log_weights: array
+        Array of length n_observations
+    cutoff_ind: int
+        Index for tail cutoff
+    cutoffmin: float
+        Minimum cutoff value
+
+    Returns
+    -------
+    lw_out: array
+        Smoothed log weights
+    kss: float
+        Pareto tail index
+    """
+    x = np.asarray(log_weights)
+    x -= np.max(x)
+    x_sort_ind = np.argsort(x)
+    xcutoff = max(x[x_sort_ind[cutoff_ind]], cutoffmin)
+
+    expxcutoff = np.exp(xcutoff)
+    (tailinds,) = np.where(x > xcutoff)
+    x_tail = x[tailinds]
+    tail_len = len(x_tail)
+
+    if tail_len <= 4:
+        # not enough tail samples for gpdfit
+        k = np.inf
+    else:
+        x_tail_si = np.argsort(x_tail)
+        x_tail = np.exp(x_tail) - expxcutoff
+        k, sigma = _gpdfit(x_tail[x_tail_si])
+
+        if np.isfinite(k):
+            # no smoothing if GPD fit failed
+            # compute ordered statistic for the fit
+            sti = np.arange(0.5, tail_len) / tail_len
+            smoothed_tail = _gpinv(sti, k, sigma)
+            smoothed_tail = np.log(smoothed_tail + expxcutoff)
+            # place the smoothed tail into the output array
+            x[tailinds[x_tail_si]] = smoothed_tail
+            x[x > 0] = 0
+
+    x -= _logsumexp(x)
+
+    return x, k
 
 
 def _gpdfit(x: np.ndarray) -> Tuple[float, float]:

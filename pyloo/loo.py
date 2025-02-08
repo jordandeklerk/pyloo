@@ -189,7 +189,7 @@ def loo(
             ess_p = ess(posterior, method="mean")
             reff = np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean() / n_samples
 
-    log_weights, pareto_shape, _ = psislw(-log_likelihood, reff)
+    log_weights, pareto_shape = psislw(-log_likelihood, reff)
     log_weights += log_likelihood
 
     warn_mg = False
