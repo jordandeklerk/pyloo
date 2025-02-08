@@ -6,6 +6,17 @@ import arviz as az
 import numpy as np
 import pytest
 
+from .helpers import extreme_data as _extreme_data
+from .helpers import log_likelihood_data as _log_likelihood_data
+from .helpers import multidim_data as _multidim_data
+from .helpers import numpy_arrays as _numpy_arrays
+
+# Re-export fixtures from helpers
+extreme_data = _extreme_data
+log_likelihood_data = _log_likelihood_data
+multidim_data = _multidim_data
+numpy_arrays = _numpy_arrays
+
 
 @pytest.fixture(scope="session")
 def rng():
