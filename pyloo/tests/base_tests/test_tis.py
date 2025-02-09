@@ -39,7 +39,7 @@ def test_tislw_1d_input(rng):
 
     assert log_weights.shape == (1000,)
     assert isinstance(ess, np.ndarray)  # ESS is always a numpy array
-    assert ess.shape == ()  # For 1D input, ESS should be a 0-dimensional array
+    assert ess.shape == ()
     assert_finite(log_weights)
     assert_positive(ess)
     assert_arrays_allclose(np.exp(log_weights).sum(), 1.0, rtol=1e-6)
@@ -59,7 +59,6 @@ def test_tislw_weight_normalization(numpy_arrays):
     log_weights, _ = tislw(log_ratios)
 
     weights = np.exp(log_weights)
-    # Sum along the sample dimension
     sums = np.sum(weights, axis=-1)
     assert_arrays_allclose(sums, np.ones_like(sums), rtol=1e-6)
 
@@ -83,7 +82,6 @@ def test_tislw_extreme_values(extreme_data):
     assert_positive(ess)
 
     weights = np.exp(log_weights)
-    # Sum along the sample dimension
     sums = np.sum(weights, axis=-1)
     assert_arrays_allclose(sums, np.ones_like(sums), rtol=1e-6)
 
@@ -111,7 +109,6 @@ def test_tislw_truncation_bound():
     log_weights, _ = tislw(log_ratios)
 
     weights = np.exp(log_weights)
-    # Sum along the sample dimension
     sums = np.sum(weights, axis=-1)
     assert_arrays_allclose(sums, np.ones_like(sums), rtol=1e-6)
     assert_finite(weights)

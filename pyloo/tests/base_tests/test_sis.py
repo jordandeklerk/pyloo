@@ -58,7 +58,7 @@ def test_sislw_weight_normalization(numpy_arrays):
     log_weights, _ = sislw(log_ratios)
 
     weights = np.exp(log_weights)
-    sums = np.sum(weights, axis=-1)  # Sum along sample dimension
+    sums = np.sum(weights, axis=-1)
     assert_arrays_almost_equal(sums, np.ones_like(sums))
 
 
@@ -81,7 +81,7 @@ def test_sislw_extreme_values(extreme_data):
     assert_positive(ess)
 
     weights = np.exp(log_weights)
-    sums = np.sum(weights, axis=-1)  # Sum along sample dimension
+    sums = np.sum(weights, axis=-1)
     assert_arrays_almost_equal(sums, np.ones_like(sums))
 
 
