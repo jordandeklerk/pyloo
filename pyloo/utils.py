@@ -314,35 +314,25 @@ def is_constant(x: np.ndarray, tol: float = _FLOAT_EPS) -> bool:
     return np.abs(np.max(x) - np.min(x)) < tol
 
 
-def get_log_likelihood(idata: InferenceData, var_name: Optional[str] = None) -> Any:
-    """Retrieve the log likelihood dataarray of a given variable.
-
-    Parameters
-    ----------
-    idata : InferenceData
-        ArviZ InferenceData object
-    var_name : str, optional
-        Name of the variable in log_likelihood group.
-        If None and there is only one variable, return it.
-        If None and there are multiple variables, raise an error.
-
-    Returns
-    -------
-    Any
-        The log likelihood values for the specified variable
-
-    Raises
-    ------
-    TypeError
-        If log likelihood not found or variable name not found
-    """
+def get_log_likelihood(idata, var_name=None, single_var=True):
+    """Retrieve the log likelihood dataarray of a given variable."""
+    if (
+        not hasattr(idata, "log_likelihood")
+        and hasattr(idata, "sample_stats")
+        and hasattr(idata.sample_stats, "log_likelihood")
+    ):
+        warnings.warn(
+            "Storing the log_likelihood in sample_stats groups has been deprecated", DeprecationWarning, stacklevel=2
+        )
+        return idata.sample_stats.log_likelihood
     if not hasattr(idata, "log_likelihood"):
         raise TypeError("log likelihood not found in inference data object")
-
     if var_name is None:
         var_names = list(idata.log_likelihood.data_vars)
         if len(var_names) > 1:
-            raise TypeError(f"Found several log likelihood arrays {var_names}, var_name cannot be None")
+            if single_var:
+                raise TypeError(f"Found several log likelihood arrays {var_names}, var_name cannot be None")
+            return idata.log_likelihood[var_names]
         return idata.log_likelihood[var_names[0]]
     else:
         try:
