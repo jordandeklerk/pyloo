@@ -1,4 +1,4 @@
-"""Helper functions for pyloo package with some adaptations from ArviZ."""
+"""Helper functions for pyloo package with adaptations from ArviZ."""
 
 import warnings
 from collections.abc import Sequence
@@ -9,6 +9,7 @@ import numpy as np
 from arviz import InferenceData
 from scipy.fftpack import next_fast_len
 from scipy.interpolate import CubicSpline
+from xarray import apply_ufunc
 
 _FLOAT_EPS = np.finfo(float).eps
 
@@ -382,22 +383,173 @@ def smooth_data(obs_vals: np.ndarray, pp_vals: np.ndarray) -> Tuple[np.ndarray, 
     return obs_vals, pp_vals
 
 
+def make_ufunc(func, n_dims=2, n_output=1, n_input=1, index=Ellipsis, ravel=True, check_shape=None):
+    """Make ufunc from a function taking 1D array input.
+
+    Parameters
+    ----------
+    func : callable
+    n_dims : int, optional
+        Number of core dimensions not broadcasted. Dimensions are skipped from the end.
+        At minimum n_dims > 0.
+    n_output : int, optional
+        Select number of results returned by `func`.
+        If n_output > 1, ufunc returns a tuple of objects else returns an object.
+    n_input : int, optional
+        Number of **array** inputs to func, i.e. ``n_input=2`` means that func is called
+        with ``func(ary1, ary2, *args, **kwargs)``
+    index : int, optional
+        Slice ndarray with `index`. Defaults to `Ellipsis`.
+    ravel : bool, optional
+        If true, ravel the ndarray before calling `func`.
+    check_shape: bool, optional
+        If false, do not check if the shape of the output is compatible with n_dims and
+        n_output. By default, True only for n_input=1. If n_input is larger than 1, the last
+        input array is used to check the shape, however, shape checking with multiple inputs
+        may not be correct.
+
+    Returns
+    -------
+    callable
+        ufunc wrapper for `func`.
+    """
+    if n_dims < 1:
+        raise TypeError("n_dims must be one or higher.")
+
+    if n_input == 1 and check_shape is None:
+        check_shape = True
+    elif check_shape is None:
+        check_shape = False
+
+    def _ufunc(*args, out=None, out_shape=None, **kwargs):
+        """General ufunc for single-output function."""
+        arys = args[:n_input]
+        n_dims_out = None
+        if out is None:
+            if out_shape is None:
+                out = np.empty(arys[-1].shape[:-n_dims])
+            else:
+                out = np.empty((*arys[-1].shape[:-n_dims], *out_shape))
+                n_dims_out = -len(out_shape)
+        elif check_shape:
+            if out.shape != arys[-1].shape[:-n_dims]:
+                msg = f"Shape incorrect for `out`: {out.shape}."
+                msg += f" Correct shape is {arys[-1].shape[:-n_dims]}"
+                raise TypeError(msg)
+        for idx in np.ndindex(out.shape[:n_dims_out]):
+            arys_idx = [ary[idx].ravel() if ravel else ary[idx] for ary in arys]
+            out_idx = np.asarray(func(*arys_idx, *args[n_input:], **kwargs))[index]
+            if n_dims_out is None:
+                out_idx = out_idx.item()
+            out[idx] = out_idx
+        return out
+
+    def _multi_ufunc(*args, out=None, out_shape=None, **kwargs):
+        """General ufunc for multi-output function."""
+        arys = args[:n_input]
+        element_shape = arys[-1].shape[:-n_dims]
+        if out is None:
+            if out_shape is None:
+                out = tuple(np.empty(element_shape) for _ in range(n_output))
+            else:
+                out = tuple(np.empty((*element_shape, *out_shape[i])) for i in range(n_output))
+
+        elif check_shape:
+            raise_error = False
+            correct_shape = tuple(element_shape for _ in range(n_output))
+            if isinstance(out, tuple):
+                out_shape = tuple(item.shape for item in out)
+                if out_shape != correct_shape:
+                    raise_error = True
+            else:
+                raise_error = True
+                out_shape = "not tuple, type={type(out)}"
+            if raise_error:
+                msg = f"Shapes incorrect for `out`: {out_shape}."
+                msg += f" Correct shapes are {correct_shape}"
+                raise TypeError(msg)
+        for idx in np.ndindex(element_shape):
+            arys_idx = [ary[idx].ravel() if ravel else ary[idx] for ary in arys]
+            results = func(*arys_idx, *args[n_input:], **kwargs)
+            for i, res in enumerate(results):
+                out[i][idx] = np.asarray(res)[index]
+        return out
+
+    if n_output > 1:
+        ufunc = _multi_ufunc
+    else:
+        ufunc = _ufunc
+
+    return ufunc
+
+
+def wrap_xarray_ufunc(
+    ufunc,
+    *datasets,
+    ufunc_kwargs=None,
+    func_args=None,
+    func_kwargs=None,
+    **kwargs,
+):
+    """Wrap make_ufunc with xarray.apply_ufunc.
+
+    Parameters
+    ----------
+    ufunc : callable
+    *datasets : xarray.Dataset
+    ufunc_kwargs : dict
+        Keyword arguments passed to `make_ufunc`.
+            - 'n_dims', int, by default 2
+            - 'n_output', int, by default 1
+            - 'n_input', int, by default len(datasets)
+            - 'index', slice, by default Ellipsis
+            - 'ravel', bool, by default True
+    func_args : tuple
+        Arguments passed to 'ufunc'.
+    func_kwargs : dict
+        Keyword arguments passed to 'ufunc'.
+            - 'out_shape', int, by default None
+    **kwargs
+        Passed to :func:`xarray.apply_ufunc`.
+
+    Returns
+    -------
+    xarray.Dataset
+    """
+    if ufunc_kwargs is None:
+        ufunc_kwargs = {}
+    ufunc_kwargs.setdefault("n_input", len(datasets))
+    if func_args is None:
+        func_args = ()
+    if func_kwargs is None:
+        func_kwargs = {}
+
+    kwargs.setdefault("input_core_dims", tuple(("chain", "draw") for _ in range(len(func_args) + len(datasets))))
+    ufunc_kwargs.setdefault("n_dims", len(kwargs["input_core_dims"][-1]))
+    kwargs.setdefault("output_core_dims", tuple([] for _ in range(ufunc_kwargs.get("n_output", 1))))
+
+    callable_ufunc = make_ufunc(ufunc, **ufunc_kwargs)
+
+    return apply_ufunc(callable_ufunc, *datasets, *func_args, kwargs=func_kwargs, **kwargs)
+
+
 def _logsumexp(ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, copy=True):
-    """Stable logsumexp implementation."""
+    """Stable logsumexp when b >= 0 and b is scalar.
+
+    b_inv overwrites b unless b_inv is None.
+    """
     ary = np.asarray(ary)
     if ary.dtype.kind == "i":
         ary = ary.astype(np.float64)
     dtype = ary.dtype.type
     shape = ary.shape
     shape_len = len(shape)
-
     if isinstance(axis, Sequence):
         axis = tuple(axis_i if axis_i >= 0 else shape_len + axis_i for axis_i in axis)
         agroup = axis
     else:
         axis = axis if (axis is None) or (axis >= 0) else shape_len + axis
         agroup = (axis,)
-
     shape_max = tuple(1 for _ in shape) if axis is None else tuple(1 if i in agroup else d for i, d in enumerate(shape))
 
     if out is None:
@@ -406,13 +558,12 @@ def _logsumexp(ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, 
         else:
             out_shape = shape_max
         out = np.empty(out_shape, dtype=dtype)
-
     if b_inv == 0:
         return np.full_like(out, np.inf, dtype=dtype) if out.shape else np.inf
     if b_inv is None and b == 0:
         return np.full_like(out, -np.inf) if out.shape else -np.inf
-
     ary_max = np.empty(shape_max, dtype=dtype)
+
     ary.max(axis=axis, keepdims=True, out=ary_max)
     if copy:
         ary = ary.copy()
@@ -420,7 +571,6 @@ def _logsumexp(ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, 
     np.exp(ary, out=ary)
     ary.sum(axis=axis, keepdims=keepdims, out=out)
     np.log(out, out=out)
-
     if b_inv is not None:
         ary_max -= np.log(b_inv)
     elif b:
