@@ -103,7 +103,6 @@ def psislw(log_weights, reff=1.0):
 
     out = np.empty_like(log_weights), np.empty(shape)
 
-    # define kwargs
     func_kwargs = {"cutoff_ind": cutoff_ind, "cutoffmin": cutoffmin, "out": out}
     ufunc_kwargs = {"n_dims": 1, "n_output": 2, "ravel": False, "check_shape": False}
     kwargs = {"input_core_dims": [["__sample__"]], "output_core_dims": [["__sample__"], []]}
@@ -141,8 +140,6 @@ def _psislw(log_weights, cutoff_ind, cutoffmin):
         Pareto tail index
     """
     x = np.asarray(log_weights)
-
-    # improve numerical accuracy
     x -= np.max(x)
     x_sort_ind = np.argsort(x)
     xcutoff = max(x[x_sort_ind[cutoff_ind]], cutoffmin)
@@ -167,7 +164,6 @@ def _psislw(log_weights, cutoff_ind, cutoffmin):
             smoothed_tail = np.log(smoothed_tail + expxcutoff)
             x[tailinds[x_tail_si]] = smoothed_tail
             x[x > 0] = 0
-    # renormalize weights
     x -= _logsumexp(x)
 
     return x, k
@@ -204,12 +200,10 @@ def _gpdfit(ary):
     len_scale = n * (np.log(-(b_ary / k_ary)) - k_ary - 1)
     weights = 1 / np.exp(len_scale - len_scale[:, None]).sum(axis=1)
 
-    # remove negligible weights
     real_idxs = weights >= 10 * np.finfo(float).eps
     if not np.all(real_idxs):
         weights = weights[real_idxs]
         b_ary = b_ary[real_idxs]
-    # normalise weights
     weights /= weights.sum()
 
     # posterior mean for b
