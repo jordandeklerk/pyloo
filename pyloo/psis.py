@@ -83,12 +83,12 @@ def psislw(log_weights, reff=1.0):
 
     .. ipython::
 
-        In [1]: import arviz as az
+        In [1]: import pyloo as loo
            ...: data = az.load_arviz_data("non_centered_eight")
            ...: log_likelihood = data.log_likelihood["obs"].stack(
            ...:     __sample__=["chain", "draw"]
            ...: )
-           ...: az.psislw(-log_likelihood, reff=0.8)
+           ...: loo.psislw(-log_likelihood, reff=0.8)
 
     """
     log_weights = deepcopy(log_weights)
