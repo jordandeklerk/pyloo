@@ -105,11 +105,9 @@ def _tislw(log_weights, n_samples):
 
     # Compute normalization term (c-hat in Ionides 2008 appendix)
     log_Z = _logsumexp(x) - np.log(n_samples)
-    # Compute truncation point
+
     log_cutpoint = log_Z + 0.5 * np.log(n_samples)
-    # Truncate weights
     x = np.minimum(x, log_cutpoint)
-    # Normalize
     x -= _logsumexp(x)
 
     weights = np.exp(x)
