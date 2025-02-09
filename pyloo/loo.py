@@ -12,7 +12,6 @@ from .psis import psislw
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
 
 
-# Mainly taken from https://github.com/arviz-devs/arviz/blob/main/arviz/stats/stats.py
 def loo(data, pointwise=None, var_name=None, reff=None, scale=None):
     """Compute Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO-CV).
 

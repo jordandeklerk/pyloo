@@ -1,111 +1,117 @@
 """Truncated Importance Sampling (TIS) implementation."""
 
-from typing import Tuple, Union
+from copy import deepcopy
 
 import numpy as np
+import xarray as xr
 
-from .ess import mcmc_eff_size
-from .utils import _logsumexp
+from .utils import _logsumexp, wrap_xarray_ufunc
 
 
-def tislw(
-    log_ratios: np.ndarray,
-    r_eff: Union[float, np.ndarray] = 1.0,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute Truncated Importance Sampling (TIS) log weights.
-
-    Parameters
-    ----------
-    log_ratios : np.ndarray
-        Array of shape (n_samples, n_observations) containing log importance
-        ratios (for example, log-likelihood values).
-    r_eff : Union[float, np.ndarray], optional
-        Relative MCMC efficiency (effective sample size / total samples).
-        Can be a scalar or array of length n_observations. Default is 1.0.
-
-    Returns
-    -------
-    log_weights : np.ndarray
-        Array of same shape as log_ratios containing log weights
-    pareto_k : np.ndarray
-        Array of zeros with length n_observations (not used in TIS)
-    ess : np.ndarray
-        Array of effective sample sizes
+def tislw(log_weights):
+    """
+    Truncated importance sampling (TIS).
 
     Notes
     -----
-    Truncated importance sampling stabilizes importance ratios by truncating them
-    at S^(1/2), where S is the number of samples. This helps prevent the variance
-    of the importance sampling estimator from becoming infinite.
+    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
+    named ``__sample__`` (recommended) ``tislw`` will interpret this dimension as samples,
+    and all other dimensions as dimensions of the observed data, looping over them to
+    calculate the tislw of each observation. If no ``__sample__`` dimension is present or
+    the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
+
+    Parameters
+    ----------
+    log_weights : DataArray or (..., N) array-like
+        Array of size (n_observations, n_samples)
+
+    Returns
+    -------
+    lw_out : DataArray or (..., N) ndarray
+        Truncated and normalized log weights
+    ess : DataArray or (...) ndarray
+        Effective sample sizes
 
     References
     ----------
     .. [1] Ionides, Edward L. (2008). Truncated importance sampling.
            Journal of Computational and Graphical Statistics 17(2): 295--311.
 
-    Examples
-    --------
-    Calculate TIS weights for log-likelihood values:
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from pyloo import tislw
-           ...: log_liks = np.random.normal(size=(1000, 100))
-           ...: weights, k, ess = tislw(log_liks)
-           ...: print(f"Mean ESS: {ess.mean():.1f}")
-
     See Also
     --------
     psis : Pareto Smoothed Importance Sampling
     sis : Standard Importance Sampling
+
+    Examples
+    --------
+    Get Truncated importance sampling (TIS) log weights:
+
+    .. ipython::
+
+        In [1]: import pyloo as pl
+           ...: data = az.load_arviz_data("non_centered_eight")
+           ...: log_likelihood = data.log_likelihood["obs"].stack(
+           ...:     __sample__=["chain", "draw"]
+           ...: )
+           ...: pl.tislw(-log_likelihood)
     """
-    if not isinstance(log_ratios, np.ndarray):
-        log_ratios = np.asarray(log_ratios)
+    log_weights = deepcopy(log_weights)
+    if hasattr(log_weights, "__sample__"):
+        n_samples = len(log_weights.__sample__)
+        shape = [size for size, dim in zip(log_weights.shape, log_weights.dims) if dim != "__sample__"]
+    else:
+        n_samples = log_weights.shape[-1]
+        shape = log_weights.shape[:-1]
 
-    if log_ratios.ndim == 1:
-        log_ratios = log_ratios.reshape(-1, 1)
+    out = np.empty_like(log_weights), np.empty(shape)
 
-    if log_ratios.ndim != 2:
-        raise ValueError("log_ratios must be 1D or 2D array")
-
-    _, n_obs = log_ratios.shape
-
-    if isinstance(r_eff, (int, float)):
-        r_eff = float(r_eff)
-    elif len(r_eff) != n_obs:
-        raise ValueError("r_eff must be a scalar or have length equal to n_observations")
-
-    log_weights = log_ratios.copy()
-    for i in range(n_obs):
-        x = log_weights[:, i]
-        x = x - np.max(x)
-        log_weights[:, i] = _truncate(x)
-
-    pareto_k = np.zeros(n_obs)
-
-    ess = np.zeros(n_obs)
-    for i in range(n_obs):
-        weights = np.exp(log_weights[:, i])
-        ess[i] = mcmc_eff_size(weights.reshape(-1, 1), method="bulk")
-
-    if log_ratios.shape[1] == 1:
-        log_weights = log_weights.ravel()
-        pareto_k = pareto_k.reshape(())
-        ess = ess.reshape(())
-
-    return log_weights, pareto_k, ess
+    func_kwargs = {"n_samples": n_samples, "out": out}
+    ufunc_kwargs = {"n_dims": 1, "n_output": 2, "ravel": False, "check_shape": False}
+    kwargs = {"input_core_dims": [["__sample__"]], "output_core_dims": [["__sample__"], []]}
+    log_weights, ess = wrap_xarray_ufunc(
+        _tislw,
+        log_weights,
+        ufunc_kwargs=ufunc_kwargs,
+        func_kwargs=func_kwargs,
+        **kwargs,
+    )
+    if isinstance(log_weights, xr.DataArray):
+        log_weights = log_weights.rename("log_weights")
+    if isinstance(ess, xr.DataArray):
+        ess = ess.rename("ess")
+    return log_weights, ess
 
 
-def _truncate(log_ratios_i: np.ndarray) -> np.ndarray:
-    """Perform truncated importance sampling on a single vector."""
-    S = len(log_ratios_i)
+def _tislw(log_weights, n_samples):
+    """
+    Truncated importance sampling (TIS) for a 1D vector.
+
+    Parameters
+    ----------
+    log_weights: array
+        Array of length n_observations
+    n_samples: int
+        Number of samples
+
+    Returns
+    -------
+    lw_out: array
+        Truncated and normalized log weights
+    ess: float
+        Effective sample size
+    """
+    x = np.asarray(log_weights)
+    x -= np.max(x)
+
     # Compute normalization term (c-hat in Ionides 2008 appendix)
-    log_Z = _logsumexp(log_ratios_i) - np.log(S)
+    log_Z = _logsumexp(x) - np.log(n_samples)
     # Compute truncation point
-    log_cutpoint = log_Z + 0.5 * np.log(S)
+    log_cutpoint = log_Z + 0.5 * np.log(n_samples)
     # Truncate weights
-    log_weights = np.minimum(log_ratios_i, log_cutpoint)
+    x = np.minimum(x, log_cutpoint)
     # Normalize
-    log_weights = log_weights - _logsumexp(log_weights)
-    return log_weights
+    x -= _logsumexp(x)
+
+    weights = np.exp(x)
+    ess = 1 / np.sum(weights**2)
+    return x, ess
