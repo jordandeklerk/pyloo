@@ -4,8 +4,8 @@ import warnings
 
 import numpy as np
 from arviz.data import convert_to_inference_data
-from arviz.diagnostics import ess
 from arviz.rcparams import rcParams
+from arviz.stats.diagnostics import ess
 
 from .elpd import ELPDData
 from .psis import psislw
