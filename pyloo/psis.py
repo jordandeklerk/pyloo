@@ -76,6 +76,8 @@ def psislw(log_weights, reff=1.0):
     See Also
     --------
     loo : Compute Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO-CV).
+    sis : Standard Importance Sampling
+    tis : Truncated Importance Sampling
 
     Examples
     --------
