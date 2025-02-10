@@ -1,9 +1,16 @@
-"""Leave-one-out cross-validation (LOO-CV) using importance sampling methods."""
+"""Python implementation of the R package 'loo' for LOO-CV and WAIC."""
 
-from .elpd import ELPDData
+from .importance_sampling import ISMethod, compute_importance_weights
 from .loo import loo
 from .psis import psislw
+from .sis import sislw
+from .tis import tislw
 
-__all__ = ["loo", "psislw", "ELPDData", "ParetokTable"]
-
-__version__ = "0.1.0"
+__all__ = [
+    "compute_importance_weights",
+    "ISMethod",
+    "loo",
+    "psislw",
+    "sislw",
+    "tislw",
+]

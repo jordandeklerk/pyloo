@@ -1,131 +1,135 @@
-"""Utilities for different importance sampling methods."""
+"""Unified importance sampling module supporting multiple methods."""
 
-from typing import Optional, Tuple, Union
+from copy import deepcopy
+from enum import Enum
+from typing import Callable, Tuple, Union, cast
 
 import numpy as np
+import xarray as xr
 
-from .ess import psis_eff_size
-from .psis import psislw
-from .sis import sislw
-from .tis import tislw
-from .utils import _logsumexp
+from .psis import _psislw
+from .sis import _sislw
+from .tis import _tislw
+from .utils import wrap_xarray_ufunc
 
 
-def ImportanceSampling(
-    log_ratios: np.ndarray, r_eff: Union[float, np.ndarray], method: str = "psis"
-) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
-    """Perform importance sampling using the specified method.
+class ISMethod(str, Enum):
+    """Enumeration of supported importance sampling methods."""
+
+    PSIS = "psis"
+    SIS = "sis"
+    TIS = "tis"
+
+
+ImplFunc = Callable[..., Tuple[np.ndarray, Union[float, np.ndarray]]]
+
+
+def compute_importance_weights(
+    log_weights: Union[xr.DataArray, np.ndarray],
+    method: Union[ISMethod, str] = ISMethod.PSIS,
+    reff: float = 1.0,
+) -> Tuple[Union[xr.DataArray, np.ndarray], Union[xr.DataArray, np.ndarray]]:
+    """
+    Unified importance sampling computation that supports multiple methods.
+
+    Notes
+    -----
+    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
+    named ``__sample__`` (recommended) this function will interpret this dimension as samples,
+    and all other dimensions as dimensions of the observed data, looping over them to
+    calculate the importance weights for each observation. If no ``__sample__`` dimension is
+    present or the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
 
     Parameters
     ----------
-    log_ratios : np.ndarray
-        Array of shape (n_samples, n_observations) containing log importance
-        ratios (for example, log-likelihood values).
-    r_eff : Union[float, np.ndarray]
-        Relative MCMC efficiency (effective sample size / total samples).
-        Can be a scalar or array of length n_observations.
-    method : str, optional
-        The importance sampling method to use. Options are:
-        - "psis": Pareto Smoothed Importance Sampling (default)
-        - "tis": Truncated Importance Sampling
-        - "sis": Standard Importance Sampling
-    cores : int, optional
-        Number of cores to use for parallelization. Default is 1.
+    log_weights : DataArray or (..., N) array-like
+        Array of size (n_observations, n_samples)
+    method : {'psis', 'sis', 'tis'}, default 'psis'
+        The importance sampling method to use:
+        - 'psis': Pareto Smoothed Importance Sampling
+        - 'sis': Standard Importance Sampling
+        - 'tis': Truncated Importance Sampling
+    reff : float, default 1.0
+        Relative MCMC efficiency (only used for PSIS method)
 
     Returns
     -------
-    Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]
-        - Array of smoothed log weights
-        - Array of diagnostic values
-        - Optional array of effective sample sizes
+    lw_out : DataArray or (..., N) ndarray
+        Processed log weights (smoothed/truncated/normalized depending on method)
+    diagnostic : DataArray or (...) ndarray
+        Method-specific diagnostic value:
+        - PSIS: Pareto shape parameter (k)
+        - SIS/TIS: Effective sample size (ESS)
 
-    Raises
-    ------
-    ValueError
-        If the specified method is not implemented or if inputs are invalid.
+    See Also
+    --------
+    psislw : Pareto Smoothed Importance Sampling (original implementation)
+    sislw : Standard Importance Sampling (original implementation)
+    tislw : Truncated Importance Sampling (original implementation)
+
+    Examples
+    --------
+    Get importance sampling weights using different methods:
+
+    .. ipython::
+
+        In [1]: import pyloo as pl
+           ...: data = az.load_arviz_data("non_centered_eight")
+           ...: log_likelihood = data.log_likelihood["obs"].stack(
+           ...:     __sample__=["chain", "draw"]
+           ...: )
+           ...: # Using PSIS (default)
+           ...: lw_psis, k = pl.compute_importance_weights(-log_likelihood)
+           ...: # Using SIS
+           ...: lw_sis, ess = pl.compute_importance_weights(-log_likelihood, method="sis")
+           ...: # Using TIS
+           ...: lw_tis, ess = pl.compute_importance_weights(-log_likelihood, method="tis")
     """
-    implemented_methods = ["psis", "tis", "sis"]
-    if method not in implemented_methods:
-        raise ValueError(
-            f"Importance sampling method '{method}' is not implemented. "
-            f"Implemented methods: {', '.join(implemented_methods)}"
-        )
+    if isinstance(method, str):
+        try:
+            method = ISMethod(method.lower())
+        except ValueError:
+            raise ValueError(f"Invalid method '{method}'. Must be one of: {', '.join(m.value for m in ISMethod)}")
 
-    if not isinstance(log_ratios, np.ndarray):
-        log_ratios = np.asarray(log_ratios)
+    log_weights = deepcopy(log_weights)
 
-    if log_ratios.ndim == 1:
-        log_ratios = log_ratios.reshape(-1, 1)
-
-    if log_ratios.ndim != 2:
-        raise ValueError("log_ratios must be 1D or 2D array")
-
-    _, n_obs = log_ratios.shape
-
-    if isinstance(r_eff, (int, float)):
-        r_eff = float(r_eff)
-    elif len(r_eff) != n_obs:
-        raise ValueError("r_eff must be a scalar or have length equal to n_observations")
-
-    if method == "psis":
-        weights, diagnostics, ess = psislw(log_ratios, r_eff)
-    elif method == "tis":
-        weights, diagnostics, ess = tislw(log_ratios, r_eff)
-    elif method == "sis":
-        weights, diagnostics, ess = sislw(log_ratios, r_eff)
+    if hasattr(log_weights, "__sample__"):
+        n_samples = len(log_weights.__sample__)
+        shape = [size for size, dim in zip(log_weights.shape, log_weights.dims) if dim != "__sample__"]
     else:
-        raise ValueError(f"Method {method} not properly implemented")
+        n_samples = log_weights.shape[-1]
+        shape = log_weights.shape[:-1]
 
-    return weights, diagnostics, ess
+    out = np.empty_like(log_weights), np.empty(shape)
 
+    ufunc_kwargs = {"n_dims": 1, "n_output": 2, "ravel": False, "check_shape": False}
+    kwargs = {"input_core_dims": [["__sample__"]], "output_core_dims": [["__sample__"], []]}
 
-def importance_sampling_object(
-    log_weights: np.ndarray,
-    pareto_k: np.ndarray,
-    tail_len: Optional[Union[int, np.ndarray]],
-    r_eff: Union[float, np.ndarray],
-    method: str,
-) -> dict:
-    """Create an importance sampling results object.
+    if method == ISMethod.PSIS:
+        cutoff_ind = -int(np.ceil(min(n_samples / 5.0, 3 * (n_samples / reff) ** 0.5))) - 1
+        cutoffmin = np.log(np.finfo(float).tiny)
+        func_kwargs = {"cutoff_ind": cutoff_ind, "cutoffmin": cutoffmin, "out": out}
+        impl_func = cast(ImplFunc, _psislw)
 
-    Parameters
-    ----------
-    log_weights : np.ndarray
-        Array of unnormalized log weights
-    pareto_k : np.ndarray
-        Array of diagnostic values (e.g., Pareto k values for PSIS)
-    tail_len : Optional[Union[int, np.ndarray]]
-        Length of tail used for fitting (if applicable)
-    r_eff : Union[float, np.ndarray]
-        Relative MCMC efficiency values
-    method : str
-        Name of importance sampling method used
+    elif method == ISMethod.SIS:
+        func_kwargs = {"out": out}
+        impl_func = cast(ImplFunc, _sislw)
 
-    Returns
-    -------
-    dict
-        Dictionary containing importance sampling results and diagnostics
-    """
-    if not isinstance(log_weights, np.ndarray):
-        raise TypeError("log_weights must be a numpy array")
-
-    norm_const_log = _logsumexp(log_weights, axis=0)
-
-    weights = np.exp(log_weights - norm_const_log)
-    if isinstance(r_eff, (int, float)):
-        ess = psis_eff_size(weights, r_eff)
     else:
-        ess = np.array([psis_eff_size(weights[:, i], r_eff[i]) for i in range(weights.shape[1])])
+        func_kwargs = {"n_samples": n_samples, "out": out}
+        impl_func = cast(ImplFunc, _tislw)
 
-    return {
-        "log_weights": log_weights,
-        "diagnostics": {
-            "pareto_k": pareto_k,
-            "n_eff": ess,
-            "r_eff": r_eff,
-        },
-        "norm_const_log": norm_const_log,
-        "tail_len": tail_len,
-        "dims": log_weights.shape,
-        "method": method,
-    }
+    log_weights, diagnostic = wrap_xarray_ufunc(
+        impl_func,
+        log_weights,
+        ufunc_kwargs=ufunc_kwargs,
+        func_kwargs=func_kwargs,
+        **kwargs,
+    )
+
+    if isinstance(log_weights, xr.DataArray):
+        log_weights = log_weights.rename("log_weights")
+    if isinstance(diagnostic, xr.DataArray):
+        diagnostic = diagnostic.rename("pareto_shape" if method == ISMethod.PSIS else "ess")
+
+    return log_weights, diagnostic
