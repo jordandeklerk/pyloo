@@ -218,3 +218,92 @@ def test_loo_multiple_groups(centered_eight):
 
     result = loo(centered_eight, var_name="obs")
     assert result is not None
+
+
+def test_loo_different_methods(centered_eight):
+    """Test LOO computation with different IS methods."""
+    psis_result = loo(centered_eight, pointwise=True)
+    assert "pareto_k" in psis_result
+    assert "good_k" in psis_result
+
+    with pytest.warns(UserWarning, match="Using SIS for LOO computation"):
+        sis_result = loo(centered_eight, pointwise=True, method="sis")
+        assert "ess" in sis_result
+        assert "pareto_k" not in sis_result
+        assert "good_k" not in sis_result
+
+    with pytest.warns(UserWarning, match="Using TIS for LOO computation"):
+        tis_result = loo(centered_eight, pointwise=True, method="tis")
+        assert "ess" in tis_result
+        assert "pareto_k" not in tis_result
+        assert "good_k" not in tis_result
+
+
+def test_loo_invalid_method(centered_eight):
+    """Test LOO computation with invalid method."""
+    with pytest.raises(ValueError, match="Invalid method 'invalid'"):
+        loo(centered_eight, method="invalid")
+
+
+def test_loo_sis_tis_low_ess(centered_eight):
+    """Test warning for low ESS with SIS/TIS methods."""
+    centered_eight = deepcopy(centered_eight)
+    centered_eight.log_likelihood["obs"] *= 10
+
+    with pytest.warns(UserWarning, match="Low effective sample size detected"):
+        result = loo(centered_eight, method="sis")
+        assert result["warning"]
+
+    with pytest.warns(UserWarning, match="Low effective sample size detected"):
+        result = loo(centered_eight, method="tis")
+        assert result["warning"]
+
+
+def test_loo_non_pointwise_returns(centered_eight):
+    """Test non-pointwise returns for different methods."""
+    psis_result = loo(centered_eight, pointwise=False)
+    assert "good_k" in psis_result
+
+    sis_result = loo(centered_eight, pointwise=False, method="sis")
+    assert "good_k" not in sis_result
+
+    tis_result = loo(centered_eight, pointwise=False, method="tis")
+    assert "good_k" not in tis_result
+
+
+def test_loo_method_results(centered_eight):
+    """Test that results from different methods are numerically reasonable."""
+    psis_result = loo(centered_eight, pointwise=True)
+    sis_result = loo(centered_eight, pointwise=True, method="sis")
+    tis_result = loo(centered_eight, pointwise=True, method="tis")
+
+    assert np.all(psis_result["pareto_k"] >= 0)
+    assert psis_result["good_k"] > 0
+    assert psis_result["good_k"] <= 0.7
+
+    n_samples = sis_result["n_samples"]
+    assert np.all(sis_result["ess"] >= 1)
+    assert np.all(sis_result["ess"] <= n_samples)
+    assert np.all(tis_result["ess"] >= 1)
+    assert np.all(tis_result["ess"] <= n_samples)
+
+    elpds = np.array([psis_result["elpd_loo"], sis_result["elpd_loo"], tis_result["elpd_loo"]])
+    assert np.all(np.isfinite(elpds))
+
+    ses = np.array([psis_result["se"], sis_result["se"], tis_result["se"]])
+    assert np.all(ses > 0)
+
+    max_diff = np.max(np.abs(elpds[:, None] - elpds))
+    max_se = 3 * np.max(ses)
+    assert max_diff < max_se, (
+        f"Maximum difference between ELPDs ({max_diff:.2f}) exceeds "
+        f"3 times the maximum standard error ({max_se:.2f})"
+    )
+
+    p_loos = np.array([psis_result["p_loo"], sis_result["p_loo"], tis_result["p_loo"]])
+    assert np.all(p_loos >= 0)
+    assert np.all(p_loos <= n_samples)
+
+    assert np.all(np.isfinite(psis_result["loo_i"]))
+    assert np.all(np.isfinite(sis_result["loo_i"]))
+    assert np.all(np.isfinite(tis_result["loo_i"]))
