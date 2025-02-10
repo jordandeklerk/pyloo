@@ -1,3 +1,5 @@
+"""pyloo rcparams based on matplotlib's implementation."""
+
 from collections.abc import MutableMapping
 from typing import Any, Dict
 
