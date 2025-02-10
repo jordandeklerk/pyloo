@@ -1,6 +1,5 @@
 """Leave-one-out cross-validation (LOO-CV) using importance sampling methods."""
 
-from .diagnostics import ParetokTable
 from .elpd import ELPDData
 from .loo import loo
 from .psis import psislw
