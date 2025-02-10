@@ -4,11 +4,11 @@ import warnings
 
 import numpy as np
 from arviz.data import convert_to_inference_data
-from arviz.rcparams import rcParams
 from arviz.stats.diagnostics import ess
 
 from .elpd import ELPDData
 from .importance_sampling import ISMethod, compute_importance_weights
+from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
 
 
