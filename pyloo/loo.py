@@ -113,6 +113,27 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None):
             # this mean is over all data variables
             reff = np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean() / n_samples
 
+    has_nan = np.any(np.isnan(log_likelihood.values))
+    has_inf = np.any(np.isinf(log_likelihood.values))
+
+    if has_nan:
+        warnings.warn(
+            "NaN values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            UserWarning,
+            stacklevel=2,
+        )
+        # Replace NaN values with very small numbers
+        log_likelihood = log_likelihood.where(~np.isnan(log_likelihood), -1e10)
+
+    if has_inf:
+        warnings.warn(
+            "Infinite values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            UserWarning,
+            stacklevel=2,
+        )
+        # Replace Inf values with very large/small numbers
+        log_likelihood = log_likelihood.where(~np.isinf(log_likelihood), lambda x: np.where(x > 0, 1e10, -1e10))
+
     log_weights, pareto_shape = psislw(-log_likelihood, reff)
     log_weights += log_likelihood
 
@@ -161,7 +182,8 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None):
                 "good_k",
             ],
         )
-    if np.equal(loo_lppd, loo_lppd_i).all():
+
+    if np.allclose(loo_lppd_i, loo_lppd_i[0]):
         warnings.warn(
             "The point-wise LOO is the same with the sum LOO, please double check "
             "the Observed RV in your model to make sure it returns element-wise logp.",
