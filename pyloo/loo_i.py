@@ -72,14 +72,18 @@ def loo_i(i, data, pointwise=None, var_name=None, reff=None, scale=None, method=
 
     Examples
     --------
-    Calculate LOO for a single observation in a model:
+    Calculate LOO for a single observation to assess its influence on the model:
 
     .. ipython::
 
         In [1]: import pyloo as pl
             ...: import arviz as az
             ...: data = az.load_arviz_data("centered_eight")
-            ...: pl.loo_i(0, data)  # compute LOO for first observation
+            ...: # Compute LOO for a specific observation we suspect might be influential
+            ...: loo_single = pl.loo_i(0, data)
+            ...: # If the p_loo value is high or there's a warning about the Pareto k,
+            ...: # this suggests the observation is highly influential
+            ...: print(f"p_loo: {loo_single.p_loo:.2f}, warning: {loo_single.warning}")
 
     Calculate LOO for a single observation and return the pointwise values:
 
