@@ -137,7 +137,9 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
             UserWarning,
             stacklevel=2,
         )
-        log_likelihood = log_likelihood.where(~np.isinf(log_likelihood), lambda x: np.where(x > 0, 1e10, -1e10))
+        log_likelihood = log_likelihood.where(
+            ~np.isinf(log_likelihood), np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10)
+        )
 
     try:
         method = ISMethod(method.lower())
