@@ -2,12 +2,12 @@
 
 import warnings
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-from .psis import PSISData
+import xarray as xr
+from arviz.stats.diagnostics import _mc_error
 
 
 @dataclass
@@ -49,13 +49,71 @@ class ParetokTable:
         return header + table
 
 
-def pareto_k_table(x: PSISData) -> ParetokTable:
+def compute_ess(log_weights: Union[np.ndarray, xr.DataArray]) -> Union[np.ndarray, xr.DataArray]:
+    """Compute effective sample size from importance weights.
+
+    Uses the formula 1/sum(w^2) where w are normalized importance weights.
+    This is the correct formula for importance sampling ESS.
+
+    Parameters
+    ----------
+    log_weights : array-like
+        Array of log weights
+
+    Returns
+    -------
+    array-like
+        Effective sample size estimates
+    """
+    if isinstance(log_weights, xr.DataArray):
+        log_weights = log_weights.values
+    weights = np.exp(log_weights)
+    weights = weights / weights.sum()
+    return 1.0 / np.sum(weights**2)
+
+
+def compute_mcse(
+    log_weights: Union[np.ndarray, xr.DataArray], pareto_k: Union[np.ndarray, xr.DataArray]
+) -> Union[np.ndarray, xr.DataArray]:
+    """Compute Monte Carlo standard error.
+
+    Uses ArviZ's MCSE calculation.
+
+    Parameters
+    ----------
+    log_weights : array-like
+        Array of log weights
+    pareto_k : array-like
+        Array of Pareto k estimates
+
+    Returns
+    -------
+    array-like
+        Monte Carlo standard error estimates
+    """
+    if isinstance(log_weights, xr.DataArray):
+        log_weights = log_weights.values
+    if isinstance(pareto_k, xr.DataArray):
+        pareto_k = pareto_k.values
+
+    weights = np.exp(log_weights)
+    mcse = _mc_error(weights)
+
+    mcse[~np.isfinite(pareto_k)] = np.inf
+    return mcse
+
+
+def pareto_k_table(
+    log_weights: Union[np.ndarray, xr.DataArray], pareto_k: Union[np.ndarray, xr.DataArray]
+) -> ParetokTable:
     """Compute diagnostic table summarizing Pareto k estimates and effective sample sizes.
 
     Parameters
     ----------
-    x : PSISData
-        Object containing PSIS results
+    log_weights : array-like
+        Array of log weights
+    pareto_k : array-like
+        Array of Pareto k estimates
 
     Returns
     -------
@@ -63,15 +121,17 @@ def pareto_k_table(x: PSISData) -> ParetokTable:
         Table containing counts, proportions and minimum effective sample sizes
         for different ranges of k values
     """
-    k = pareto_k_values(x)
-    ess = psis_ess_values(x)
+    if isinstance(log_weights, xr.DataArray):
+        log_weights = log_weights.values
+    if isinstance(pareto_k, xr.DataArray):
+        pareto_k = pareto_k.values
 
-    S = len(x.log_weights)
+    S = len(log_weights)
     k_threshold = ps_khat_threshold(S)
-    k_categories = k_cut(k, k_threshold)
+    k_categories = k_cut(pareto_k, k_threshold)
 
-    ess = np.array(ess)
-    ess[k > k_threshold] = np.nan
+    ess_vals = compute_ess(log_weights)
+    ess_vals[pareto_k > k_threshold] = np.nan
 
     all_counts = np.zeros(3, dtype=int)
     all_proportions = np.zeros(3)
@@ -81,19 +141,23 @@ def pareto_k_table(x: PSISData) -> ParetokTable:
         mask = k_categories == cat
         if np.any(mask):
             all_counts[cat] = np.sum(mask)
-            all_proportions[cat] = np.sum(mask) / len(k)
-            all_min_ess[cat] = np.nanmin(ess[mask])
+            all_proportions[cat] = np.sum(mask) / len(pareto_k)
+            all_min_ess[cat] = np.nanmin(ess_vals[mask])
 
     return ParetokTable(counts=all_counts, proportions=all_proportions, min_ess=all_min_ess, k_threshold=k_threshold)
 
 
-def pareto_k_ids(x: PSISData, threshold: Optional[float] = None) -> np.ndarray:
+def pareto_k_ids(
+    pareto_k: Union[np.ndarray, xr.DataArray], n_samples: int, threshold: Optional[float] = None
+) -> np.ndarray:
     """Find indices of observations with Pareto k estimates above threshold.
 
     Parameters
     ----------
-    x : PSISData
-        Object containing PSIS results
+    pareto_k : array-like
+        Array of Pareto k estimates
+    n_samples : int
+        Number of samples used to compute Pareto k estimates
     threshold : float, optional
         Threshold for flagging k values. If None, uses sample size dependent
         threshold min(1 - 1/log10(S), 0.7).
@@ -103,76 +167,30 @@ def pareto_k_ids(x: PSISData, threshold: Optional[float] = None) -> np.ndarray:
     np.ndarray
         Indices of observations with k > threshold
     """
+    if isinstance(pareto_k, xr.DataArray):
+        pareto_k = pareto_k.values
+
     if threshold is None:
-        S = len(x.log_weights)
-        threshold = ps_khat_threshold(S)
-    k = pareto_k_values(x)
-    return np.where(k > threshold)[0]
+        threshold = ps_khat_threshold(n_samples)
+    return np.where(pareto_k > threshold)[0]
 
 
-def pareto_k_values(x: PSISData) -> np.ndarray:
-    """Get Pareto k values from PSIS results.
-
-    Parameters
-    ----------
-    x : PSISData
-        Object containing PSIS results
-
-    Returns
-    -------
-    np.ndarray
-        Array of Pareto k estimates
-    """
-    if x.pareto_k is None:
-        raise ValueError("No Pareto k estimates found")
-    return x.pareto_k
-
-
-def pareto_k_influence_values(x: PSISData) -> np.ndarray:
-    """Get Pareto k influence values from PSIS results.
-
-    These represent the influence of observations on the model posterior distribution.
-
-    Parameters
-    ----------
-    x : PSISData
-        Object containing PSIS results
-
-    Returns
-    -------
-    np.ndarray
-        Array of Pareto k influence values
-    """
-    if x.influence_pareto_k is None:
-        raise ValueError("No Pareto k influence estimates found")
-    return x.influence_pareto_k
-
-
-def psis_ess_values(x: PSISData) -> np.ndarray:
-    """Get PSIS effective sample sizes from results.
-
-    Parameters
-    ----------
-    x : PSISData
-        Object containing PSIS results
-
-    Returns
-    -------
-    np.ndarray
-        Array of effective sample sizes
-    """
-    if x.ess is None:
-        raise ValueError("No PSIS effective sample size estimates found")
-    return x.ess
-
-
-def mcse_loo(x: PSISData, threshold: Optional[float] = None) -> float:
+def mcse_loo(
+    log_weights: Union[np.ndarray, xr.DataArray],
+    pareto_k: Union[np.ndarray, xr.DataArray],
+    n_samples: int,
+    threshold: Optional[float] = None,
+) -> float:
     """Compute Monte Carlo standard error for PSIS-LOO.
 
     Parameters
     ----------
-    x : PSISData
-        Object containing PSIS results
+    log_weights : array-like
+        Array of log weights
+    pareto_k : array-like
+        Array of Pareto k estimates
+    n_samples : int
+        Number of samples used to compute Pareto k estimates
     threshold : float, optional
         If any k values are above this threshold, returns NaN.
         If None, uses sample size dependent threshold.
@@ -182,21 +200,22 @@ def mcse_loo(x: PSISData, threshold: Optional[float] = None) -> float:
     float
         Monte Carlo standard error estimate, or NaN if any k values exceed threshold
     """
-    if x.mcse_elpd_loo is None:
-        raise ValueError("Monte Carlo standard error estimates not found")
+    if isinstance(pareto_k, xr.DataArray):
+        pareto_k = pareto_k.values
 
     if threshold is None:
-        S = len(x.log_weights)
-        threshold = ps_khat_threshold(S)
+        threshold = ps_khat_threshold(n_samples)
 
-    if np.any(pareto_k_values(x) > threshold):
+    if np.any(pareto_k > threshold):
         return np.nan
 
-    return np.sqrt(np.sum(x.mcse_elpd_loo**2))
+    mcse = compute_mcse(log_weights, pareto_k)
+    return np.sqrt(np.sum(mcse**2))
 
 
 def plot_diagnostic(
-    x: PSISData,
+    log_weights: Union[np.ndarray, xr.DataArray],
+    pareto_k: Union[np.ndarray, xr.DataArray],
     diagnostic: str = "k",
     label_points: bool = False,
     title: str = "PSIS diagnostic plot",
@@ -207,8 +226,10 @@ def plot_diagnostic(
 
     Parameters
     ----------
-    x : PSISData
-        Object containing PSIS results
+    log_weights : array-like
+        Array of log weights
+    pareto_k : array-like
+        Array of Pareto k estimates
     diagnostic : str, optional
         Which diagnostic to plot:
         - "k": Pareto shape parameters (default)
@@ -230,7 +251,9 @@ def plot_diagnostic(
     if ax is None:
         _, ax = plt.subplots()
 
-    k = pareto_k_values(x)
+    if isinstance(pareto_k, xr.DataArray):
+        pareto_k = pareto_k.values
+    k = pareto_k
     k[np.isnan(k)] = 0  # Replace NaN with 0 for plotting
     k_inf = ~np.isfinite(k)
 
@@ -240,12 +263,11 @@ def plot_diagnostic(
             stacklevel=2,
         )
 
-    S = len(x.log_weights)
+    S = len(log_weights)
     k_threshold = ps_khat_threshold(S)
 
     if diagnostic.lower() in ("ess", "ess"):
-        ess = psis_ess_values(x)
-        y = ess
+        y = compute_ess(log_weights)
         ylabel = "PSIS ESS"
     else:
         y = k

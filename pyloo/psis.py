@@ -1,44 +1,11 @@
 """Functions for Pareto smoothed importance sampling (PSIS) with adaptations from ArviZ."""
 
 from copy import deepcopy
-from dataclasses import dataclass
-from typing import Optional, Union
 
 import numpy as np
 import xarray as xr
 
 from .utils import _logsumexp, wrap_xarray_ufunc
-
-
-@dataclass
-class PSISData:
-    """Object containing smoothed log weights and diagnostics from PSIS calculations.
-
-    Attributes
-    ----------
-    log_weights : np.ndarray
-        Smoothed log weights
-    pareto_k : np.ndarray
-        Estimated shape parameters for the generalized Pareto distribution
-    ess : Optional[np.ndarray]
-        Effective sample size estimate (if computed)
-    r_eff : Optional[np.ndarray]
-        Relative efficiency estimate (if provided)
-    tail_len : Optional[Union[int, np.ndarray]]
-        Length of the tail for Pareto smoothing. Can be a scalar or array.
-    mcse_elpd_loo : Optional[np.ndarray]
-        Monte Carlo standard error estimates for PSIS-LOO
-    influence_pareto_k : Optional[np.ndarray]
-        Pareto k influence values
-    """
-
-    log_weights: np.ndarray
-    pareto_k: np.ndarray
-    ess: Optional[np.ndarray] = None
-    r_eff: Optional[np.ndarray] = None
-    tail_len: Optional[Union[int, np.ndarray]] = None
-    mcse_elpd_loo: Optional[np.ndarray] = None
-    influence_pareto_k: Optional[np.ndarray] = None
 
 
 def psislw(log_weights, reff=1.0):
