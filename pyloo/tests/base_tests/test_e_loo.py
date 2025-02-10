@@ -115,6 +115,7 @@ def test_e_loo_with_real_data():
 
 def test_pareto_k_estimation():
     """Test Pareto k estimation with different input types."""
+    np.random.seed(42)
     n_samples = 1000
     x = np.random.normal(size=n_samples)
 
