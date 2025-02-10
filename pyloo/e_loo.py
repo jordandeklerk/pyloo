@@ -5,7 +5,7 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 
-from .psis import PSISData, _gpdfit
+from .psis import _gpdfit
 from .utils import _logsumexp
 
 
@@ -31,11 +31,12 @@ class ExpectationResult:
 
 def e_loo(
     x: Union[np.ndarray, Sequence[float]],
-    psis_object: PSISData,
+    log_weights: np.ndarray,
     *,
     type: str = "mean",
     probs: Optional[Union[float, Sequence[float]]] = None,
     log_ratios: Optional[np.ndarray] = None,
+    pareto_k: Optional[Union[float, np.ndarray]] = None,
 ) -> ExpectationResult:
     """Compute weighted expectations using importance sampling weights.
 
@@ -43,8 +44,8 @@ def e_loo(
     ----------
     x : array-like
         Values to compute expectations for. Can be a vector or 2D array.
-    psis_object : PSISData
-        Object containing importance sampling weights from PSIS.
+    log_weights : array-like
+        Log weights from importance sampling. Can be a vector or 2D array.
     type : str, optional
         Type of expectation to compute. Options are:
         - "mean": weighted mean (default)
@@ -56,6 +57,9 @@ def e_loo(
     log_ratios : array-like, optional
         Raw (not smoothed) log ratios with same shape as x. If provided,
         these are used to compute more accurate Pareto k diagnostics.
+    pareto_k : float or array-like, optional
+        Pre-computed Pareto k values. If not provided, they will be estimated
+        from the log weights.
 
     Returns
     -------
@@ -69,50 +73,43 @@ def e_loo(
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pyloo import psislw, e_loo
+           ...: from pyloo import compute_importance_weights, e_loo
            ...: # Generate fake data
            ...: x = np.random.normal(size=(1000, 100))
            ...: log_ratios = np.random.normal(size=(1000, 100))
-           ...: weights, k = psislw(log_ratios)
-           ...: result = e_loo(x, PSISData(log_weights=weights, pareto_k=k))
+           ...: weights, k = compute_importance_weights(log_ratios)
+           ...: result = e_loo(x, weights, pareto_k=k)
            ...: print(f"Mean value: {result.value.mean():.3f}")
-
-    See Also
-    --------
-    PSISData : Container for PSIS results including diagnostics
     """
     x = np.asarray(x)
     if x.ndim == 1:
-        return _e_loo_vector(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
+        return _e_loo_vector(x, log_weights, type=type, probs=probs, log_ratios=log_ratios, pareto_k=pareto_k)
     elif x.ndim == 2:
-        return _e_loo_matrix(x, psis_object, type=type, probs=probs, log_ratios=log_ratios)
+        return _e_loo_matrix(x, log_weights, type=type, probs=probs, log_ratios=log_ratios, pareto_k=pareto_k)
     else:
         raise ValueError("x must be 1D or 2D")
 
 
 def _validate_inputs(
     x: np.ndarray,
-    psis_object: PSISData,
+    log_weights: np.ndarray,
     type: str,
     probs: Optional[Union[float, Sequence[float]]],
     log_ratios: Optional[np.ndarray],
 ) -> None:
     """Validate input parameters."""
-    if not isinstance(psis_object, PSISData):
-        raise TypeError("psis_object must be a PSISData")
-
     if x.ndim == 1:
-        if len(x) != len(psis_object.log_weights):
-            raise ValueError("x and psis_object must have same length")
+        if len(x) != len(log_weights):
+            raise ValueError("x and log_weights must have same length")
         if log_ratios is not None and len(log_ratios) != len(x):
             raise ValueError("log_ratios must have same length as x")
     else:  # x.ndim == 2
-        if x.shape != psis_object.log_weights.shape:
-            raise ValueError("x and psis_object must have same shape")
+        if x.shape != log_weights.shape:
+            raise ValueError("x and log_weights must have same shape")
         if log_ratios is not None and log_ratios.shape != x.shape:
             raise ValueError("log_ratios must have same shape as x")
 
-    if not np.all(np.isfinite(psis_object.log_weights)):
+    if not np.all(np.isfinite(log_weights)):
         raise ValueError("log weights must be finite")
 
     if type not in ["mean", "variance", "sd", "quantile"]:
@@ -184,7 +181,7 @@ def _wquant(x: np.ndarray, w: np.ndarray, probs: np.ndarray) -> np.ndarray:
 def _e_loo_khat(
     x: Optional[np.ndarray],
     log_ratios: np.ndarray,
-    tail_len: Union[int, np.ndarray],
+    tail_len: int = 20,
 ) -> float:
     """Compute Pareto k diagnostic."""
     r_theta = np.exp(log_ratios - np.max(log_ratios))
@@ -217,16 +214,17 @@ def _e_loo_khat(
 
 def _e_loo_vector(
     x: np.ndarray,
-    psis_object: PSISData,
+    log_weights: np.ndarray,
     *,
     type: str = "mean",
     probs: Optional[Union[float, Sequence[float]]] = None,
     log_ratios: Optional[np.ndarray] = None,
+    pareto_k: Optional[float] = None,
 ) -> ExpectationResult:
     """Compute expectations for vector inputs."""
-    _validate_inputs(x, psis_object, type, probs, log_ratios)
+    _validate_inputs(x, log_weights, type, probs, log_ratios)
 
-    log_weights = psis_object.log_weights - _logsumexp(psis_object.log_weights)
+    log_weights = log_weights - _logsumexp(log_weights)
     w = np.exp(np.clip(log_weights, -100, 0))
 
     if type == "mean":
@@ -238,27 +236,28 @@ def _e_loo_vector(
     else:
         value = _wquant(x, w, np.asarray(probs))
 
-    if log_ratios is None:
-        log_ratios = psis_object.log_weights
-
-    h = None if type == "quantile" else x**2 if type in ("variance", "sd") else x
-    pareto_k = _e_loo_khat(h, log_ratios, psis_object.tail_len)
+    if pareto_k is None:
+        if log_ratios is None:
+            log_ratios = log_weights
+        h = None if type == "quantile" else x**2 if type in ("variance", "sd") else x
+        pareto_k = _e_loo_khat(h, log_ratios)
 
     return ExpectationResult(value=value, pareto_k=pareto_k)
 
 
 def _e_loo_matrix(
     x: np.ndarray,
-    psis_object: PSISData,
+    log_weights: np.ndarray,
     *,
     type: str = "mean",
     probs: Optional[Union[float, Sequence[float]]] = None,
     log_ratios: Optional[np.ndarray] = None,
+    pareto_k: Optional[np.ndarray] = None,
 ) -> ExpectationResult:
     """Compute expectations for matrix inputs."""
-    _validate_inputs(x, psis_object, type, probs, log_ratios)
+    _validate_inputs(x, log_weights, type, probs, log_ratios)
 
-    w = np.exp(psis_object.log_weights - _logsumexp(psis_object.log_weights, axis=0))
+    w = np.exp(log_weights - _logsumexp(log_weights, axis=0))
 
     n_cols = x.shape[1]
     if type == "quantile":
@@ -279,19 +278,10 @@ def _e_loo_matrix(
         else:  # type == "quantile"
             value[:, i] = _wquant(x[:, i], w[:, i], probs_array)
 
-    if log_ratios is None:
-        log_ratios = psis_object.log_weights
-
-    h = None if type == "quantile" else x**2 if type in ("variance", "sd") else x
-    pareto_k = np.array(
-        [
-            _e_loo_khat(
-                None if h is None else h[:, i],
-                log_ratios[:, i],
-                (psis_object.tail_len[i] if isinstance(psis_object.tail_len, np.ndarray) else psis_object.tail_len),
-            )
-            for i in range(n_cols)
-        ]
-    )
+    if pareto_k is None:
+        if log_ratios is None:
+            log_ratios = log_weights
+        h = None if type == "quantile" else x**2 if type in ("variance", "sd") else x
+        pareto_k = np.array([_e_loo_khat(None if h is None else h[:, i], log_ratios[:, i]) for i in range(n_cols)])
 
     return ExpectationResult(value=value, pareto_k=pareto_k)
