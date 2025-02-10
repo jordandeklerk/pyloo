@@ -158,13 +158,12 @@ def test_loo_nan_handling(centered_eight):
 def test_loo_inf_handling(centered_eight):
     """Test LOO computation with infinite values in log-likelihood."""
     centered_eight = deepcopy(centered_eight)
-    log_like = centered_eight.log_likelihood["obs"].values
-    log_like[0, 0, 0] = np.inf
+    log_likelihood = centered_eight.log_likelihood["obs"]
+    log_like_values = log_likelihood.values.copy()
+    log_like_values[0, 0, 0] = np.inf
 
     centered_eight.log_likelihood["obs"] = xr.DataArray(
-        log_like,
-        dims=centered_eight.log_likelihood["obs"].dims,
-        coords=centered_eight.log_likelihood["obs"].coords,
+        log_like_values, dims=log_likelihood.dims, coords=log_likelihood.coords
     )
 
     with pytest.warns(UserWarning):
