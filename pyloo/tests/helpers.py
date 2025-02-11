@@ -325,23 +325,6 @@ def create_large_model(seed=10, n_obs=10000):
 
     y_i ~ Normal(theta_i, sigma)
     theta_i ~ Normal(mu, tau)
-
-    Parameters
-    ----------
-    seed : int, default 10
-        Random seed for reproducibility
-    n_obs : int, default 10000
-        Number of observations
-
-    Returns
-    -------
-    InferenceData
-        ArviZ InferenceData object containing:
-        * posterior
-        * posterior_predictive
-        * sample_stats
-        * log_likelihood
-        * observed_data
     """
     np.random.seed(seed)
     nchains = 4
