@@ -1,7 +1,7 @@
 """pyloo rcparams based on matplotlib's implementation."""
 
 from collections.abc import MutableMapping
-from typing import Any, Dict, Set
+from typing import Any, Dict, Set, Tuple
 
 
 def _validate_boolean(value: Any) -> bool:
@@ -68,7 +68,7 @@ class RcParams(MutableMapping):
         """Raise TypeError if someone tries to delete a key from RcParams."""
         raise TypeError("RcParams keys cannot be deleted. Use .get(key) or RcParams[key] to check values")
 
-    def popitem(self) -> tuple[Any, Any]:
+    def popitem(self) -> Tuple[Any, Any]:
         """Raise TypeError if someone tries to delete a key from RcParams."""
         raise TypeError("RcParams keys cannot be deleted. Use .get(key) or RcParams[key] to check values")
 
