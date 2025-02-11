@@ -97,9 +97,27 @@ def loo_subsample(
     This implementation follows the methodology described in:
     Magnusson et al. (2019) https://arxiv.org/abs/1902.06504
 
+    Examples
+    --------
+    Compute approximate LOO-CV using subsampling:
+
+    .. ipython::
+
+        In [1]: import arviz as az
+           ...: from pyloo import loo_subsample
+           ...: # Load example dataset
+           ...: data = az.load_arviz_data("centered_eight")
+           ...: # Compute LOO-CV with subsampling
+           ...: result = loo_subsample(
+           ...:     data,
+           ...:     observations=4,  # subsample 4 out of 8 observations
+           ...:     loo_approximation="plpd",  # use point estimate based approximation
+           ...: )
+
     See Also
     --------
     loo : Standard LOO-CV computation
+    loo_i : Pointwise LOO-CV values
     """
     inference_data = convert_to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
@@ -229,7 +247,6 @@ def loo_subsample(
         flat_idx = indices.idx
         # Convert flat indices to multi-dimensional indices
         idx_arrays = np.unravel_index(flat_idx, [log_likelihood.sizes[dim] for dim in obs_dims])
-        # Create indexing dictionary
         idx_dict = dict(zip(obs_dims, idx_arrays))
     else:
         idx_dict = {obs_dims[0]: indices.idx}
@@ -335,8 +352,6 @@ def loo_subsample(
         )
 
     p_loo = lppd - estimates.y_hat / scale_value
-
-    # Use v_y_hat for standard error as it represents the uncertainty in our estimate
     se = np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
 
     base_data = {
@@ -349,10 +364,10 @@ def loo_subsample(
         "scale": scale,
         "good_k": good_k,
         "subsampling_SE": estimates.subsampling_SE,
-        "subsample_size": len(indices.idx),  # Add subsample size for display
-        "looic": -2 * estimates.y_hat,  # Always calculate looic
-        "looic_se": 2 * se,  # Always calculate looic SE
-        "looic_subsamp_se": 2 * estimates.subsampling_SE,  # Always calculate looic subsampling SE
+        "subsample_size": len(indices.idx),
+        "looic": -2 * estimates.y_hat,
+        "looic_se": 2 * se,
+        "looic_subsamp_se": 2 * estimates.subsampling_SE,
     }
 
     if pointwise:

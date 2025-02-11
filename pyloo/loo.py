@@ -89,7 +89,11 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
 
             In [2]: data_loo = pl.loo(data, pointwise=True)
                ...: data_loo.loo_i
-    """
+
+        See Also
+        --------
+        loo_i : Pointwise LOO-CV values
+        loo_subsample : Subsampled LOO-CV computation"""
     inference_data = convert_to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
