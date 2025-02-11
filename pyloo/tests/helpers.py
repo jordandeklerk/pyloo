@@ -365,3 +365,78 @@ def assert_shape_equal(x, y):
 def assert_dtype(x, dtype):
     """Assert that array has expected dtype."""
     assert x.dtype == dtype
+
+
+def create_large_model(seed=10, n_obs=10000):
+    """Create model with large number of observations for testing subsampling.
+
+    This creates a model with a large number of observations to demonstrate
+    the benefits of subsampling in LOO-CV computation. The model simulates
+    a hierarchical normal model with:
+
+    y_i ~ Normal(theta_i, sigma)
+    theta_i ~ Normal(mu, tau)
+
+    Parameters
+    ----------
+    seed : int, default 10
+        Random seed for reproducibility
+    n_obs : int, default 10000
+        Number of observations
+
+    Returns
+    -------
+    InferenceData
+        ArviZ InferenceData object containing:
+        * posterior
+        * posterior_predictive
+        * sample_stats
+        * log_likelihood
+        * observed_data
+    """
+    np.random.seed(seed)
+    nchains = 4
+    ndraws = 500
+
+    true_mu = 1.0
+    true_tau = 2.0
+    true_sigma = 1.0
+
+    true_theta = np.random.normal(true_mu, true_tau, size=n_obs)
+    y = np.random.normal(true_theta, true_sigma)
+
+    posterior = {
+        "mu": np.random.normal(y.mean(), 0.1, size=(nchains, ndraws)),
+        "tau": np.abs(np.random.normal(2, 0.1, size=(nchains, ndraws))),
+        "theta": np.random.normal(y[None, None, :], 0.1, size=(nchains, ndraws, n_obs)),
+    }
+
+    theta = posterior["theta"]
+    log_likelihood = {
+        "obs": -0.5 * np.log(2 * np.pi)
+        - 0.5 * np.log(true_sigma**2)
+        - 0.5 * ((y[None, None, :] - theta) / true_sigma) ** 2
+    }
+
+    posterior_predictive = {"y": np.random.normal(theta, true_sigma, size=(nchains, ndraws, n_obs))}
+
+    sample_stats = {
+        "energy": np.random.randn(nchains, ndraws),
+        "diverging": np.random.randn(nchains, ndraws) > 0.95,
+    }
+
+    return from_dict(
+        posterior=posterior,
+        posterior_predictive=posterior_predictive,
+        sample_stats=sample_stats,
+        log_likelihood=log_likelihood,
+        observed_data={"y": y},
+        dims={
+            "theta": ["obs_id"],
+            "y": ["obs_id"],
+            "log_likelihood": ["obs_id"],
+        },
+        coords={
+            "obs_id": range(n_obs),
+        },
+    )

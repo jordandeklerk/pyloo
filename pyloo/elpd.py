@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 BASE_FMT = """
-Computed from {{:>{0}}} samples and {{:>{1}}} observations
+Computed from {:>{0}} samples and {:>{1}} observations
 
          Estimate       SE
 elpd_{kind:<{padding}} {0:<10.2f}  {1:<.2f}
@@ -17,10 +17,10 @@ p_{kind:<{padding}}    {2:<10.2f}  {3:<.2f}
 
 POINTWISE_LOO_FMT = """
 Pareto k diagnostic values:
-                         {{:>{0}}}    {{:>7}}
-(-Inf, {:.2f})    {{:>{0}d}}    {{:>7.1f}}
-[{:.2f}, 1)       {{:>{0}d}}    {{:>7.1f}}
-[1, Inf)         {{:>{0}d}}    {{:>7.1f}}"""
+                         {:>{0}}    {:>7}
+(-Inf, {:.2f})    {:>{0}d}    {:>7.1f}
+[{:.2f}, 1)       {:>{0}d}    {:>7.1f}
+[1, Inf)         {:>{0}d}    {:>7.1f}"""
 
 SCALE_DICT = {
     "log": "Using log score",
@@ -132,3 +132,13 @@ class ELPDData(pd.Series):
     def method(self, value):
         """Set importance sampling method."""
         self._method = value
+
+    @property
+    def estimates(self):
+        """Get the estimation results."""
+        return self._estimates
+
+    @estimates.setter
+    def estimates(self, value):
+        """Set the estimation results."""
+        self._estimates = value
