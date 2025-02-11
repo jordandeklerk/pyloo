@@ -8,6 +8,8 @@ from .base import BaseEstimate
 class SRSEstimate(BaseEstimate):
     """Container for simple random sampling estimation results."""
 
+    pass
+
 
 def srs_estimate(
     y: np.ndarray,

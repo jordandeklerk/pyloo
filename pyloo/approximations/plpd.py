@@ -12,8 +12,7 @@ class PLPDApproximation(LooApproximation):
     """Point Log Predictive Density approximation.
 
     This approximation uses posterior expectations (point estimates) to compute
-    an approximation of the LOO values. It is generally faster but less accurate
-    than other methods.
+    an approximation of the LOO values.
     """
 
     def __init__(self, posterior: Optional[Union[np.ndarray, xr.DataArray]] = None):

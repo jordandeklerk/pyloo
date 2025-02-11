@@ -8,6 +8,8 @@ from .base import BaseEstimate
 class DiffEstimate(BaseEstimate):
     """Container for difference estimation results."""
 
+    pass
+
 
 def difference_estimate(
     y_approx: np.ndarray,

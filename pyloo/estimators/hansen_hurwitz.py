@@ -8,6 +8,8 @@ from .base import BaseEstimate
 class HHEstimate(BaseEstimate):
     """Container for Hansen-Hurwitz estimation results."""
 
+    pass
+
 
 def hansen_hurwitz_estimate(
     z: np.ndarray,
