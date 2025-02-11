@@ -3,19 +3,27 @@
 ## Unreleased
 
 ### New features
-- Added comprehensive PSIS diagnostic tools and visualizations in `diagnostics.py`
 - Added base class for ELPD calculations in `elpd.py`
 - Added ESS functions with ArviZ adaptations in `ess.py`
 - Added multiple importance sampling methods:
   - Standard Importance Sampling (SIS) implementation in `sis.py`
   - Truncated Importance Sampling (TIS) implementation in `tis.py`
   - Unified importance sampling interface in `importance_sampling.py`
+  - PSIS implementation in `psis.py`
 - Added helper utilities adapted from ArviZ in `utils.py`
-- Enhanced PSIS test suite:
-  - Added comprehensive test coverage for multidimensional arrays
-  - Added tests for extreme value handling and high Pareto k values
-  - Added parametrized tests for GPD inverse function
-  - Added test cases matching ArviZ's test coverage
+- Implemented standard LOO-CV computation in `loo.py`:
+  - Support for multiple importance sampling methods (PSIS, SIS, TIS)
+  - Comprehensive error handling and diagnostics
+  - Integration with ArviZ for data handling
+  - Flexible output scales (log, negative_log, deviance)
+- Implemented efficient approximate LOO-CV using subsampling in `loo_subsample.py`:
+  - Multiple approximation methods (PLPD, LPD, TIS, SIS)
+  - Various estimator methods (diff_srs, hh_pps, srs)
+  - Enhanced support for multidimensional data
+  - Additional diagnostics and error metrics
+  - Efficient computation for large datasets
+- Added pointwise LOO-CV calculations in `loo_i.py`
+- Added expected LOO computations in `e_loo.py`
 
 ### Maintenance and fixes
 - Updated test dependencies:
@@ -29,6 +37,14 @@
 ### Documentation
 - Basic package structure and documentation setup
 - Development environment configuration
+- Added comprehensive usage examples for LOO-CV implementations:
+  - Standard LOO-CV with different importance sampling methods
+  - Subsampled LOO-CV with various approximation techniques
+  - Integration examples with ArviZ
+- Added detailed API documentation for:
+  - Importance sampling methods (PSIS, SIS, TIS)
+  - Subsampling estimators (diff_srs, hh_pps, srs)
+  - Diagnostic tools and warnings
 
 ## v0.1.0 (2025-01-29)
 
