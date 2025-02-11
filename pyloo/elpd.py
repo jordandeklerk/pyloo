@@ -6,18 +6,34 @@ from copy import deepcopy as _deepcopy
 import numpy as np
 import pandas as pd
 
-BASE_FMT = """
+# Format for standard LOO output
+STD_BASE_FMT = """
 Computed from {:>{0}} samples and {:>{1}} observations
 
-         Estimate       SE
+          Estimate       SE
 elpd_{kind:<{padding}} {0:<10.2f}  {1:<.2f}
 p_{kind:<{padding}}    {2:<10.2f}  {3:<.2f}
 
 {scale}"""
 
+# Format for subsampled LOO output
+SUBSAMPLE_BASE_FMT = """
+Computed from {n_samples} by {subsample_size} subsampled log-likelihood
+values from {n_data_points} total observations.
+
+         Estimate   SE subsampling SE
+elpd_loo  {0:<10.2f} {1:<.2f}         {2:<.2f}
+p_loo     {3:<10.2f} {4:<.2f}         {5:<.2f}
+looic     {6:<10.2f} {7:<.2f}         {8:<.2f}
+
+Monte Carlo SE of elpd_loo is 0.0.
+MCSE and ESS estimates assume MCMC draws (r_eff in [0.9, 1.0]).
+
+{pareto_msg}"""
+
 POINTWISE_LOO_FMT = """
 Pareto k diagnostic values:
-                         {:>{0}}    {:>7}
+                          {:>{0}}    {:>7}
 (-Inf, {:.2f})    {:>{0}d}    {:>7.1f}
 [{:.2f}, 1)       {:>{0}d}    {:>7.1f}
 [1, Inf)         {:>{0}d}    {:>7.1f}"""
@@ -65,16 +81,65 @@ class ELPDData(pd.Series):
             raise ValueError("Invalid ELPDData object")
 
         scale_str = SCALE_DICT[self["scale"]]
-        padding = len(scale_str) + len(kind) + 1
-        base = BASE_FMT.format(padding, padding - 2)
-        base = base.format(
-            "", *self.values, kind=kind, scale=scale_str, n_samples=self.n_samples, n_points=self.n_data_points
-        )
+        is_subsampled = "subsampling_SE" in self
+
+        if is_subsampled:
+            subsample_size = self["subsample_size"]
+
+            if "pareto_k" in self and hasattr(self, "good_k") and self.good_k is not None:
+                max_k = np.nanmax(self.pareto_k.values) if not np.all(np.isnan(self.pareto_k.values)) else 0
+                if max_k < 0.7:
+                    pareto_msg = "All Pareto k estimates are good (k < 0.7)."
+                else:
+                    pareto_msg = "Some Pareto k estimates are high (k >= 0.7)."
+                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+            else:
+                pareto_msg = ""
+
+            elpd_loo = self["elpd_loo"]
+            elpd_loo_se = self["se"]
+            elpd_loo_subsamp_se = self["subsampling_SE"]
+
+            p_loo = self["p_loo"]
+            p_loo_se = self["se"]
+            p_loo_subsamp_se = self["subsampling_SE"]
+
+            looic = -2 * elpd_loo
+            looic_se = 2 * elpd_loo_se
+            looic_subsamp_se = 2 * elpd_loo_subsamp_se
+
+            base = SUBSAMPLE_BASE_FMT.format(
+                elpd_loo,
+                elpd_loo_se,
+                elpd_loo_subsamp_se,
+                p_loo,
+                p_loo_se,
+                p_loo_subsamp_se,
+                looic,
+                looic_se,
+                looic_subsamp_se,
+                n_samples=self.n_samples,
+                subsample_size=subsample_size,
+                n_data_points=self.n_data_points,
+                pareto_msg=pareto_msg,
+            )
+        else:
+            padding = len(scale_str) + len(kind) + 1
+            base = STD_BASE_FMT.format(padding, padding - 2)
+            base = base.format(
+                "", *self.values, kind=kind, scale=scale_str, n_samples=self.n_samples, n_points=self.n_data_points
+            )
 
         if self.warning:
             base += "\n\nThere has been a warning during the calculation. Please check the results."
 
-        if kind == "loo" and "pareto_k" in self and hasattr(self, "good_k") and self.good_k is not None:
+        if (
+            not is_subsampled
+            and kind == "loo"
+            and "pareto_k" in self
+            and hasattr(self, "good_k")
+            and self.good_k is not None
+        ):
             bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
             counts, *_ = _histogram(self.pareto_k.values, bins)
             extended = POINTWISE_LOO_FMT.format(max(4, len(str(np.max(counts)))))
@@ -85,7 +150,7 @@ class ELPDData(pd.Series):
                 self.good_k,
             )
             base = "\n".join([base, extended])
-        elif kind == "loo" and "pareto_k" in self:
+        elif not is_subsampled and kind == "loo" and "pareto_k" in self:
             # For non-PSIS methods, show simplified diagnostics
             method = getattr(self, "method", "unknown")
             base += f"\n\nUsing {method.upper()} importance sampling method"

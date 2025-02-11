@@ -349,6 +349,10 @@ def loo_subsample(
         "scale": scale,
         "good_k": good_k,
         "subsampling_SE": estimates.subsampling_SE,
+        "subsample_size": len(indices.idx),  # Add subsample size for display
+        "looic": -2 * estimates.y_hat,  # Always calculate looic
+        "looic_se": 2 * se,  # Always calculate looic SE
+        "looic_subsamp_se": 2 * estimates.subsampling_SE,  # Always calculate looic subsampling SE
     }
 
     if pointwise:
