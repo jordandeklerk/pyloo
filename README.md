@@ -1,4 +1,4 @@
-# PyLoo <img src="./assets/logo.png" width="150" height="150" align="left" style="margin-top: -85px">
+# PyLoo <img src="./assets/logo.png" width="200" height="200" align="right" style="margin-top: -65px">
 
 ### Efficient approximate leave-one-out cross-validation for Bayesian models in Python
 
