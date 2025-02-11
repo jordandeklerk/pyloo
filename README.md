@@ -1,6 +1,6 @@
-<img src="https://raw.githubusercontent.com/jordandeklerk/pyloo/main/assets/logo.png" width="200" height="200" align="left">
+# PyLoo <img src="./assets/logo.png" width="200" height="200" align="right" style="margin-top: -4px">
 
-### PyLoo: Efficient approximate leave-one-out cross-validation for Bayesian models in Python
+### Efficient approximate leave-one-out cross-validation for Bayesian models in Python
 
 <!-- [![PyPI Downloads](https://img.shields.io/pypi/dm/pyloo.svg?label=Pypi%20downloads)](https://pypi.org/project/pyloo/) -->
 <!-- [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/pyloo.svg?label=Conda%20downloads)](https://anaconda.org/conda-forge/pyloo) -->
