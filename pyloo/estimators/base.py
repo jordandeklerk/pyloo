@@ -1,12 +1,16 @@
 """Base functionality for LOO-CV subsampling estimators."""
 
-from typing import Dict, NamedTuple
+from dataclasses import dataclass
+from typing import Any, Dict, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
 
+T_co = TypeVar("T_co", bound="BaseEstimate", covariant=True)
 
-class BaseEstimate(NamedTuple):
-    """Base type for all estimation results.
+
+@dataclass
+class BaseEstimate:
+    """Base class for all estimation results.
 
     Parameters
     ----------
@@ -29,10 +33,11 @@ class BaseEstimate(NamedTuple):
     hat_v_y: float
     m: int
     subsampling_SE: float
-    N: int = 0  # Optional with default for HHEstimate which doesn't use it
+    N: int = 0
 
 
-class SubsampleIndices(NamedTuple):
+@dataclass
+class SubsampleIndices:
     """Container for subsampling indices and counts.
 
     Parameters
@@ -45,6 +50,26 @@ class SubsampleIndices(NamedTuple):
 
     idx: np.ndarray
     m_i: np.ndarray
+
+
+@runtime_checkable
+class EstimatorProtocol(Protocol[T_co]):
+    """Protocol defining the interface for estimator implementations."""
+
+    def estimate(self, **kwargs: Any) -> T_co:
+        """Compute the estimate based on provided data.
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Keyword arguments specific to each estimator implementation
+
+        Returns
+        -------
+        T_co
+            The computed estimate including point estimate and variance
+        """
+        pass
 
 
 def subsample_indices(
@@ -74,7 +99,6 @@ def subsample_indices(
         * m_i: Array of counts for each observation
     """
     if estimator == "hh_pps":
-        # PPS sampling with replacement
         pi_values = np.abs(elpd_loo_approximation)
         pi_values = pi_values / pi_values.sum()
         idx = np.random.choice(len(elpd_loo_approximation), size=observations, replace=True, p=pi_values)
@@ -82,7 +106,6 @@ def subsample_indices(
         return SubsampleIndices(idx=unique_idx, m_i=counts)
 
     elif estimator in ("diff_srs", "srs"):
-        # Simple random sampling without replacement
         if observations > len(elpd_loo_approximation):
             raise ValueError(
                 "Number of observations cannot exceed total sample size " "when using SRS without replacement"
@@ -118,17 +141,14 @@ def compare_indices(
     """
     result = {}
 
-    # Find indices unique to new set
     new_mask = ~np.isin(new_indices.idx, current_indices.idx)
     if new_mask.any():
         result["new"] = SubsampleIndices(idx=new_indices.idx[new_mask], m_i=new_indices.m_i[new_mask])
 
-    # Find indices in both sets
     add_mask = np.isin(new_indices.idx, current_indices.idx)
     if add_mask.any():
         result["add"] = SubsampleIndices(idx=new_indices.idx[add_mask], m_i=new_indices.m_i[add_mask])
 
-    # Find indices only in current set
     remove_mask = ~np.isin(current_indices.idx, new_indices.idx)
     if remove_mask.any():
         result["remove"] = SubsampleIndices(idx=current_indices.idx[remove_mask], m_i=current_indices.m_i[remove_mask])

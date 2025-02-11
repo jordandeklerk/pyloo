@@ -1,7 +1,6 @@
 """Efficient approximate leave-one-out cross-validation (LOO-CV) using subsampling."""
 
 import warnings
-from enum import Enum
 from typing import Any, Dict, Optional, Union, cast
 
 import numpy as np
@@ -15,37 +14,14 @@ from .approximations import (
     SISApproximation,
     TISApproximation,
 )
+from .constants import EstimatorMethod, LooApproximationMethod
 from .elpd import ELPDData
-from .estimators import SubsampleIndices, subsample_indices
-from .estimators.base import BaseEstimate
-from .estimators.difference import diff_srs_estimate
-from .estimators.hansen_hurwitz import (
-    compute_sampling_probabilities,
-    hansen_hurwitz_estimate,
-)
-from .estimators.srs import srs_estimate
+from .estimators import SubsampleIndices, get_estimator, subsample_indices
+from .estimators.hansen_hurwitz import compute_sampling_probabilities
 from .importance_sampling import ISMethod, compute_importance_weights
 from .loo import loo
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
-
-
-class LooApproximationMethod(str, Enum):
-    """Enumeration of available LOO approximation methods."""
-
-    PLPD = "plpd"
-    LPD = "lpd"
-    TIS = "tis"
-    SIS = "sis"
-
-
-class EstimatorMethod(str, Enum):
-    """Enumeration of available estimator methods."""
-
-    DIFF_SRS = "diff_srs"
-    HH_PPS = "hh_pps"
-    SRS = "srs"
-
 
 APPROXIMATION_METHODS = {
     LooApproximationMethod.LPD: lambda: LPDApproximation(),
@@ -86,7 +62,7 @@ def loo_subsample(
     estimator : str, default "diff_srs"
         The estimation method to use:
         * "diff_srs": Difference estimator with simple random sampling (default)
-        * "hh": Hansen-Hurwitz estimator
+        * "hh_pps": Hansen-Hurwitz estimator
         * "srs": Simple random sampling
     loo_approximation_draws : Optional[int], default None
         The number of posterior draws to use for approximation methods that
@@ -275,31 +251,27 @@ def loo_subsample(
 
     loo_lppd_i = scale_value * wrap_xarray_ufunc(_logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs)
 
-    estimates: BaseEstimate
+    estimator_impl = get_estimator(est_method.value)
 
     if est_method == EstimatorMethod.HH_PPS:
         z = compute_sampling_probabilities(elpd_loo_approx)
-        # Then get probabilities for sampled observations
         z_sample = z[indices.idx]
-        # Normalize z_sample to ensure it sums to 1
-        z_sample = z_sample / z_sample.sum()
-        # Then use the sampled probabilities in the estimate
-        estimates = hansen_hurwitz_estimate(
+        estimates = estimator_impl.estimate(
             z=z_sample,
             m_i=indices.m_i,
             y=loo_lppd_i.values,
             N=n_data_points,
         )
     elif est_method == EstimatorMethod.SRS:
-        estimates = srs_estimate(
+        estimates = estimator_impl.estimate(
             y=loo_lppd_i.values,
             N=n_data_points,
         )
     else:  # diff_srs
-        estimates = diff_srs_estimate(
-            elpd_loo_i=loo_lppd_i.values,
-            elpd_loo_approximation=elpd_loo_approx,
-            sample_indices=indices.idx,
+        estimates = estimator_impl.estimate(
+            y_approx=elpd_loo_approx,
+            y=loo_lppd_i.values,
+            y_idx=indices.idx,
         )
 
     lppd = np.sum(
@@ -311,12 +283,9 @@ def loo_subsample(
             **kwargs,
         ).values
     )
-    p_loo = lppd - estimates.y_hat / scale_value
 
     warn_mg = False
     good_k = min(1 - 1 / np.log10(n_samples), 0.7)
-
-    # Get maximum k value for sampled observations
     max_k = np.nanmax(diagnostic) if not np.all(np.isnan(diagnostic)) else 0
 
     if est_method == EstimatorMethod.SRS:
