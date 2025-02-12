@@ -7,11 +7,11 @@ from pathlib import Path
 import numpy as np
 import pymc as pm
 
-from pyloo.loo import loo
-from pyloo.loo_subsample import loo_subsample
-
 project_root = str(Path(__file__).parent.parent.parent)
 sys.path.append(project_root)
+
+from pyloo.loo import loo  # noqa: E402
+from pyloo.loo_subsample import loo_subsample  # noqa: E402
 
 logger = logging.getLogger("eight_schools_example")
 logger.setLevel(logging.INFO)

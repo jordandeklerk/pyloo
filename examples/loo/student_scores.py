@@ -8,11 +8,11 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from pyloo.loo import loo
-from pyloo.loo_subsample import loo_subsample
-
 project_root = str(Path(__file__).parent.parent.parent)
 sys.path.append(project_root)
+
+from pyloo.loo import loo  # noqa: E402
+from pyloo.loo_subsample import loo_subsample  # noqa: E402
 
 logger = logging.getLogger("student_scores_example")
 logger.setLevel(logging.INFO)
