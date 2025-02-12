@@ -49,3 +49,6 @@ docs/api/
 .env
 .env.local
 .env.*.local
+
+.mypy_cache/
+.ruff_cache/
