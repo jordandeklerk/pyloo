@@ -78,17 +78,27 @@ class DifferenceEstimator(EstimatorProtocol[DiffEstimate]):
         y_hat = t_pi_tilde + t_e
 
         if m > 1:
-            e_mean = np.mean(e_i)
-            reg_term = 1e-12 * np.abs(e_mean)
-            v_y_hat = (N**2) * (1 - m / N) * (np.sum((e_i - e_mean) ** 2) + reg_term) / (m * (m - 1))
+            # Variance of the difference estimator (v_y_hat)
+            # This accounts for the uncertainty from subsampling
+            v_y_hat = (N**2) * (1 - m / N) * np.var(e_i, ddof=1) / m
+
+            # Total variance estimate (hat_v_y)
+            # This accounts for both approximation and sampling uncertainty
+            hat_v_y = (t_pi2_tilde + t_hat_epsilon) - (1 / N) * (
+                t_e**2 - v_y_hat + 2 * t_pi_tilde * y_hat - t_pi_tilde**2
+            )
         else:
             v_y_hat = np.inf
+            hat_v_y = np.inf
 
-        hat_v_y = (t_pi2_tilde + t_hat_epsilon) - (1 / N) * (
-            t_e**2 - v_y_hat + 2 * t_pi_tilde * y_hat - t_pi_tilde**2
+        return DiffEstimate(
+            y_hat=y_hat,
+            v_y_hat=v_y_hat,  # regular SE
+            hat_v_y=hat_v_y,  # subsampling SE
+            m=m,
+            N=N,
+            subsampling_SE=np.sqrt(hat_v_y),
         )
-
-        return DiffEstimate(y_hat=y_hat, v_y_hat=v_y_hat, hat_v_y=hat_v_y, m=m, N=N, subsampling_SE=np.sqrt(v_y_hat))
 
 
 def diff_srs_estimate(
