@@ -11,7 +11,8 @@ import pymc as pm
 from pyloo.loo import loo
 from pyloo.loo_subsample import loo_subsample
 
-sys.path.append(str(Path(__file__).parent.parent))
+project_root = str(Path(__file__).parent.parent.parent)
+sys.path.append(project_root)
 
 logger = logging.getLogger("student_scores_example")
 logger.setLevel(logging.INFO)
