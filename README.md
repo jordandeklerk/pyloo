@@ -15,7 +15,7 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 > ⚠️ **Note**: This project is in active development and not all features from the R package have been implemented yet. While the core functionality is available, some advanced features are still being worked on. We recommend checking the documentation for the current status of specific features.
 
-### Quick Examples
+### Quick Usage
 
 ```python
 import pyloo as pl
@@ -23,7 +23,7 @@ import arviz as az
 
 data = az.load_arviz_data("centered_eight")
 
-# Compute standard LOO-CV
+# Standard LOO-CV
 loo_result = pl.loo(
     data,
     pointwise=True,  # Return pointwise values
@@ -36,7 +36,7 @@ print(loo_result)
 For large datasets, we provide efficient subsampling-based computation:
 
 ```python
-# Compute LOO-CV with subsampling
+# LOO-CV with subsampling
 subsample_result = pl.loo_subsample(
     data,
     observations=400,          # Subsample size
