@@ -85,7 +85,8 @@ def loo_subsample(
     ELPDData
         The computed LOO-CV results including:
         * elpd_loo: Expected log pointwise predictive density
-        * se: Standard error of elpd_loo
+        * se: Standard error of elpd_loo (includes both approximation and sampling uncertainty)
+        * subsampling_SE: Standard error from subsampling uncertainty only
         * p_loo: Effective number of parameters
         * loo_i: Pointwise values (if pointwise=True)
         * warning: Warning flag for unreliable estimates
@@ -352,22 +353,25 @@ def loo_subsample(
         )
 
     p_loo = lppd - estimates.y_hat / scale_value
-    se = np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
+
+    # Total variance (hat_v_y) for regular SE and subsampling variance (v_y_hat) for subsampling SE
+    se = np.sqrt(estimates.hat_v_y) if hasattr(estimates, "hat_v_y") else np.nan
+    subsampling_se = np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
 
     base_data = {
         "elpd_loo": estimates.y_hat,
-        "se": se,
+        "se": se,  # Total uncertainty (approximation + sampling)
         "p_loo": p_loo,
         "n_samples": n_samples,
         "n_data_points": n_data_points,
         "warning": warn_mg,
         "scale": scale,
         "good_k": good_k,
-        "subsampling_SE": estimates.subsampling_SE,
+        "subsampling_SE": subsampling_se,  # Only subsampling uncertainty
         "subsample_size": len(indices.idx),
         "looic": -2 * estimates.y_hat,
         "looic_se": 2 * se,
-        "looic_subsamp_se": 2 * estimates.subsampling_SE,
+        "looic_subsamp_se": 2 * subsampling_se,
     }
 
     if pointwise:
