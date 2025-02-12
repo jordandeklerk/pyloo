@@ -6,8 +6,9 @@ This directory contains examples demonstrating how to use pyloo for Leave-One-Ou
 
 ```
 examples/
-├── eight_schools.py     # Eight Schools hierarchical model example
-└── student_scores.py    # Student test scores analysis example
+└── loo/
+    ├── eight_schools.py     # Eight Schools hierarchical
+    └── student_scores.py    # Student test scores
 ```
 
 ## Running the Examples
