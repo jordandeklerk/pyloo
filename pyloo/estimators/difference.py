@@ -93,11 +93,11 @@ class DifferenceEstimator(EstimatorProtocol[DiffEstimate]):
 
         return DiffEstimate(
             y_hat=y_hat,
-            v_y_hat=v_y_hat,  # regular SE
-            hat_v_y=hat_v_y,  # subsampling SE
+            v_y_hat=v_y_hat,  # subsampling SE
+            hat_v_y=hat_v_y,  # regular SE
             m=m,
             N=N,
-            subsampling_SE=np.sqrt(hat_v_y),
+            subsampling_SE=np.sqrt(v_y_hat),
         )
 
 
