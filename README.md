@@ -82,13 +82,13 @@ If you use pyloo in your research, please cite:
 For the underlying methodology, please also cite:
 
 ```bibtex
-@article{vehtari2017practical,
+@article{vehtari2024practical,
   title={Practical {B}ayesian model evaluation using leave-one-out cross-validation and {WAIC}},
   author={Vehtari, Aki and Gelman, Andrew and Gabry, Jonah},
   journal={Statistics and Computing},
   volume={27},
   number={5},
   pages={1413--1432},
-  year={2017},
+  year={2024},
   publisher={Springer}
 }
