@@ -1,75 +1,29 @@
 # pyloo Examples
 
-Template directory containing future examples demonstrating how to use pyloo for Leave-One-Out Cross-Validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) with various Bayesian models and frameworks.
+This directory contains examples demonstrating how to use pyloo for Leave-One-Out Cross-Validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) with Bayesian models.
 
 ## Directory Structure
 
 ```
 examples/
-├── basic/                # Basic usage examples
-│   ├── basic_loo.py      # Basic LOO-CV example
-│   └── basic_psis.py     # Basic PSIS example
-├── frameworks/           # Framework-specific examples
-│   ├── pymc/             # PyMC examples
-│   ├── pystan/           # PyStan examples
-│   └── numpyro/          # NumPyro examples
-│   └── tensorflow/       # Tensorflow examples
-└── advanced/             # Advanced usage examples
-    ├── moment_match/     # Moment matching examples
-    └── k_fold/           # K-fold cross-validation examples
+├── eight_schools.py     # Eight Schools hierarchical model example
+└── student_scores.py    # Student test scores analysis example
 ```
 
 ## Running the Examples
 
-Each example is self-contained and can be run directly. Make sure you have pyloo installed:
+Each example is self-contained and can be run directly. First, make sure you have pyloo installed:
 
 ```bash
 pip install pyloo
 ```
 
-For framework-specific examples, you'll need to install the relevant frameworks:
+To install all required dependencies for the examples, run:
 
 ```bash
-# For PyMC examples
-pip install pymc
-
-# For PyStan examples
-pip install pystan
-
-# For NumPyro examples
-pip install numpyro
-
-# For Tensorflow examples
-pip install tensorflow
+pip install -r requirements.txt
 ```
-
-## Example Descriptions
-
-### Basic Examples
-- `basic_loo.py`: Demonstrates basic LOO-CV computation
-- `basic_psis.py`: Shows how to perform PSIS for model comparison
-
-### Framework Examples
-- PyMC examples show integration with PyMC models
-- PyStan examples demonstrate usage with Stan models
-- NumPyro examples illustrate usage with NumPyro models
-- Tensorflow examples illustrate usage with NumPyro models
-
-### Advanced Examples
-- Moment matching examples for improved LOO-CV estimates
-- K-fold cross-validation for larger datasets
 
 ## Contributing
 
-If you have an example you'd like to contribute:
-1. Follow the existing example structure
-2. Include clear documentation and comments
-3. Ensure the example is self-contained
-4. Add any necessary requirements to the example's README
-5. Submit a pull request
-
-## Notes
-
-- Examples are meant to be educational and demonstrate best practices
-- Each example includes extensive comments explaining the process
-- For more detailed documentation, see the main pyloo documentation
+We welcome contributions of new examples. When contributing, ensure your example is self-contained and includes clear documentation explaining the process. Follow the existing example structure and add any necessary requirements to the requirements.txt file. Submit your contribution through a pull request.
