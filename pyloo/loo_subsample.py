@@ -85,7 +85,7 @@ def loo_subsample(
     ELPDData
         The computed LOO-CV results including:
         * elpd_loo: Expected log pointwise predictive density
-        * se: Standard error
+        * se: Standard error of elpd_loo
         * p_loo: Effective number of parameters
         * loo_i: Pointwise values (if pointwise=True)
         * warning: Warning flag for unreliable estimates

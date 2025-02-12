@@ -1,4 +1,4 @@
-"""Leave-one-out cross-validation (LOO-CV) using importance sampling methods with modifications from ArviZ."""
+"""Leave-one-out cross-validation (LOO-CV) using importance sampling methods based on ArviZ."""
 
 import warnings
 
@@ -204,10 +204,25 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
             **kwargs,
         ).values
     )
+
     p_loo = lppd - loo_lppd / scale_value
 
+    looic = -2 * loo_lppd
+    looic_se = 2 * loo_lppd_se
+
     if not pointwise:
-        data = [loo_lppd, loo_lppd_se, p_loo, n_samples, n_data_points, warn_mg, scale]
+        data = [
+            loo_lppd,
+            loo_lppd_se,
+            p_loo,
+            n_samples,
+            n_data_points,
+            warn_mg,
+            scale,
+            n_data_points,
+            looic,
+            looic_se,
+        ]
         index = [
             "elpd_loo",
             "se",
@@ -216,11 +231,14 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
             "n_data_points",
             "warning",
             "scale",
+            "subsample_size",
+            "looic",
+            "looic_se",
         ]
 
         if method == ISMethod.PSIS:
-            data.append(good_k)
-            index.append("good_k")
+            data.insert(-2, good_k)  # Insert before looic
+            index.insert(-2, "good_k")  # Insert before looic
 
         return ELPDData(data=data, index=index)
 
@@ -240,6 +258,9 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
         warn_mg,
         loo_lppd_i.rename("loo_i"),
         scale,
+        n_data_points,
+        looic,
+        looic_se,
     ]
     index = [
         "elpd_loo",
@@ -250,11 +271,16 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
         "warning",
         "loo_i",
         "scale",
+        "subsample_size",
+        "looic",
+        "looic_se",
     ]
 
     if method == ISMethod.PSIS:
-        data.extend([diagnostic, good_k])
-        index.extend(["pareto_k", "good_k"])
+        data.append(diagnostic)
+        index.append("pareto_k")
+        data.insert(-2, good_k)
+        index.insert(-2, "good_k")
     else:
         data.append(diagnostic)
         index.append("ess")

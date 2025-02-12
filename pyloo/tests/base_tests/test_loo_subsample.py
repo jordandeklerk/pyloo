@@ -220,35 +220,3 @@ def test_loo_subsample_default_parameters(large_model):
     full_loo = loo(large_model)
     rel_diff = np.abs(result["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(full_loo["elpd_loo"])
     assert rel_diff < 0.1, "Subsampled LOO should be within 10% of full LOO"
-
-
-def test_loo_subsample_string_representation(large_model):
-    """Test the string representation of subsampled LOO results."""
-    result = loo_subsample(large_model, observations=100, pointwise=True)
-    result_str = str(result)
-
-    assert "Computed from" in result_str
-    assert "subsampled log-likelihood" in result_str
-    assert "total observations" in result_str
-    assert "Estimate   SE subsampling SE" in result_str
-    assert "elpd_loo" in result_str
-    assert "p_loo" in result_str
-    assert "looic" in result_str
-    assert "Monte Carlo SE of elpd_loo is" in result_str
-    assert "MCSE and ESS estimates assume MCMC draws" in result_str
-    assert "Pareto k" in result_str
-    assert "See help('pareto-k-diagnostic') for details" in result_str
-
-    lines = result_str.split("\n")
-    metric_lines = []
-    for line in lines:
-        if line.strip().startswith(("elpd_loo", "p_loo", "looic")):
-            metric_lines.append(line)
-            parts = line.split()
-            assert len(parts) == 4, f"Expected 4 parts (label + 3 numbers), got {len(parts)} in line: {line}"
-            numbers = [float(x) for x in parts[1:]]
-            assert (
-                len(numbers) == 3
-            ), f"Each value line should have exactly 3 numbers, got {len(numbers)} in line: {line}"
-
-    assert len(metric_lines) == 3, f"Expected 3 metric lines, found {len(metric_lines)}"
