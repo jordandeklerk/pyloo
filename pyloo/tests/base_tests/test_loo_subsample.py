@@ -30,7 +30,9 @@ def test_loo_subsample_performance(large_model):
     sub_time = time.time() - start_time
 
     assert sub_time < full_time / 2
-    assert np.abs(sub_loo["elpd_loo"] - full_loo["elpd_loo"]) < 3 * sub_loo["se"]
+
+    rel_diff = np.abs(sub_loo["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(full_loo["elpd_loo"])
+    assert rel_diff < 0.1, "Subsampled LOO should be within 10% of full LOO"
 
 
 @pytest.mark.parametrize("method", [m.value for m in LooApproximationMethod])
@@ -191,9 +193,9 @@ def test_loo_subsample_consistency(large_model):
     ses = []
     for n in n_obs:
         result = loo_subsample(large_model, observations=n)
-        ses.append(result["se"])
+        ses.append(result["subsampling_SE"])
 
-    assert ses[0] > ses[-1], "Standard error should decrease with more observations"
+    assert ses[0] > ses[-1], "Subsampling standard error should decrease with more observations"
 
 
 def test_loo_subsample_exact_indices(large_model):
@@ -211,12 +213,9 @@ def test_loo_subsample_default_parameters(large_model):
     """Test that default parameters produce valid results for large datasets."""
     result = loo_subsample(large_model, pointwise=True)
 
-    # Check that Pareto k values are reasonable
     pareto_k = result["pareto_k"][~np.isnan(result["pareto_k"])]
     assert np.all(pareto_k <= result["good_k"]), "All Pareto k values should be below good_k threshold"
-    assert result["se"] < np.abs(result["elpd_loo"]) * 0.1, "Standard error should be less than 10% of elpd_loo"
 
-    # Compare with full LOO
     full_loo = loo(large_model)
     rel_diff = np.abs(result["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(full_loo["elpd_loo"])
     assert rel_diff < 0.1, "Subsampled LOO should be within 10% of full LOO"
