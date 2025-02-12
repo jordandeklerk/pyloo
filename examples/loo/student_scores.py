@@ -56,11 +56,8 @@ with pm.Model() as student_model:
     subject_std = pm.HalfNormal("subject_std", sigma=2)
 
     school_effects = pm.Normal("school_effects", mu=0, sigma=school_std, shape=n_schools)
-
     subject_effects = pm.Normal("subject_effects", mu=0, sigma=subject_std, shape=n_subjects)
-
     teacher_effects_raw = pm.Normal("teacher_effects_raw", mu=0, sigma=1, shape=(n_schools, n_teachers_per_school))
-
     teacher_effects = teacher_std * teacher_effects_raw
 
     school_idx = df.school.values
