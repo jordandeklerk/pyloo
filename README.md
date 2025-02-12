@@ -1,5 +1,5 @@
-<h1 align="center">
-<img src="./assets/pyloo_logo.png"  width="400">
+<h1 align="left">
+<img src="./assets/pyloo_logo.png"  width="300">
 </h1>
 
 <!-- [![PyPI Downloads](https://img.shields.io/pypi/dm/pyloo.svg?label=Pypi%20downloads)](https://pypi.org/project/pyloo/) -->
