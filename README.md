@@ -1,4 +1,6 @@
-<img src="./assets/logo.png" width="200" height="200" align="left">
+<h1 align="center">
+<img src="./assets/pyloo_logo.png"  width="300">
+</h1><br>
 
 <!-- [![PyPI Downloads](https://img.shields.io/pypi/dm/pyloo.svg?label=Pypi%20downloads)](https://pypi.org/project/pyloo/) -->
 <!-- [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/pyloo.svg?label=Conda%20downloads)](https://anaconda.org/conda-forge/pyloo) -->
@@ -6,9 +8,9 @@
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
 
-### PyLoo: Efficient approximate leave-one-out cross-validation for Bayesian models in Python
+### Efficient approximate leave-one-out cross-validation for Bayesian models in Python
 
-__pyloo__ is a framework-agnostic Python implementation of the [R package loo](https://github.com/stan-dev/loo), providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models. This package brings the widely-used LOO-CV methods from the R ecosystem to Python, following the same rigorous methodology and computational approaches documented at [mc-stan.org/loo](https://mc-stan.org/loo).
+__pyloo__ is a framework-agnostic Python implementation of the [R package loo](https://github.com/stan-dev/loo), providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models in a framework agnostic way. This package brings the widely-used LOO-CV methods from the R ecosystem to Python, following the same rigorous methodology and computational approaches documented at [mc-stan.org/loo](https://mc-stan.org/loo).
 
 From existing posterior simulation draws, we compute approximate LOO-CV using Pareto smoothed importance sampling (PSIS), a procedure for regularizing importance weights. As a byproduct of our calculations, we also obtain approximate standard errors for estimated predictive errors and for comparing predictive errors between two models.
 
