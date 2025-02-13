@@ -1,0 +1,92 @@
+/* Custom styles to match ArviZ's modern look */
+
+/* Improve code block styling */
+div[class^='highlight'] pre {
+    padding: 1em;
+    margin: 0.5em 0;
+    border-radius: 4px;
+}
+
+/* Enhance table styling */
+table.docutils {
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Better heading hierarchy */
+h1, h2, h3, h4, h5, h6 {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+}
+
+h1 {
+    border-bottom: 2px solid #2980b9;
+    padding-bottom: 0.5rem;
+}
+
+/* Improve API documentation layout */
+dl.py.method, dl.py.function, dl.py.class {
+    padding: 1em;
+    margin: 1em 0;
+    border: 1px solid #e1e4e5;
+    border-radius: 4px;
+}
+
+/* Better parameter styling in API docs */
+dl.field-list > dt {
+    background: #f3f6f6;
+    padding: 0.5em;
+    border-radius: 4px;
+}
+
+/* Enhance note and warning boxes */
+.admonition {
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Improve navigation sidebar */
+.bd-sidebar {
+    border-right: 1px solid #e1e4e5;
+}
+
+/* Better code syntax highlighting */
+.highlight {
+    background: #f8f9fa;
+}
+
+/* Improve API function signatures */
+dt.sig.sig-object {
+    background: #f8f9fa;
+    padding: 0.5em;
+    border-radius: 4px;
+}
+
+/* Better spacing for parameter lists */
+dl.simple dt {
+    margin-top: 0.5em;
+}
+
+/* Enhance example code blocks */
+div.highlight-python {
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Improve copy button styling */
+button.copybtn {
+    opacity: 0.5;
+    transition: opacity 0.3s ease-in-out;
+}
+
+button.copybtn:hover {
+    opacity: 1;
+}
+
+/* Better mobile responsiveness */
+@media (max-width: 768px) {
+    .bd-sidebar {
+        border-right: none;
+        border-bottom: 1px solid #e1e4e5;
+    }
+}
