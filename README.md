@@ -1,6 +1,8 @@
-<h1 align="center">
+<!-- <h1 align="center">
 <img src="./assets/pyloo_logo.png"  width="300">
-</h1>
+</h1> -->
+
+<img src="./assets/pyloo_logo.png"  width="300" align="left">
 
 <!-- [![PyPI Downloads](https://img.shields.io/pypi/dm/pyloo.svg?label=Pypi%20downloads)](https://pypi.org/project/pyloo/) -->
 <!-- [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/pyloo.svg?label=Conda%20downloads)](https://anaconda.org/conda-forge/pyloo) -->
