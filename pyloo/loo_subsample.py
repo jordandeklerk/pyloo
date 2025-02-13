@@ -119,6 +119,7 @@ def loo_subsample(
     --------
     loo : Standard LOO-CV computation
     loo_i : Pointwise LOO-CV values
+    update_subsample : Update subsampling results with new observations
     """
     inference_data = convert_to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
@@ -385,5 +386,79 @@ def loo_subsample(
     data = [base_data[k] for k in base_data.keys()]
     index = list(base_data.keys())
     result = ELPDData(data=data, index=index)
+
+    # Store additional information needed for updates
     result.estimates = estimates
+    result.estimates.data = inference_data  # Store original data
+    result.estimates.loo_approximation = loo_approximation
+    result.estimates.estimator = estimator
+    result.estimates.loo_approximation_draws = loo_approximation_draws
+    result.estimates.var_name = var_name
+
     return result
+
+
+def update_subsample(
+    loo_data: ELPDData,
+    observations: Optional[Union[int, np.ndarray]] = None,
+    **kwargs,
+) -> ELPDData:
+    """Update subsampling results with new observations or parameters.
+
+    This function allows updating the subsampling results by recomputing with a new
+    number of observations or other parameters while maintaining the original data
+    and configuration.
+
+    Parameters
+    ----------
+    loo_data : ELPDData
+        The original LOO-CV results from loo_subsample()
+    observations : Optional[Union[int, np.ndarray]], default None
+        The new subsample observations to use. Can be:
+        * An integer specifying the number of observations to subsample
+        * An array of integers providing specific indices to use
+        * None to use all observations (equivalent to standard LOO)
+    **kwargs
+        Additional keyword arguments to pass to loo_subsample()
+
+    Returns
+    -------
+    ELPDData
+        A new ELPDData object containing the updated results
+
+    Examples
+    --------
+    Update subsampling to use more observations:
+
+    .. ipython::
+
+        In [1]: import arviz as az
+           ...: from pyloo import loo_subsample, update_subsample
+           ...: # Load example dataset
+           ...: data = az.load_arviz_data("centered_eight")
+           ...: # Compute initial LOO-CV with subsampling
+           ...: result = loo_subsample(data, observations=100)
+           ...: # Update with more observations
+           ...: updated = update_subsample(result, observations=200)
+    """
+    if not isinstance(loo_data, ELPDData):
+        raise TypeError("loo_data must be an ELPDData object from loo_subsample()")
+
+    if not hasattr(loo_data.estimates, "data"):
+        raise ValueError("Cannot update: original data not available")
+
+    data = loo_data.estimates.data
+    params = {
+        "data": data,
+        "observations": observations if observations is not None else loo_data["subsample_size"],
+        "loo_approximation": getattr(loo_data.estimates, "loo_approximation", "plpd"),
+        "estimator": getattr(loo_data.estimates, "estimator", "diff_srs"),
+        "loo_approximation_draws": getattr(loo_data.estimates, "loo_approximation_draws", None),
+        "pointwise": "loo_i" in loo_data,
+        "var_name": getattr(loo_data.estimates, "var_name", None),
+        "reff": loo_data.get("r_eff", None),
+        "scale": loo_data["scale"],
+    }
+    params.update(kwargs)
+
+    return loo_subsample(**params)

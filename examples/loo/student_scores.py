@@ -12,7 +12,7 @@ project_root = str(Path(__file__).parent.parent.parent)
 sys.path.append(project_root)
 
 from pyloo.loo import loo  # noqa: E402
-from pyloo.loo_subsample import loo_subsample  # noqa: E402
+from pyloo.loo_subsample import loo_subsample, update_subsample  # noqa: E402
 
 logger = logging.getLogger("student_scores_example")
 logger.setLevel(logging.INFO)
@@ -81,14 +81,26 @@ logger.info("\nComputing full LOO-CV...")
 loo_results = loo(idata, pointwise=True)
 logger.info(loo_results)
 
-logger.info("\nComputing subsampled LOO-CV...")
-n_subsample = int(0.2 * len(df))
-loo_subsample_results = loo_subsample(idata, observations=n_subsample, loo_approximation="plpd", pointwise=True)
-logger.info(loo_subsample_results)
+# Initial subsampling with 10% of the data
+logger.info("\nComputing initial subsampled LOO-CV (10% of data)...")
+n_subsample_initial = int(0.1 * len(df))
+loo_subsample_initial = loo_subsample(idata, observations=n_subsample_initial, loo_approximation="plpd", pointwise=True)
+logger.info(loo_subsample_initial)
+
+# Update subsampling to 20% of the data
+logger.info("\nUpdating subsampled LOO-CV to 20% of data...")
+n_subsample_updated = int(0.2 * len(df))
+loo_subsample_updated = update_subsample(loo_subsample_initial, observations=n_subsample_updated)
+logger.info(loo_subsample_updated)
 
 logger.info("\nComparison of estimates:")
-logger.info(f"Full LOO ELPD:      {loo_results.elpd_loo:.2f} ± {loo_results.se:.2f}")
-logger.info(f"Subsampled LOO ELPD: {loo_subsample_results.elpd_loo:.2f} ± {loo_subsample_results.se:.2f}")
+logger.info(f"Full LOO ELPD:           {loo_results.elpd_loo:.2f} ± {loo_results.se:.2f}")
+logger.info(f"Initial subsample ELPD:   {loo_subsample_initial.elpd_loo:.2f} ± {loo_subsample_initial.se:.2f}")
+logger.info(f"Updated subsample ELPD:   {loo_subsample_updated.elpd_loo:.2f} ± {loo_subsample_updated.se:.2f}")
+
+logger.info("\nSubsampling standard errors:")
+logger.info(f"Initial subsample SE:     {loo_subsample_initial.subsampling_SE:.2f}")
+logger.info(f"Updated subsample SE:     {loo_subsample_updated.subsampling_SE:.2f}")
 
 logger.info("\nPareto k diagnostics summary:")
 logger.info("Full LOO k values:")
@@ -97,9 +109,24 @@ logger.info(f"  Mean: {np.mean(k_values):.3f}")
 logger.info(f"  Max:  {np.max(k_values):.3f}")
 logger.info(f"  # of k > 0.7: {np.sum(k_values > 0.7)}")
 
-if hasattr(loo_subsample_results, "pareto_k"):
-    logger.info("\nSubsampled LOO k values:")
-    k_values_sub = loo_subsample_results.pareto_k
-    logger.info(f"  Mean: {np.mean(k_values_sub):.3f}")
-    logger.info(f"  Max:  {np.max(k_values_sub):.3f}")
-    logger.info(f"  # of k > 0.7: {np.sum(k_values_sub > 0.7)}")
+if hasattr(loo_subsample_initial, "pareto_k"):
+    logger.info("\nInitial subsample k values:")
+    k_values_initial = loo_subsample_initial.pareto_k[~np.isnan(loo_subsample_initial.pareto_k)]
+    logger.info(f"  Mean: {np.mean(k_values_initial):.3f}")
+    logger.info(f"  Max:  {np.max(k_values_initial):.3f}")
+    logger.info(f"  # of k > 0.7: {np.sum(k_values_initial > 0.7)}")
+
+if hasattr(loo_subsample_updated, "pareto_k"):
+    logger.info("\nUpdated subsample k values:")
+    k_values_updated = loo_subsample_updated.pareto_k[~np.isnan(loo_subsample_updated.pareto_k)]
+    logger.info(f"  Mean: {np.mean(k_values_updated):.3f}")
+    logger.info(f"  Max:  {np.max(k_values_updated):.3f}")
+    logger.info(f"  # of k > 0.7: {np.sum(k_values_updated > 0.7)}")
+
+# Compare convergence to full LOO
+rel_diff_initial = np.abs(loo_subsample_initial.elpd_loo - loo_results.elpd_loo) / np.abs(loo_results.elpd_loo)
+rel_diff_updated = np.abs(loo_subsample_updated.elpd_loo - loo_results.elpd_loo) / np.abs(loo_results.elpd_loo)
+
+logger.info("\nConvergence to full LOO:")
+logger.info(f"Initial relative difference: {rel_diff_initial:.3%}")
+logger.info(f"Updated relative difference: {rel_diff_updated:.3%}")

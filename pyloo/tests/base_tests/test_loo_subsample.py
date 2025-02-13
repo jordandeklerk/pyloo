@@ -7,9 +7,13 @@ import pytest
 import xarray as xr
 from numpy.testing import assert_array_almost_equal
 
-from pyloo.loo import loo
-from pyloo.loo_subsample import EstimatorMethod, LooApproximationMethod, loo_subsample
-
+from ...loo import loo
+from ...loo_subsample import (
+    EstimatorMethod,
+    LooApproximationMethod,
+    loo_subsample,
+    update_subsample,
+)
 from ..helpers import create_large_model
 
 
@@ -219,3 +223,83 @@ def test_loo_subsample_default_parameters(large_model):
     full_loo = loo(large_model)
     rel_diff = np.abs(result["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(full_loo["elpd_loo"])
     assert rel_diff < 0.1, "Subsampled LOO should be within 10% of full LOO"
+
+
+def test_update_subsample_basic(large_model):
+    """Test basic update functionality."""
+    result = loo_subsample(large_model, observations=1000)
+    updated = update_subsample(result, observations=2000)
+
+    assert updated is not None
+    assert updated["subsample_size"] == 2000
+    assert updated["subsampling_SE"] <= result["subsampling_SE"]
+
+
+def test_update_subsample_validation():
+    """Test validation in update_subsample."""
+    with pytest.raises(TypeError, match="must be an ELPDData object"):
+        update_subsample(None, observations=1000)
+
+    with pytest.raises(TypeError, match="must be an ELPDData object"):
+        update_subsample({}, observations=1000)
+
+
+def test_update_subsample_consistency(large_model):
+    """Test consistency of results after update."""
+    result = loo_subsample(large_model, observations=1000)
+    updated = update_subsample(result, observations=1000)
+    rel_diff = np.abs(updated["elpd_loo"] - result["elpd_loo"]) / np.abs(result["elpd_loo"])
+    rel_diff = np.abs(updated["elpd_loo"] - result["elpd_loo"]) / np.abs(result["elpd_loo"])
+    assert rel_diff < 0.1, "Updated results should be similar to original with same observations"
+
+
+def test_update_subsample_parameter_inheritance(large_model):
+    """Test that update inherits parameters correctly."""
+    result = loo_subsample(
+        large_model,
+        observations=1000,
+        loo_approximation="plpd",
+        estimator="diff_srs",
+        pointwise=True,
+    )
+
+    updated = update_subsample(result, observations=2000)
+
+    assert hasattr(updated.estimates, "loo_approximation")
+    assert updated.estimates.loo_approximation == "plpd"
+    assert hasattr(updated.estimates, "estimator")
+    assert updated.estimates.estimator == "diff_srs"
+    assert "loo_i" in updated  # pointwise was True
+
+
+def test_update_subsample_parameter_override(large_model):
+    """Test that update allows parameter overrides."""
+    result = loo_subsample(
+        large_model,
+        observations=1000,
+        loo_approximation="plpd",
+        estimator="diff_srs",
+    )
+    updated = update_subsample(
+        result,
+        observations=2000,
+        loo_approximation="lpd",
+        estimator="srs",
+    )
+
+    assert hasattr(updated.estimates, "loo_approximation")
+    assert updated.estimates.loo_approximation == "lpd"
+    assert hasattr(updated.estimates, "estimator")
+    assert updated.estimates.estimator == "srs"
+
+
+def test_update_subsample_exact_indices(large_model):
+    """Test update with exact indices."""
+    initial_indices = np.array([0, 100, 200, 300])
+    result = loo_subsample(large_model, observations=initial_indices, pointwise=True)
+
+    new_indices = np.array([0, 100, 200, 300, 400, 500])
+    updated = update_subsample(result, observations=new_indices, pointwise=True)
+
+    non_nan_idx = np.where(~np.isnan(updated["loo_i"]))[0]
+    assert_array_almost_equal(non_nan_idx, new_indices)
