@@ -52,6 +52,46 @@ subsample_result = pl.loo_subsample(
 )
 
 print(subsample_result)
+
+# Update subsampling results with more observations
+updated_result = pl.update_subsample(
+    subsample_result,
+    observations=800  # Increase subsample size
+)
+
+print(updated_result)
+```
+
+For model comparison, we provide tools to compare multiple models:
+
+```python
+model1 = az.load_arviz_data("centered_eight")
+model2 = az.load_arviz_data("non_centered_eight")
+
+# Compare models using stacking weights (default)
+comparison = pl.loo_compare(
+    {
+        "centered": model1,
+        "non_centered": model2
+    },
+    ic="loo",                # Information criterion to use
+    method="stacking",       # Method for computing weights
+    scale="log"              # Scale for the scores
+)
+
+print(comparison)
+
+# Compare with subsampling for large datasets
+comparison_subsampled = pl.loo_compare(
+    {
+        "centered": model1,
+        "non_centered": model2
+    },
+    observations=400,       # Use subsampling
+    estimator="diff_srs"    # Subsampling estimator
+)
+
+print(comparison_subsampled)
 ```
 
 ### Installation
