@@ -23,15 +23,16 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 * Vehtari, A., Gelman, A., and Gabry, J. (2024). [Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC](https://arxiv.org/abs/1507.02646). _Statistics and Computing_. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
 
-### Quick Usage
+### Usage
 
+#### Standard PSIS-LOO-CV
 ```python
 import pyloo as pl
 import arviz as az
 
 data = az.load_arviz_data("centered_eight")
 
-# Standard LOO-CV
+# PSIS-LOO-CV
 loo_result = pl.loo(
     data,
     pointwise=True,  # Return pointwise values
@@ -41,21 +42,28 @@ loo_result = pl.loo(
 print(loo_result)
 ```
 ```
-Computed from 4000 by 8 log-likelihood matrix
+Computed from 4000 samples using all 8 observations.
 
-         Estimate       SE
-elpd_loo   -11.2        2.1
-p_loo        3.1        1.4
-looic       22.4        4.2
+           Estimate   SE
+elpd_loo   -11.2     2.1
+p_loo       3.1      -
+looic       22.4     4.2
 
-All Pareto k estimates are good (k < 0.7)
-See help('pareto-k-diagnostic') for details
+All Pareto k estimates are good (k < 0.7).
+See help('pareto-k-diagnostic') for details.
+
+Pareto k diagnostic values:
+                          Count    Pct.
+(-Inf, 0.70)                 8   100.0
+[0.70, 1)                    0     0.0
+[1, Inf)                     0     0.0
 ```
 
+#### LOO-CV with Subsampling
 For large datasets, we provide efficient subsampling-based computation:
 
 ```python
-# LOO-CV with subsampling
+# PSIS-LOO-CV with subsampling
 subsample_result = pl.loo_subsample(
     data,
     observations=400,          # Subsample size
@@ -74,7 +82,8 @@ updated_result = pl.update_subsample(
 print(updated_result)
 ```
 
-For model comparison, we provide tools to compare multiple models:
+#### Model Comparison
+Compare multiple models using stacking weights or other methods:
 
 ```python
 model1 = az.load_arviz_data("centered_eight")
@@ -103,18 +112,35 @@ centered         -11.5    2.3    3.3     0.38       -0.3       0.4
 All Pareto k estimates are good (k < 0.7)
 ```
 
+#### Diagnostics and Warnings
+When the model fit is problematic, you'll receive warnings about high Pareto k values:
+
 ```python
-# Compare with subsampling for large datasets
-comparison_subsampled = pl.loo_compare(
-    {
-        "centered": model1,
-        "non_centered": model2
-    },
-    observations=400,       # Use subsampling
-    estimator="diff_srs"    # Subsampling estimator
+problematic_loo = pl.loo(
+    data,
+    pointwise=True
 )
 
-print(comparison_subsampled)
+print(problematic_loo)
+```
+```
+Computed from 4000 samples using all 8 observations.
+
+           Estimate   SE
+elpd_loo   -15.6     4.8
+p_loo       5.2      -
+looic       31.2     9.6
+
+Some Pareto k estimates are high (k >= 0.7).
+See help('pareto-k-diagnostic') for details.
+
+Pareto k diagnostic values:
+                          Count    Pct.
+(-Inf, 0.70)                 5    62.5
+[0.70, 1)                    2    25.0
+[1, Inf)                     1    12.5
+
+There has been a warning during the calculation. Please check the results.
 ```
 
 ### Installation
