@@ -154,7 +154,6 @@ def loo_compare(
             elif scale == "deviance":
                 diff *= -2
 
-            # Compute standard error of the difference
             pointwise_diff = elpds[name]["loo_i"].values - elpds[best_model]["loo_i"].values
             dse = np.sqrt(len(pointwise_diff) * np.var(pointwise_diff))
 
@@ -342,7 +341,7 @@ def _compute_weights(
         return _stacking_weights(elpds, ic, scale)
     elif method == "bb-pseudo-bma":
         return _bb_pseudo_bma_weights(elpds, ic, b_samples, alpha, seed, scale)
-    else:  # pseudo-bma
+    else:
         return _pseudo_bma_weights(elpds, ic, scale)
 
 
@@ -380,7 +379,6 @@ def _stacking_weights(elpds: Mapping[str, ELPDData], ic: str, scale: str) -> Dic
             grad[k] = np.sum((exp_elpds[:, k] - exp_elpds[:, -1]) / denom)
         return -grad
 
-    # Optimize weights
     x0 = np.full(n_models - 1, 1.0 / n_models)
     bounds = [(0.0, 1.0)] * (n_models - 1)
     constraints = [
@@ -426,7 +424,6 @@ def _bb_pseudo_bma_weights(
     elif scale == "negative_log":
         ic_i_val *= -1
 
-    # Bayesian bootstrap weights
     rng = np.random.RandomState(seed) if isinstance(seed, int) else seed
     b_weighting = st.dirichlet.rvs(alpha=[alpha] * rows, size=b_samples, random_state=rng)
     weights = np.zeros((b_samples, cols))
