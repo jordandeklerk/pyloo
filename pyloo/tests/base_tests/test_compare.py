@@ -1,4 +1,5 @@
 """Tests for model comparison functionality."""
+
 from copy import deepcopy
 
 import arviz as az

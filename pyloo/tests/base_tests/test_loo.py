@@ -1,4 +1,5 @@
 """Tests for the LOO module."""
+
 from copy import deepcopy
 
 import arviz as az
