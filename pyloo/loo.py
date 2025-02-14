@@ -1,25 +1,33 @@
 """Leave-one-out cross-validation (LOO-CV) using importance sampling methods based on ArviZ."""
 
 import warnings
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
-from arviz.data import convert_to_inference_data
+from arviz.data import InferenceData
 from arviz.stats.diagnostics import ess
 
 from .elpd import ELPDData
 from .importance_sampling import ISMethod, compute_importance_weights
 from .rcparams import rcParams
-from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
+from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
 
-def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis"):
+def loo(
+    data: Union[InferenceData, Any],
+    pointwise: Optional[bool] = None,
+    var_name: Optional[str] = None,
+    reff: Optional[float] = None,
+    scale: Optional[str] = None,
+    method: Union[Literal["psis", "sis", "tis"], ISMethod] = "psis",
+) -> ELPDData:
     """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
 
-        Estimates the expected log pointwise predictive density (elpd) using importance sampling
-        leave-one-out cross-validation. By default, uses Pareto-smoothed importance sampling (PSIS),
-        which is the recommended method. Also calculates LOO's standard error and the effective
-        number of parameters. Read more theory here https://arxiv.org/abs/1507.04544 and here
-        https://arxiv.org/abs/1507.02646
+    Estimates the expected log pointwise predictive density (elpd) using importance sampling
+    leave-one-out cross-validation. By default, uses Pareto-smoothed importance sampling (PSIS),
+    which is the recommended method. Also calculates LOO's standard error and the effective
+    number of parameters.
+
     Parameters
     ----------
     data: obj
@@ -94,7 +102,7 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
         --------
         loo_i : Pointwise LOO-CV values
         loo_subsample : Subsampled LOO-CV computation"""
-    inference_data = convert_to_inference_data(data)
+    inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
 
@@ -146,14 +154,15 @@ def loo(data, pointwise=None, var_name=None, reff=None, scale=None, method="psis
         )
 
     try:
-        method = ISMethod(method.lower())
+        method = method if isinstance(method, ISMethod) else ISMethod(method.lower())
     except ValueError:
         raise ValueError(f"Invalid method '{method}'. Must be one of: {', '.join(m.value for m in ISMethod)}")
 
     if method != ISMethod.PSIS:
         warnings.warn(
-            f"Using {method.value.upper()} for LOO computation. Note that PSIS is the recommended "
-            "method as it is typically more efficient and reliable.",
+            f"Using {method.value.upper() if isinstance(method, ISMethod) else method.upper()} "
+            "for LOO computation. Note that PSIS is the recommended method as it is typically "
+            "more efficient and reliable.",
             UserWarning,
             stacklevel=2,
         )
