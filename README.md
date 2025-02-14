@@ -40,6 +40,19 @@ loo_result = pl.loo(
 print(loo_result)
 ```
 
+Example output:
+```
+Computed from 4000 by 8 log-likelihood matrix
+
+         Estimate       SE
+elpd_loo   -11.2        2.1
+p_loo        3.1        1.4
+looic       22.4        4.2
+
+All Pareto k estimates are good (k < 0.7)
+See help('pareto-k-diagnostic') for details
+```
+
 For large datasets, we provide efficient subsampling-based computation:
 
 ```python
@@ -80,7 +93,20 @@ comparison = pl.loo_compare(
 )
 
 print(comparison)
+```
 
+Example output:
+```
+Model comparison using LOO (scale: log)
+
+                elpd_loo   se    p_loo   weight    elpd_diff    dse
+non_centered     -11.2    2.1    3.1     0.62        0.0       0.0
+centered         -11.5    2.3    3.3     0.38       -0.3       0.4
+
+All Pareto k estimates are good (k < 0.7)
+```
+
+```python
 # Compare with subsampling for large datasets
 comparison_subsampled = pl.loo_compare(
     {
