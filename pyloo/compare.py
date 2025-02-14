@@ -131,7 +131,6 @@ def loo_compare(
     except Exception as e:
         raise e.__class__("Encountered error in ELPD computation of compare.") from e
 
-    # Sort models by ELPD
     ascending = scale != "log"
 
     model_names = list(elpds.keys())
@@ -139,7 +138,6 @@ def loo_compare(
     order = np.argsort(elpd_values) if ascending else np.argsort(-elpd_values)
     ordered_names = [model_names[i] for i in order]
 
-    # Compute ELPD differences and standard errors relative to best model
     best_model = ordered_names[0]
     diffs = []
     ses = []
@@ -164,7 +162,6 @@ def loo_compare(
         ses.append(elpds[name]["se"])
         dses.append(dse)
 
-    # Compute model weights
     weights_result = _compute_weights(
         elpds=elpds,
         ic=ic,
