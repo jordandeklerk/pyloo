@@ -29,8 +29,8 @@ class SimpleRandomSamplingEstimator(EstimatorProtocol[SRSEstimate]):
         ----------
         **kwargs : Any
             Must contain:
-            * y: The observed values
-            * N: Total population size
+            - y: The observed values
+            - N: Total population size
 
         Returns
         -------

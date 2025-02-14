@@ -83,9 +83,9 @@ def subsample_indices(
     ----------
     estimator : str
         The estimation method to use:
-        * "diff_srs": Difference estimator with simple random sampling
-        * "hh_pps": Hansen-Hurwitz estimator with probability proportional to size
-        * "srs": Simple random sampling
+        - "diff_srs": Difference estimator with simple random sampling
+        - "hh_pps": Hansen-Hurwitz estimator with probability proportional to size
+        - "srs": Simple random sampling
     elpd_loo_approximation : np.ndarray
         Vector of LOO approximations for all observations
     observations : int
@@ -95,8 +95,8 @@ def subsample_indices(
     -------
     SubsampleIndices
         Named tuple containing:
-        * idx: Array of sampled observation indices
-        * m_i: Array of counts for each observation
+        - idx: Array of sampled observation indices
+        - m_i: Array of counts for each observation
     """
     if estimator == "hh_pps":
         pi_values = np.abs(elpd_loo_approximation)
@@ -141,9 +141,9 @@ def compare_indices(
     -------
     Dict[str, SubsampleIndices]
         Dictionary containing:
-        * 'new': Indices not in current set
-        * 'add': Indices in both sets
-        * 'remove': Indices only in current set
+        - 'new': Indices not in current set
+        - 'add': Indices in both sets
+        - 'remove': Indices only in current set
     """
     result = {}
 

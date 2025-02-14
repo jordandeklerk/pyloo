@@ -25,10 +25,10 @@ class HansenHurwitzEstimator(EstimatorProtocol[HHEstimate]):
         ----------
         **kwargs : Any
             Must contain:
-            * z: Normalized probabilities for each observation
-            * m_i: Number of times each observation was selected
-            * y: The observed values
-            * N: Total population size
+            - z: Normalized probabilities for each observation
+            - m_i: Number of times each observation was selected
+            - y: The observed values
+            - N: Total population size
 
         Returns
         -------

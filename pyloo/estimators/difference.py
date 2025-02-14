@@ -25,9 +25,9 @@ class DifferenceEstimator(EstimatorProtocol[DiffEstimate]):
         ----------
         **kwargs : Any
             Must contain:
-            * y_approx: Approximated values for all observations
-            * y: The observed values for sampled observations
-            * y_idx: Indices of sampled observations in y_approx
+            - y_approx: Approximated values for all observations
+            - y: The observed values for sampled observations
+            - y_idx: Indices of sampled observations in y_approx
 
         Returns
         -------
