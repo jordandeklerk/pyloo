@@ -39,8 +39,6 @@ loo_result = pl.loo(
 
 print(loo_result)
 ```
-
-Example output:
 ```
 Computed from 4000 by 8 log-likelihood matrix
 
@@ -94,8 +92,6 @@ comparison = pl.loo_compare(
 
 print(comparison)
 ```
-
-Example output:
 ```
 Model comparison using LOO (scale: log)
 
