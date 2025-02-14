@@ -430,7 +430,8 @@ def _bb_pseudo_bma_weights(
         ic_i_val *= -1
 
     # Bayesian bootstrap weights
-    b_weighting = st.dirichlet.rvs(alpha=[alpha] * rows, size=b_samples, random_state=seed)
+    rng = np.random.RandomState(seed) if isinstance(seed, int) else seed
+    b_weighting = st.dirichlet.rvs(alpha=[alpha] * rows, size=b_samples, random_state=rng)
     weights = np.zeros((b_samples, cols))
     z_bs = np.zeros_like(weights)
 
