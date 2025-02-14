@@ -87,16 +87,16 @@ def loo(
         .. ipython::
 
             In [1]: import pyloo as pl
-                ...: import arviz as az
-                ...: data = az.load_arviz_data("centered_eight")
-                ...: pl.loo(data)
+               ...: import arviz as az
+               ...: data = az.load_arviz_data("centered_eight")
+               ...: pl.loo(data)
 
         Calculate LOO of a model and return the pointwise values:
 
         .. ipython::
 
             In [2]: data_loo = pl.loo(data, pointwise=True)
-                ...: data_loo.loo_i
+               ...: data_loo.loo_i
 
         See Also
         --------
