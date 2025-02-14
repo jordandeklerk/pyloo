@@ -49,7 +49,8 @@ class RcParams(MutableMapping):
             self._underlying_storage[key] = cval
         except KeyError as err:
             raise KeyError(
-                f"{key} is not a valid rc parameter " f"(see rcParams.keys() for a list of valid parameters)"
+                f"{key} is not a valid rc parameter "
+                "(see rcParams.keys() for a list of valid parameters)"
             ) from err
 
     def __getitem__(self, key: str) -> Any:
@@ -66,16 +67,23 @@ class RcParams(MutableMapping):
 
     def pop(self, key: str, default: Any = None) -> None:
         """Raise TypeError if someone tries to delete a key from RcParams."""
-        raise TypeError("RcParams keys cannot be deleted. Use .get(key) or RcParams[key] to check values")
+        raise TypeError(
+            "RcParams keys cannot be deleted. Use .get(key) or RcParams[key] to check"
+            " values"
+        )
 
     def popitem(self) -> Tuple[Any, Any]:
         """Raise TypeError if someone tries to delete a key from RcParams."""
-        raise TypeError("RcParams keys cannot be deleted. Use .get(key) or RcParams[key] to check values")
+        raise TypeError(
+            "RcParams keys cannot be deleted. Use .get(key) or RcParams[key] to check"
+            " values"
+        )
 
     def setdefault(self, key: str, default: Any = None) -> None:
         """Raise error when using setdefault."""
         raise TypeError(
-            "Defaults in RcParams are handled on object initialization. " "Use pyloo configuration file instead."
+            "Defaults in RcParams are handled on object initialization. "
+            "Use pyloo configuration file instead."
         )
 
     def __repr__(self) -> str:
@@ -85,7 +93,10 @@ class RcParams(MutableMapping):
 
     def __str__(self) -> str:
         """Customize str/print of RcParams objects."""
-        return "\n".join(f"{key:<22}: {value}" for key, value in sorted(self._underlying_storage.items()))
+        return "\n".join(
+            f"{key:<22}: {value}"
+            for key, value in sorted(self._underlying_storage.items())
+        )
 
     def __iter__(self):
         """Yield sorted list of keys."""

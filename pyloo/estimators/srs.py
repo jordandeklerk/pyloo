@@ -55,7 +55,14 @@ class SimpleRandomSamplingEstimator(EstimatorProtocol[SRSEstimate]):
         v_y_hat = N**2 * (1 - m / N) * sample_var / m
         hat_v_y = N * sample_var
 
-        return SRSEstimate(y_hat=y_hat, v_y_hat=v_y_hat, hat_v_y=hat_v_y, m=m, N=N, subsampling_SE=np.sqrt(v_y_hat))
+        return SRSEstimate(
+            y_hat=y_hat,
+            v_y_hat=v_y_hat,
+            hat_v_y=hat_v_y,
+            m=m,
+            N=N,
+            subsampling_SE=np.sqrt(v_y_hat),
+        )
 
 
 def srs_estimate(

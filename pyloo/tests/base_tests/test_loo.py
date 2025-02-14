@@ -66,7 +66,9 @@ def test_loo_pointwise(centered_eight):
 
 def test_loo_bad_scale(centered_eight):
     """Test LOO computation with invalid scale."""
-    with pytest.raises(TypeError, match='Valid scale values are "deviance", "log", "negative_log"'):
+    with pytest.raises(
+        TypeError, match='Valid scale values are "deviance", "log", "negative_log"'
+    ):
         loo(centered_eight, scale="invalid")
 
 
@@ -82,7 +84,9 @@ def test_loo_missing_posterior():
     data = az.from_dict(
         log_likelihood={"obs": np.random.randn(4, 100, 8)},
     )
-    with pytest.raises(TypeError, match="Must be able to extract a posterior group from data"):
+    with pytest.raises(
+        TypeError, match="Must be able to extract a posterior group from data"
+    ):
         loo(data, reff=None)
 
     assert loo(data, reff=0.7) is not None
@@ -114,11 +118,16 @@ def test_loo_pointwise_warning(centered_eight):
 
 def test_psislw_matches(centered_eight):
     """Test that psislw results match between PyLOO and ArviZ."""
-    log_likelihood = centered_eight.log_likelihood["obs"].stack(__sample__=("chain", "draw"))
+    log_likelihood = centered_eight.log_likelihood["obs"].stack(
+        __sample__=("chain", "draw")
+    )
     n_samples = log_likelihood.shape[-1]
 
     ess_p = az.ess(centered_eight.posterior, method="mean")
-    reff = np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean() / n_samples
+    reff = (
+        np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean()
+        / n_samples
+    )
 
     # Compare PyLOO and ArviZ psislw results
     pl_lw, pl_k = psislw(-log_likelihood, reff)
@@ -288,7 +297,9 @@ def test_loo_method_results(centered_eight):
     assert np.all(tis_result["ess"] >= 1)
     assert np.all(tis_result["ess"] <= n_samples)
 
-    elpds = np.array([psis_result["elpd_loo"], sis_result["elpd_loo"], tis_result["elpd_loo"]])
+    elpds = np.array(
+        [psis_result["elpd_loo"], sis_result["elpd_loo"], tis_result["elpd_loo"]]
+    )
     assert np.all(np.isfinite(elpds))
 
     ses = np.array([psis_result["se"], sis_result["se"], tis_result["se"]])

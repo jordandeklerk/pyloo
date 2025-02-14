@@ -66,7 +66,14 @@ class HansenHurwitzEstimator(EstimatorProtocol[HHEstimate]):
         y_hat = np.sum(m_i * (y / z)) / m
         v_y_hat = (np.sum(m_i * ((y / z - y_hat) ** 2)) / m) / (m - 1)
         hat_v_y = (np.sum(m_i * (y**2 / z)) / m) + v_y_hat / N - y_hat**2 / N
-        return HHEstimate(y_hat=y_hat, v_y_hat=v_y_hat, hat_v_y=hat_v_y, m=m, N=N, subsampling_SE=np.sqrt(v_y_hat))
+        return HHEstimate(
+            y_hat=y_hat,
+            v_y_hat=v_y_hat,
+            hat_v_y=hat_v_y,
+            m=m,
+            N=N,
+            subsampling_SE=np.sqrt(v_y_hat),
+        )
 
 
 def compute_sampling_probabilities(

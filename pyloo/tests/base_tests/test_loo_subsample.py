@@ -36,7 +36,9 @@ def test_loo_subsample_performance(large_model):
 
     assert sub_time < full_time / 2
 
-    rel_diff = np.abs(sub_loo["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(full_loo["elpd_loo"])
+    rel_diff = np.abs(sub_loo["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(
+        full_loo["elpd_loo"]
+    )
     assert rel_diff < 0.1, "Subsampled LOO should be within 10% of full LOO"
 
 
@@ -171,7 +173,10 @@ def test_loo_subsample_warning(large_model):
     with pytest.warns(UserWarning):
         result = loo_subsample(large_model, observations=1000, pointwise=True)
         assert result is not None
-        assert any(k > result["good_k"] for k in result["pareto_k"][~np.isnan(result["pareto_k"])])
+        assert any(
+            k > result["good_k"]
+            for k in result["pareto_k"][~np.isnan(result["pareto_k"])]
+        )
 
 
 def test_loo_subsample_multiple_groups(large_model):
@@ -200,7 +205,9 @@ def test_loo_subsample_consistency(large_model):
         result = loo_subsample(large_model, observations=n)
         ses.append(result["subsampling_SE"])
 
-    assert ses[0] > ses[-1], "Subsampling standard error should decrease with more observations"
+    assert (
+        ses[0] > ses[-1]
+    ), "Subsampling standard error should decrease with more observations"
 
 
 def test_loo_subsample_exact_indices(large_model):
@@ -219,10 +226,14 @@ def test_loo_subsample_default_parameters(large_model):
     result = loo_subsample(large_model, pointwise=True)
 
     pareto_k = result["pareto_k"][~np.isnan(result["pareto_k"])]
-    assert np.all(pareto_k <= result["good_k"]), "All Pareto k values should be below good_k threshold"
+    assert np.all(
+        pareto_k <= result["good_k"]
+    ), "All Pareto k values should be below good_k threshold"
 
     full_loo = loo(large_model)
-    rel_diff = np.abs(result["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(full_loo["elpd_loo"])
+    rel_diff = np.abs(result["elpd_loo"] - full_loo["elpd_loo"]) / np.abs(
+        full_loo["elpd_loo"]
+    )
     assert rel_diff < 0.1, "Subsampled LOO should be within 10% of full LOO"
 
 
@@ -249,9 +260,15 @@ def test_update_subsample_consistency(large_model):
     """Test consistency of results after update."""
     result = loo_subsample(large_model, observations=1000)
     updated = update_subsample(result, observations=1000)
-    rel_diff = np.abs(updated["elpd_loo"] - result["elpd_loo"]) / np.abs(result["elpd_loo"])
-    rel_diff = np.abs(updated["elpd_loo"] - result["elpd_loo"]) / np.abs(result["elpd_loo"])
-    assert rel_diff < 0.1, "Updated results should be similar to original with same observations"
+    rel_diff = np.abs(updated["elpd_loo"] - result["elpd_loo"]) / np.abs(
+        result["elpd_loo"]
+    )
+    rel_diff = np.abs(updated["elpd_loo"] - result["elpd_loo"]) / np.abs(
+        result["elpd_loo"]
+    )
+    assert (
+        rel_diff < 0.1
+    ), "Updated results should be similar to original with same observations"
 
 
 def test_update_subsample_parameter_inheritance(large_model):

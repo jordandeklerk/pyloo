@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for helping us improve the documentation!
-        
+
   - type: dropdown
     id: doc_type
     attributes:

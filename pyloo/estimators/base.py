@@ -101,17 +101,23 @@ def subsample_indices(
     if estimator == "hh_pps":
         pi_values = np.abs(elpd_loo_approximation)
         pi_values = pi_values / pi_values.sum()
-        idx = np.random.choice(len(elpd_loo_approximation), size=observations, replace=True, p=pi_values)
+        idx = np.random.choice(
+            len(elpd_loo_approximation), size=observations, replace=True, p=pi_values
+        )
         unique_idx, counts = np.unique(idx, return_counts=True)
         return SubsampleIndices(idx=unique_idx, m_i=counts)
 
     elif estimator in ("diff_srs", "srs"):
         if observations > len(elpd_loo_approximation):
             raise ValueError(
-                "Number of observations cannot exceed total sample size " "when using SRS without replacement"
+                "Number of observations cannot exceed total sample size "
+                "when using SRS without replacement"
             )
-        idx = np.random.choice(len(elpd_loo_approximation), size=observations, replace=False)
-        idx.sort()
+        idx = sorted(
+            np.random.choice(
+                len(elpd_loo_approximation), size=observations, replace=False
+            )
+        )
         return SubsampleIndices(idx=idx, m_i=np.ones_like(idx))
 
     else:
@@ -143,14 +149,20 @@ def compare_indices(
 
     new_mask = ~np.isin(new_indices.idx, current_indices.idx)
     if new_mask.any():
-        result["new"] = SubsampleIndices(idx=new_indices.idx[new_mask], m_i=new_indices.m_i[new_mask])
+        result["new"] = SubsampleIndices(
+            idx=new_indices.idx[new_mask], m_i=new_indices.m_i[new_mask]
+        )
 
     add_mask = np.isin(new_indices.idx, current_indices.idx)
     if add_mask.any():
-        result["add"] = SubsampleIndices(idx=new_indices.idx[add_mask], m_i=new_indices.m_i[add_mask])
+        result["add"] = SubsampleIndices(
+            idx=new_indices.idx[add_mask], m_i=new_indices.m_i[add_mask]
+        )
 
     remove_mask = ~np.isin(current_indices.idx, new_indices.idx)
     if remove_mask.any():
-        result["remove"] = SubsampleIndices(idx=current_indices.idx[remove_mask], m_i=current_indices.m_i[remove_mask])
+        result["remove"] = SubsampleIndices(
+            idx=current_indices.idx[remove_mask], m_i=current_indices.m_i[remove_mask]
+        )
 
     return result

@@ -54,7 +54,8 @@ def get_estimator(method: str) -> EstimatorProtocol:
         return estimator_cls()
     except KeyError:
         raise ValueError(
-            f"Unknown estimator method: {method}. " f"Must be one of: {', '.join(ESTIMATOR_REGISTRY.keys())}"
+            f"Unknown estimator method: {method}. "
+            f"Must be one of: {', '.join(ESTIMATOR_REGISTRY.keys())}"
         )
 
 

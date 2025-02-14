@@ -84,7 +84,11 @@ logger.info(comparison_results_bb)
 
 logger.info("\nComparison of estimates:")
 logger.info(f"Full LOO ELPD:      {loo_results.elpd_loo:.2f} ± {loo_results.se:.2f}")
-logger.info(f"Subsampled LOO ELPD: {loo_subsample_results.elpd_loo:.2f} ± {loo_subsample_results.se:.2f}")
+subsample_msg = (
+    f"Subsampled LOO ELPD: {loo_subsample_results.elpd_loo:.2f} ± "
+    f"{loo_subsample_results.se:.2f}"
+)
+logger.info(subsample_msg)
 
 logger.info("\nPareto k diagnostics:")
 logger.info("Full LOO k values: %s", loo_results.pareto_k)

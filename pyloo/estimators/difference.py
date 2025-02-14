@@ -123,4 +123,6 @@ def diff_srs_estimate(
         The estimated ELPD and its variance
     """
     estimator = DifferenceEstimator()
-    return estimator.estimate(y_approx=elpd_loo_approximation, y=elpd_loo_i, y_idx=sample_indices)
+    return estimator.estimate(
+        y_approx=elpd_loo_approximation, y=elpd_loo_i, y_idx=sample_indices
+    )

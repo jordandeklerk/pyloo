@@ -89,13 +89,20 @@ def compute_importance_weights(
         try:
             method = ISMethod(method.lower())
         except ValueError:
-            raise ValueError(f"Invalid method '{method}'. Must be one of: {', '.join(m.value for m in ISMethod)}")
+            valid_methods = ", ".join(m.value for m in ISMethod)
+            raise ValueError(
+                f"Invalid method '{method}'. Must be one of: {valid_methods}"
+            )
 
     log_weights = deepcopy(log_weights)
 
     if hasattr(log_weights, "__sample__"):
         n_samples = len(log_weights.__sample__)
-        shape = [size for size, dim in zip(log_weights.shape, log_weights.dims) if dim != "__sample__"]
+        shape = [
+            size
+            for size, dim in zip(log_weights.shape, log_weights.dims)
+            if dim != "__sample__"
+        ]
     else:
         n_samples = log_weights.shape[-1]
         shape = log_weights.shape[:-1]
@@ -103,10 +110,15 @@ def compute_importance_weights(
     out = np.empty_like(log_weights), np.empty(shape)
 
     ufunc_kwargs = {"n_dims": 1, "n_output": 2, "ravel": False, "check_shape": False}
-    kwargs = {"input_core_dims": [["__sample__"]], "output_core_dims": [["__sample__"], []]}
+    kwargs = {
+        "input_core_dims": [["__sample__"]],
+        "output_core_dims": [["__sample__"], []],
+    }
 
     if method == ISMethod.PSIS:
-        cutoff_ind = -int(np.ceil(min(n_samples / 5.0, 3 * (n_samples / reff) ** 0.5))) - 1
+        cutoff_ind = (
+            -int(np.ceil(min(n_samples / 5.0, 3 * (n_samples / reff) ** 0.5))) - 1
+        )
         cutoffmin = np.log(np.finfo(float).tiny)
         func_kwargs = {"cutoff_ind": cutoff_ind, "cutoffmin": cutoffmin, "out": out}
         impl_func = cast(ImplFunc, _psislw)
@@ -130,6 +142,8 @@ def compute_importance_weights(
     if isinstance(log_weights, xr.DataArray):
         log_weights = log_weights.rename("log_weights")
     if isinstance(diagnostic, xr.DataArray):
-        diagnostic = diagnostic.rename("pareto_shape" if method == ISMethod.PSIS else "ess")
+        diagnostic = diagnostic.rename(
+            "pareto_shape" if method == ISMethod.PSIS else "ess"
+        )
 
     return log_weights, diagnostic

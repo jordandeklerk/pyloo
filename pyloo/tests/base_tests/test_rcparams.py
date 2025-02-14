@@ -79,7 +79,9 @@ def test_rcparams_deletion_prevention():
 
 def test_rcparams_setdefault():
     rc = RcParams()
-    with pytest.raises(TypeError, match="Defaults in RcParams are handled on object initialization"):
+    with pytest.raises(
+        TypeError, match="Defaults in RcParams are handled on object initialization"
+    ):
         rc.setdefault("stats.ic_pointwise", True)
 
 

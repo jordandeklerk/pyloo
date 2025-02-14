@@ -52,7 +52,11 @@ def sislw(log_weights):
     """
     log_weights = deepcopy(log_weights)
     if hasattr(log_weights, "__sample__"):
-        shape = [size for size, dim in zip(log_weights.shape, log_weights.dims) if dim != "__sample__"]
+        shape = [
+            size
+            for size, dim in zip(log_weights.shape, log_weights.dims)
+            if dim != "__sample__"
+        ]
     else:
         shape = log_weights.shape[:-1]
 
@@ -60,7 +64,10 @@ def sislw(log_weights):
 
     func_kwargs = {"out": out}
     ufunc_kwargs = {"n_dims": 1, "n_output": 2, "ravel": False, "check_shape": False}
-    kwargs = {"input_core_dims": [["__sample__"]], "output_core_dims": [["__sample__"], []]}
+    kwargs = {
+        "input_core_dims": [["__sample__"]],
+        "output_core_dims": [["__sample__"], []],
+    }
     log_weights, ess = wrap_xarray_ufunc(
         _sislw,
         log_weights,

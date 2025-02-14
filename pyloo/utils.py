@@ -41,7 +41,10 @@ def autocov(ary: np.ndarray, axis: int = -1) -> np.ndarray:
         ifft_ary = np.fft.rfft(ary, n=m, axis=axis)
         ifft_ary *= np.conjugate(ifft_ary)
 
-        shape = tuple(slice(None) if dim_len != axis else slice(0, n) for dim_len, _ in enumerate(ary.shape))
+        shape = tuple(
+            slice(None) if dim_len != axis else slice(0, n)
+            for dim_len, _ in enumerate(ary.shape)
+        )
         cov = np.fft.irfft(ifft_ary, n=m, axis=axis)[shape]
         cov /= n
 
@@ -66,7 +69,10 @@ def autocorr(ary: np.ndarray, axis: int = -1) -> np.ndarray:
     """
     corr = autocov(ary, axis=axis)
     axis = axis if axis > 0 else len(corr.shape) + axis
-    norm = tuple(slice(None, None) if dim != axis else slice(None, 1) for dim, _ in enumerate(corr.shape))
+    norm = tuple(
+        slice(None, None) if dim != axis else slice(None, 1)
+        for dim, _ in enumerate(corr.shape)
+    )
     with np.errstate(invalid="ignore"):
         corr /= corr[norm]
     return corr
@@ -103,9 +109,13 @@ def to_inference_data(obj: Any) -> InferenceData:
         return obj
 
     if isinstance(obj, (list, tuple)):
-        raise ValueError("Lists and tuples cannot be converted to InferenceData directly")
+        raise ValueError(
+            "Lists and tuples cannot be converted to InferenceData directly"
+        )
 
-    if isinstance(obj, dict) and not all(isinstance(v, (np.ndarray, list)) for v in obj.values()):
+    if isinstance(obj, dict) and not all(
+        isinstance(v, (np.ndarray, list)) for v in obj.values()
+    ):
         raise ValueError("Dictionary values must be array-like")
 
     try:
@@ -124,11 +134,14 @@ def to_inference_data(obj: Any) -> InferenceData:
             "cmdstanpy fit",
         )
         raise ValueError(
-            f'Can only convert {", ".join(allowable_types)} to InferenceData, ' f"not {obj.__class__.__name__}"
+            f'Can only convert {", ".join(allowable_types)} to InferenceData, '
+            f"not {obj.__class__.__name__}"
         ) from e
 
 
-def compute_log_mean_exp(x: np.ndarray, axis: Optional[int] = None) -> Union[float, np.ndarray]:
+def compute_log_mean_exp(
+    x: np.ndarray, axis: Optional[int] = None
+) -> Union[float, np.ndarray]:
     """Compute log(mean(exp(x))) in a numerically stable way."""
     if axis is None:
         log_S = np.log(x.size)
@@ -225,7 +238,10 @@ def validate_data(
                 x = to_inference_data(x)
 
             if not hasattr(x, "log_likelihood"):
-                _raise_or_warn("InferenceData object must have a log_likelihood group for PSIS-LOO-CV")
+                _raise_or_warn(
+                    "InferenceData object must have a log_likelihood group for"
+                    " PSIS-LOO-CV"
+                )
 
             if var_name is not None and var_name not in x.log_likelihood.data_vars:
                 available_vars = list(x.log_likelihood.data_vars.keys())
@@ -237,12 +253,18 @@ def validate_data(
             if hasattr(x.log_likelihood, "chain"):
                 n_chains = x.log_likelihood.chain.size
                 if n_chains < min_chains:
-                    _raise_or_warn(f"Number of chains ({n_chains}) is less than min_chains ({min_chains})")
+                    _raise_or_warn(
+                        f"Number of chains ({n_chains}) is less than min_chains"
+                        f" ({min_chains})"
+                    )
 
             if hasattr(x.log_likelihood, "draw"):
                 n_draws = x.log_likelihood.draw.size
                 if n_draws < min_draws:
-                    _raise_or_warn(f"Number of draws ({n_draws}) is less than min_draws ({min_draws})")
+                    _raise_or_warn(
+                        f"Number of draws ({n_draws}) is less than min_draws"
+                        f" ({min_draws})"
+                    )
 
             return x
 
@@ -250,7 +272,9 @@ def validate_data(
             raise TypeError(f"Failed to validate or convert input: {str(e)}")
 
     if not isinstance(x, np.ndarray):
-        raise TypeError(f"Expected numpy array or InferenceData, got {type(x).__name__}")
+        raise TypeError(
+            f"Expected numpy array or InferenceData, got {type(x).__name__}"
+        )
 
     if check_nan:
         isnan = np.isnan(x)
@@ -269,10 +293,15 @@ def validate_data(
             _raise_or_warn("Input contains NaN values")
 
     if not allow_inf and np.any(np.isinf(x)):
-        _raise_or_warn("Input contains infinite values. If these are log-likelihoods, set allow_inf=True")
+        _raise_or_warn(
+            "Input contains infinite values. If these are log-likelihoods, set"
+            " allow_inf=True"
+        )
 
     if check_shape is not None and x.shape != check_shape:
-        _raise_or_warn(f"Array has incorrect shape. Expected {check_shape}, got {x.shape}")
+        _raise_or_warn(
+            f"Array has incorrect shape. Expected {check_shape}, got {x.shape}"
+        )
 
     shape = x.shape
     if len(shape) >= 2:
@@ -283,21 +312,28 @@ def validate_data(
         n_draws = shape[0]
 
     if n_chains < min_chains:
-        _raise_or_warn(f"Number of chains ({n_chains}) is less than min_chains ({min_chains})")
+        _raise_or_warn(
+            f"Number of chains ({n_chains}) is less than min_chains ({min_chains})"
+        )
     if n_draws < min_draws:
-        _raise_or_warn(f"Number of draws ({n_draws}) is less than min_draws ({min_draws})")
+        _raise_or_warn(
+            f"Number of draws ({n_draws}) is less than min_draws ({min_draws})"
+        )
 
     if not allow_inf:
         abs_max = np.max(np.abs(x[np.isfinite(x)]))
         if abs_max > 1e38:
             _raise_or_warn(
-                f"Array contains very large values (max abs: {abs_max}). " "This may cause numerical instability."
+                f"Array contains very large values (max abs: {abs_max}). "
+                "This may cause numerical instability."
             )
 
     return x
 
 
-def reshape_draws(x: np.ndarray, chain_ids: Optional[np.ndarray] = None) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+def reshape_draws(
+    x: np.ndarray, chain_ids: Optional[np.ndarray] = None
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
     """Reshape MCMC draws between matrix and array formats."""
     if x.ndim == 3:
         return x.reshape(-1, x.shape[2]), None
@@ -322,7 +358,9 @@ def get_log_likelihood(idata, var_name=None, single_var=True):
         and hasattr(idata.sample_stats, "log_likelihood")
     ):
         warnings.warn(
-            "Storing the log_likelihood in sample_stats groups has been deprecated", DeprecationWarning, stacklevel=2
+            "Storing the log_likelihood in sample_stats groups has been deprecated",
+            DeprecationWarning,
+            stacklevel=2,
         )
         return idata.sample_stats.log_likelihood
     if not hasattr(idata, "log_likelihood"):
@@ -331,7 +369,10 @@ def get_log_likelihood(idata, var_name=None, single_var=True):
         var_names = list(idata.log_likelihood.data_vars)
         if len(var_names) > 1:
             if single_var:
-                raise TypeError(f"Found several log likelihood arrays {var_names}, var_name cannot be None")
+                raise TypeError(
+                    f"Found several log likelihood arrays {var_names}, var_name cannot"
+                    " be None"
+                )
             return idata.log_likelihood[var_names]
         return idata.log_likelihood[var_names[0]]
     else:
@@ -342,7 +383,9 @@ def get_log_likelihood(idata, var_name=None, single_var=True):
         return log_likelihood
 
 
-def smooth_data(obs_vals: np.ndarray, pp_vals: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def smooth_data(
+    obs_vals: np.ndarray, pp_vals: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
     """Smooth data using a cubic spline.
 
     This function is particularly useful for discrete data in PSIS-LOO-CV
@@ -373,7 +416,9 @@ def smooth_data(obs_vals: np.ndarray, pp_vals: np.ndarray) -> Tuple[np.ndarray, 
     return obs_vals, pp_vals
 
 
-def make_ufunc(func, n_dims=2, n_output=1, n_input=1, index=Ellipsis, ravel=True, check_shape=None):
+def make_ufunc(
+    func, n_dims=2, n_output=1, n_input=1, index=Ellipsis, ravel=True, check_shape=None
+):
     """Make ufunc from a function taking 1D array input.
 
     Parameters
@@ -442,7 +487,9 @@ def make_ufunc(func, n_dims=2, n_output=1, n_input=1, index=Ellipsis, ravel=True
             if out_shape is None:
                 out = tuple(np.empty(element_shape) for _ in range(n_output))
             else:
-                out = tuple(np.empty((*element_shape, *out_shape[i])) for i in range(n_output))
+                out = tuple(
+                    np.empty((*element_shape, *out_shape[i])) for i in range(n_output)
+                )
 
         elif check_shape:
             raise_error = False
@@ -514,16 +561,25 @@ def wrap_xarray_ufunc(
     if func_kwargs is None:
         func_kwargs = {}
 
-    kwargs.setdefault("input_core_dims", tuple(("chain", "draw") for _ in range(len(func_args) + len(datasets))))
+    kwargs.setdefault(
+        "input_core_dims",
+        tuple(("chain", "draw") for _ in range(len(func_args) + len(datasets))),
+    )
     ufunc_kwargs.setdefault("n_dims", len(kwargs["input_core_dims"][-1]))
-    kwargs.setdefault("output_core_dims", tuple([] for _ in range(ufunc_kwargs.get("n_output", 1))))
+    kwargs.setdefault(
+        "output_core_dims", tuple([] for _ in range(ufunc_kwargs.get("n_output", 1)))
+    )
 
     callable_ufunc = make_ufunc(ufunc, **ufunc_kwargs)
 
-    return apply_ufunc(callable_ufunc, *datasets, *func_args, kwargs=func_kwargs, **kwargs)
+    return apply_ufunc(
+        callable_ufunc, *datasets, *func_args, kwargs=func_kwargs, **kwargs
+    )
 
 
-def _logsumexp(ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, copy=True):
+def _logsumexp(
+    ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, copy=True
+):
     """Stable logsumexp when b >= 0 and b is scalar.
 
     b_inv overwrites b unless b_inv is None.
@@ -540,11 +596,19 @@ def _logsumexp(ary, *, b=None, b_inv=None, axis=None, keepdims=False, out=None, 
     else:
         axis = axis if (axis is None) or (axis >= 0) else shape_len + axis
         agroup = (axis,)
-    shape_max = tuple(1 for _ in shape) if axis is None else tuple(1 if i in agroup else d for i, d in enumerate(shape))
+    shape_max = (
+        tuple(1 for _ in shape)
+        if axis is None
+        else tuple(1 if i in agroup else d for i, d in enumerate(shape))
+    )
 
     if out is None:
         if not keepdims:
-            out_shape = () if axis is None else tuple(d for i, d in enumerate(shape) if i not in agroup)
+            out_shape = (
+                ()
+                if axis is None
+                else tuple(d for i, d in enumerate(shape) if i not in agroup)
+            )
         else:
             out_shape = shape_max
         out = np.empty(out_shape, dtype=dtype)

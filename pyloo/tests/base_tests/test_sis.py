@@ -30,7 +30,9 @@ def test_sislw_xarray(log_likelihood_data):
     assert isinstance(ess, xr.DataArray)
     assert smoothed_log_weights.dims == log_likelihood_data.dims
     assert ess.dims == tuple(d for d in log_likelihood_data.dims if d != "__sample__")
-    assert_arrays_allclose(np.exp(smoothed_log_weights).sum("__sample__"), 1.0, rtol=1e-6)
+    assert_arrays_allclose(
+        np.exp(smoothed_log_weights).sum("__sample__"), 1.0, rtol=1e-6
+    )
 
 
 def test_sislw_1d_input(rng):

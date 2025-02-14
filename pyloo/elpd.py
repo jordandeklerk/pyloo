@@ -83,8 +83,16 @@ class ELPDData(pd.Series):
         if is_subsampled:
             subsample_size = self["subsample_size"]
 
-            if "pareto_k" in self and hasattr(self, "good_k") and self.good_k is not None:
-                max_k = np.nanmax(self.pareto_k.values) if not np.all(np.isnan(self.pareto_k.values)) else 0
+            if (
+                "pareto_k" in self
+                and hasattr(self, "good_k")
+                and self.good_k is not None
+            ):
+                max_k = (
+                    np.nanmax(self.pareto_k.values)
+                    if not np.all(np.isnan(self.pareto_k.values))
+                    else 0
+                )
                 if max_k < 0.7:
                     pareto_msg = "All Pareto k estimates are good (k < 0.7)."
                 else:
@@ -118,8 +126,16 @@ class ELPDData(pd.Series):
                 r_eff=self.get("r_eff", 1.0),
             )
         else:
-            if "pareto_k" in self and hasattr(self, "good_k") and self.good_k is not None:
-                max_k = np.nanmax(self.pareto_k.values) if not np.all(np.isnan(self.pareto_k.values)) else 0
+            if (
+                "pareto_k" in self
+                and hasattr(self, "good_k")
+                and self.good_k is not None
+            ):
+                max_k = (
+                    np.nanmax(self.pareto_k.values)
+                    if not np.all(np.isnan(self.pareto_k.values))
+                    else 0
+                )
                 if max_k < 0.7:
                     pareto_msg = "All Pareto k estimates are good (k < 0.7)."
                 else:
@@ -146,7 +162,10 @@ class ELPDData(pd.Series):
             )
 
         if self.warning:
-            base += "\n\nThere has been a warning during the calculation. Please check the results."
+            base += (
+                "\n\nThere has been a warning during the calculation. Please check the"
+                " results."
+            )
 
         if (
             not is_subsampled

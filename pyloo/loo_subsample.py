@@ -137,7 +137,8 @@ def loo_subsample(
         est_method = EstimatorMethod(estimator.lower())
     except ValueError:
         raise ValueError(
-            f"Invalid estimator '{estimator}'. " f"Must be one of: {', '.join(m.value for m in EstimatorMethod)}"
+            f"Invalid estimator '{estimator}'. "
+            f"Must be one of: {', '.join(m.value for m in EstimatorMethod)}"
         )
 
     try:
@@ -170,14 +171,18 @@ def loo_subsample(
             reff = 1.0
         else:
             ess_p = ess(posterior, method="mean")
-            reff = np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean() / n_samples
+            reff = (
+                np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean()
+                / n_samples
+            )
 
     has_nan = np.any(np.isnan(log_likelihood.values))
     has_inf = np.any(np.isinf(log_likelihood.values))
 
     if has_nan:
         warnings.warn(
-            "NaN values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            "NaN values detected in log-likelihood. These will be ignored in the LOO"
+            " calculation.",
             UserWarning,
             stacklevel=2,
         )
@@ -185,12 +190,14 @@ def loo_subsample(
 
     if has_inf:
         warnings.warn(
-            "Infinite values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            "Infinite values detected in log-likelihood. These will be ignored in the"
+            " LOO calculation.",
             UserWarning,
             stacklevel=2,
         )
         log_likelihood = log_likelihood.where(
-            ~np.isinf(log_likelihood), np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10)
+            ~np.isinf(log_likelihood),
+            np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10),
         )
 
     if observations is None:
@@ -204,7 +211,10 @@ def loo_subsample(
 
     if isinstance(observations, int):
         if observations <= 0 or observations > n_data_points:
-            raise ValueError(f"Number of observations must be between 1 and {n_data_points}, " f"got {observations}")
+            raise ValueError(
+                f"Number of observations must be between 1 and {n_data_points}, "
+                f"got {observations}"
+            )
     elif isinstance(observations, np.ndarray):
         if observations.dtype != np.integer:
             raise TypeError("observations array must contain integers")
@@ -214,7 +224,9 @@ def loo_subsample(
                 f"got range [{observations.min()}, {observations.max()}]"
             )
     else:
-        raise TypeError("observations must be None, an integer, or an array of integers")
+        raise TypeError(
+            "observations must be None, an integer, or an array of integers"
+        )
 
     if loo_approx_method == LooApproximationMethod.PLPD:
         if hasattr(inference_data, "posterior"):
@@ -222,14 +234,17 @@ def loo_subsample(
         else:
             # Fall back to LPD approximation if posterior not available
             warnings.warn(
-                "PLPD approximation requested but posterior draws not available. " "Falling back to LPD approximation.",
+                "PLPD approximation requested but posterior draws not available. "
+                "Falling back to LPD approximation.",
                 UserWarning,
                 stacklevel=2,
             )
             approximator = PLPDApproximation(LPDApproximation())
     else:
         # Cast to PLPDApproximation since we know it's compatible
-        approximator = cast(PLPDApproximation, APPROXIMATION_METHODS[loo_approx_method]())
+        approximator = cast(
+            PLPDApproximation, APPROXIMATION_METHODS[loo_approx_method]()
+        )
 
     elpd_loo_approx = approximator.compute_approximation(
         log_likelihood=log_likelihood,
@@ -240,7 +255,9 @@ def loo_subsample(
         indices = SubsampleIndices(idx=observations, m_i=np.ones_like(observations))
     else:
         indices = subsample_indices(
-            estimator=est_method.value, elpd_loo_approximation=elpd_loo_approx, observations=observations
+            estimator=est_method.value,
+            elpd_loo_approximation=elpd_loo_approx,
+            observations=observations,
         )
 
     # For multidimensional data, we need to handle the indices differently
@@ -248,7 +265,9 @@ def loo_subsample(
         # Flatten the indices to match the flattened observation dimensions
         flat_idx = indices.idx
         # Convert flat indices to multi-dimensional indices
-        idx_arrays = np.unravel_index(flat_idx, [log_likelihood.sizes[dim] for dim in obs_dims])
+        idx_arrays = np.unravel_index(
+            flat_idx, [log_likelihood.sizes[dim] for dim in obs_dims]
+        )
         idx_dict = dict(zip(obs_dims, idx_arrays))
     else:
         idx_dict = {obs_dims[0]: indices.idx}
@@ -268,7 +287,9 @@ def loo_subsample(
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
     kwargs = {"input_core_dims": [["__sample__"]]}
 
-    loo_lppd_i = scale_value * wrap_xarray_ufunc(_logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs)
+    loo_lppd_i = scale_value * wrap_xarray_ufunc(
+        _logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs
+    )
 
     estimator_impl = get_estimator(est_method.value)
 
@@ -311,9 +332,9 @@ def loo_subsample(
         min_ess = np.min(diagnostic)
         if min_ess < n_samples * 0.1:
             warnings.warn(
-                f"Low effective sample size detected (minimum ESS: {min_ess:.1f}). "
-                "This indicates that the importance sampling approximation may be unreliable. "
-                "Consider using PSIS which is more robust to such cases.",
+                f"Low effective sample size detected (minimum ESS: {min_ess:.1f}). This"
+                " indicates that the importance sampling approximation may be"
+                " unreliable. Consider using PSIS which is more robust to such cases.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -321,11 +342,12 @@ def loo_subsample(
     else:
         if max_k > good_k:
             warnings.warn(
-                f"Estimated shape parameter of Pareto distribution is greater than {good_k:.2f} "
-                f"(k = {max_k:.2f}) for one or more samples. You should consider using a more robust "
-                "model, this is because importance sampling is less likely to work well if the "
-                "marginal posterior and LOO posterior are very different. This is more likely to "
-                "happen with a non-robust model and highly influential observations.",
+                "Estimated shape parameter of Pareto distribution is greater than"
+                f" {good_k:.2f} (k = {max_k:.2f}) for one or more samples. You should"
+                " consider using a more robust model, this is because importance"
+                " sampling is less likely to work well if the marginal posterior and"
+                " LOO posterior are very different. This is more likely to happen with"
+                " a non-robust model and highly influential observations.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -355,9 +377,12 @@ def loo_subsample(
 
     p_loo = lppd - estimates.y_hat / scale_value
 
-    # Total variance (hat_v_y) for regular SE and subsampling variance (v_y_hat) for subsampling SE
+    # Total variance (hat_v_y) for regular SE and subsampling variance
+    # (v_y_hat) for subsampling SE
     se = np.sqrt(estimates.hat_v_y) if hasattr(estimates, "hat_v_y") else np.nan
-    subsampling_se = np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
+    subsampling_se = (
+        np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
+    )
 
     base_data = {
         "elpd_loo": estimates.y_hat,
@@ -376,12 +401,10 @@ def loo_subsample(
     }
 
     if pointwise:
-        base_data.update(
-            {
-                "loo_i": xr.DataArray(loo_lppd_i_full, name="loo_i"),
-                "pareto_k": diagnostic,
-            }
-        )
+        base_data.update({
+            "loo_i": xr.DataArray(loo_lppd_i_full, name="loo_i"),
+            "pareto_k": diagnostic,
+        })
 
     data = [base_data[k] for k in base_data.keys()]
     index = list(base_data.keys())
@@ -450,10 +473,14 @@ def update_subsample(
     data = loo_data.estimates.data
     params = {
         "data": data,
-        "observations": observations if observations is not None else loo_data["subsample_size"],
+        "observations": (
+            observations if observations is not None else loo_data["subsample_size"]
+        ),
         "loo_approximation": getattr(loo_data.estimates, "loo_approximation", "plpd"),
         "estimator": getattr(loo_data.estimates, "estimator", "diff_srs"),
-        "loo_approximation_draws": getattr(loo_data.estimates, "loo_approximation_draws", None),
+        "loo_approximation_draws": getattr(
+            loo_data.estimates, "loo_approximation_draws", None
+        ),
         "pointwise": "loo_i" in loo_data,
         "var_name": getattr(loo_data.estimates, "var_name", None),
         "reff": loo_data.get("r_eff", None),

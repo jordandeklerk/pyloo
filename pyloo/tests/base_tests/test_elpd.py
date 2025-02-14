@@ -117,7 +117,14 @@ def test_elpd_invalid_kind():
 
 def test_elpd_with_warning():
     """Test string representation when warning is present."""
-    data = {"elpd_loo": 1.0, "se": 0.5, "p_loo": 0.1, "n_samples": 1000, "warning": True, "n_data_points": 100}
+    data = {
+        "elpd_loo": 1.0,
+        "se": 0.5,
+        "p_loo": 0.1,
+        "n_samples": 1000,
+        "warning": True,
+        "n_data_points": 100,
+    }
     elpd = ELPDData(data=pd.Series(data))
 
     str_output = str(elpd)

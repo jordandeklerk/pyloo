@@ -32,20 +32,28 @@ def test_psislw_xarray(log_likelihood_data):
     assert isinstance(smoothed_log_weights, xr.DataArray)
     assert isinstance(pareto_k, xr.DataArray)
     assert smoothed_log_weights.dims == log_likelihood_data.dims
-    assert pareto_k.dims == tuple(d for d in log_likelihood_data.dims if d != "__sample__")
-    assert_arrays_allclose(np.exp(smoothed_log_weights).sum("__sample__"), 1.0, rtol=1e-6)
+    assert pareto_k.dims == tuple(
+        d for d in log_likelihood_data.dims if d != "__sample__"
+    )
+    assert_arrays_allclose(
+        np.exp(smoothed_log_weights).sum("__sample__"), 1.0, rtol=1e-6
+    )
 
 
 def test_psislw_smooths_for_low_k(log_likelihood_data):
     """Check that log-weights are smoothed regardless of k value."""
-    x = log_likelihood_data.isel({d: 0 for d in log_likelihood_data.dims if d != "__sample__"})
+    x = log_likelihood_data.isel(
+        {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
+    )
     x_smoothed, k = psislw(x.copy())
     assert not np.allclose(x - logsumexp(x), x_smoothed)
 
 
 def test_psislw_reff(log_likelihood_data):
     """Test PSIS with different relative efficiency values."""
-    x = log_likelihood_data.isel({d: 0 for d in log_likelihood_data.dims if d != "__sample__"})
+    x = log_likelihood_data.isel(
+        {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
+    )
 
     for reff in [0.5, 1.0, 2.0]:
         smoothed_lw, k = psislw(x.values, reff=reff)  # Use numpy array input
@@ -56,7 +64,9 @@ def test_psislw_reff(log_likelihood_data):
 
 def test_gpdfit(log_likelihood_data):
     """Test Generalized Pareto Distribution parameter estimation."""
-    x = log_likelihood_data.isel({d: 0 for d in log_likelihood_data.dims if d != "__sample__"})
+    x = log_likelihood_data.isel(
+        {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
+    )
     x = np.sort(np.exp(x.values) - np.exp(x.values.min()))
     k, sigma = _gpdfit(x)
     assert_finite(k)
@@ -98,7 +108,9 @@ def test_psislw_insufficient_tail_samples():
 
 def test_internal_psislw(log_likelihood_data):
     """Test the internal _psislw function directly."""
-    x = log_likelihood_data.isel({d: 0 for d in log_likelihood_data.dims if d != "__sample__"}).values
+    x = log_likelihood_data.isel(
+        {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
+    ).values
     cutoff_ind = -20
     cutoffmin = np.log(np.finfo(float).tiny)
 

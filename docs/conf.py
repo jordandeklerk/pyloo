@@ -136,14 +136,12 @@ latex_documents = [(master_doc, "pyloo.tex", "pyloo Documentation", author, "man
 man_pages = [(master_doc, "pyloo", "pyloo Documentation", [author], 1)]
 
 # -- Options for Texinfo output -------------------------------------------
-texinfo_documents = [
-    (
-        master_doc,
-        "pyloo",
-        "pyloo Documentation",
-        author,
-        "pyloo",
-        "Python implementation of the R package loo for LOO-CV and PSIS.",
-        "Miscellaneous",
-    )
-]
+texinfo_documents = [(
+    master_doc,
+    "pyloo",
+    "pyloo Documentation",
+    author,
+    "pyloo",
+    "Python implementation of the R package loo for LOO-CV and PSIS.",
+    "Miscellaneous",
+)]

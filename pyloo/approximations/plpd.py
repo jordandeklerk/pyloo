@@ -75,7 +75,8 @@ class PLPDApproximation(LooApproximation):
                 point_est = posterior_da.mean(dim="__sample__")
 
             # Use point estimates to compute log likelihood
-            # This assumes the first dimension of log_likelihood corresponds to observations
+            # This assumes the first dimension of log_likelihood corresponds to
+            # observations
             point_log_likelihood = log_likelihood.isel(__sample__=0).copy()
 
             for var in point_est.coords:
@@ -94,7 +95,9 @@ class PLPDApproximation(LooApproximation):
                             coords_to_assign = {}
 
                     if coords_to_assign:
-                        point_log_likelihood = point_log_likelihood.assign_coords(coords_to_assign)
+                        point_log_likelihood = point_log_likelihood.assign_coords(
+                            coords_to_assign
+                        )
         else:
             # If no posterior provided, use mean of log likelihood directly
             point_log_likelihood = log_likelihood.mean(dim="__sample__")

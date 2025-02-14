@@ -53,7 +53,9 @@ def test_compute_estimates(log_likelihood_data):
     assert "se" in result
 
     assert_arrays_allclose(result["estimate"], np.sum(x, axis=0))
-    assert_arrays_allclose(result["se"], np.sqrt(x.shape[0] * np.var(x, axis=0, ddof=1)))
+    assert_arrays_allclose(
+        result["se"], np.sqrt(x.shape[0] * np.var(x, axis=0, ddof=1))
+    )
 
 
 def test_validate_data_numpy(numpy_arrays, extreme_data):
@@ -68,7 +70,9 @@ def test_validate_data_numpy(numpy_arrays, extreme_data):
         validate_data(np.array([1.0, np.inf, 3.0]), min_chains=1, min_draws=1)
 
     inf_array = np.array([1.0, np.inf, 3.0])
-    assert_arrays_equal(validate_data(inf_array, allow_inf=True, min_chains=1, min_draws=1), inf_array)
+    assert_arrays_equal(
+        validate_data(inf_array, allow_inf=True, min_chains=1, min_draws=1), inf_array
+    )
 
     large_array = np.array([1e40, 2e40])
     with pytest.raises(ValueError, match="numerical instability"):
@@ -82,20 +86,37 @@ def test_validate_data_inference(centered_eight):
     assert isinstance(validated, az.InferenceData)
     assert hasattr(validated, "log_likelihood")
 
-    with pytest.raises(TypeError, match="Failed to validate or convert input: Variable 'nonexistent' not found"):
+    with pytest.raises(
+        TypeError,
+        match="Failed to validate or convert input: Variable 'nonexistent' not found",
+    ):
         validate_data(centered_eight, var_name="nonexistent")
 
     idata_no_loglik = az.InferenceData(posterior=centered_eight.posterior)
     with pytest.raises(
-        TypeError, match="Failed to validate or convert input: InferenceData object must have a log_likelihood group"
+        TypeError,
+        match=(
+            "Failed to validate or convert input: InferenceData object must have a"
+            " log_likelihood group"
+        ),
     ):
         validate_data(idata_no_loglik)
 
 
 def test_validate_data_conversion():
-    with pytest.raises(TypeError, match="Failed to validate or convert input: Lists and tuples cannot be converted"):
+    with pytest.raises(
+        TypeError,
+        match=(
+            "Failed to validate or convert input: Lists and tuples cannot be converted"
+        ),
+    ):
         validate_data([1, 2, 3])
-    with pytest.raises(TypeError, match="Failed to validate or convert input: Dictionary values must be array-like"):
+    with pytest.raises(
+        TypeError,
+        match=(
+            "Failed to validate or convert input: Dictionary values must be array-like"
+        ),
+    ):
         validate_data({"a": 1, "b": "string"})
 
     data = np.array([[[1, 2, 3]]])

@@ -19,7 +19,11 @@ def does_not_warn(warning=Warning):
         yield
         for w in caught_warnings:
             if issubclass(w.category, warning):
-                raise AssertionError(f"Expected no {warning.__name__} but caught warning with message: {w.message}")
+                warning_msg = (
+                    f"Expected no {warning.__name__} but caught warning with message: "
+                    f"{w.message}"
+                )
+                raise AssertionError(warning_msg)
 
 
 @pytest.fixture(scope="session")
@@ -282,7 +286,10 @@ def create_data_random(groups=None, seed=10):
         "warmup_posterior_predictive": {"a": data[..., 0], "b": data},
         "warmup_prior": {"a": data[..., 0], "b": data},
     }
-    idata = from_dict(**{group: ary for group, ary in idata_dict.items() if group in groups}, save_warmup=True)
+    idata = from_dict(
+        **{group: ary for group, ary in idata_dict.items() if group in groups},
+        save_warmup=True,
+    )
     return idata
 
 
@@ -345,12 +352,16 @@ def create_large_model(seed=10, n_obs=10000):
 
     theta = posterior["theta"]
     log_likelihood = {
-        "obs": -0.5 * np.log(2 * np.pi)
-        - 0.5 * np.log(true_sigma**2)
-        - 0.5 * ((y[None, None, :] - theta) / true_sigma) ** 2
+        "obs": (
+            -0.5 * np.log(2 * np.pi)
+            - 0.5 * np.log(true_sigma**2)
+            - 0.5 * ((y[None, None, :] - theta) / true_sigma) ** 2
+        )
     }
 
-    posterior_predictive = {"y": np.random.normal(theta, true_sigma, size=(nchains, ndraws, n_obs))}
+    posterior_predictive = {
+        "y": np.random.normal(theta, true_sigma, size=(nchains, ndraws, n_obs))
+    }
 
     sample_stats = {
         "energy": np.random.randn(nchains, ndraws),

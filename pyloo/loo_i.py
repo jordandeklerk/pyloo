@@ -120,7 +120,10 @@ def loo_i(
 
     total_obs = np.prod(shape[:-1])
     if i >= total_obs or i < 0:
-        raise IndexError(f"Index {i} is out of bounds for log likelihood array with {total_obs} observations")
+        raise IndexError(
+            f"Index {i} is out of bounds for log likelihood array with"
+            f" {total_obs} observations"
+        )
 
     try:
         # Handle different possible shapes of log_likelihood
@@ -129,11 +132,15 @@ def loo_i(
         else:  # Handle multi-dimensional cases
             # Convert flat index to multi-dimensional index
             idx = np.unravel_index(i, shape[:-1])
-            log_likelihood_i = log_likelihood.isel({dim: idx[n] for n, dim in enumerate(log_likelihood.dims[:-1])})
+            log_likelihood_i = log_likelihood.isel(
+                {dim: idx[n] for n, dim in enumerate(log_likelihood.dims[:-1])}
+            )
             log_likelihood_i = log_likelihood_i.expand_dims("_dummy", axis=0)
 
     except IndexError:
-        raise IndexError(f"Index {i} is out of bounds for log likelihood array with shape {shape}")
+        raise IndexError(
+            f"Index {i} is out of bounds for log likelihood array with shape {shape}"
+        )
 
     scale = rcParams["stats.ic_scale"] if scale is None else scale.lower()
 
@@ -155,14 +162,18 @@ def loo_i(
             reff = 1.0
         else:
             ess_p = ess(posterior, method="mean")
-            reff = np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean() / n_samples
+            reff = (
+                np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean()
+                / n_samples
+            )
 
     has_nan = np.any(np.isnan(log_likelihood_i.values))
     has_inf = np.any(np.isinf(log_likelihood_i.values))
 
     if has_nan:
         warnings.warn(
-            "NaN values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            "NaN values detected in log-likelihood. These will be ignored in the LOO"
+            " calculation.",
             UserWarning,
             stacklevel=2,
         )
@@ -170,29 +181,36 @@ def loo_i(
 
     if has_inf:
         warnings.warn(
-            "Infinite values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            "Infinite values detected in log-likelihood. These will be ignored in the"
+            " LOO calculation.",
             UserWarning,
             stacklevel=2,
         )
         log_likelihood_i = log_likelihood_i.where(
-            ~np.isinf(log_likelihood_i), np.where(np.isinf(log_likelihood_i) & (log_likelihood_i > 0), 1e10, -1e10)
+            ~np.isinf(log_likelihood_i),
+            np.where(np.isinf(log_likelihood_i) & (log_likelihood_i > 0), 1e10, -1e10),
         )
 
     try:
         method = method if isinstance(method, ISMethod) else ISMethod(method.lower())
     except ValueError:
-        raise ValueError(f"Invalid method '{method}'. Must be one of: {', '.join(m.value for m in ISMethod)}")
+        valid_methods = ", ".join(m.value for m in ISMethod)
+        raise ValueError(f"Invalid method '{method}'. Must be one of: {valid_methods}")
 
     if method != ISMethod.PSIS:
+        method_name = (
+            method.value.upper() if isinstance(method, ISMethod) else method.upper()
+        )
         warnings.warn(
-            f"Using {method.value.upper() if isinstance(method, ISMethod) else method.upper()} "
-            "for LOO computation. Note that PSIS is the recommended method as it is typically "
-            "more efficient and reliable.",
+            f"Using {method_name} for LOO computation. Note that PSIS is the"
+            " recommended method as it is typically more efficient and reliable.",
             UserWarning,
             stacklevel=2,
         )
 
-    log_weights, diagnostic = compute_importance_weights(-log_likelihood_i, method=method, reff=reff)
+    log_weights, diagnostic = compute_importance_weights(
+        -log_likelihood_i, method=method, reff=reff
+    )
     log_weights += log_likelihood_i
 
     warn_mg = False
@@ -201,11 +219,12 @@ def loo_i(
     if method == ISMethod.PSIS:
         if np.any(diagnostic > good_k):
             warnings.warn(
-                f"Estimated shape parameter of Pareto distribution is greater than {good_k:.2f} "
-                "for the observation. You should consider using a more robust model, this is "
-                "because importance sampling is less likely to work well if the marginal posterior "
-                "and LOO posterior are very different. This is more likely to happen with a "
-                "non-robust model and highly influential observations.",
+                "Estimated shape parameter of Pareto distribution is greater than"
+                f" {good_k:.2f} for the observation. You should consider using a more"
+                " robust model, this is because importance sampling is less likely to"
+                " work well if the marginal posterior and LOO posterior are very"
+                " different. This is more likely to happen with a non-robust model and"
+                " highly influential observations.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -215,9 +234,9 @@ def loo_i(
         min_ess = np.min(diagnostic)
         if min_ess < n_samples * 0.1:
             warnings.warn(
-                f"Low effective sample size detected (minimum ESS: {min_ess:.1f}). "
-                "This indicates that the importance sampling approximation may be unreliable. "
-                "Consider using PSIS which is more robust to such cases.",
+                f"Low effective sample size detected (minimum ESS: {min_ess:.1f}). This"
+                " indicates that the importance sampling approximation may be"
+                " unreliable. Consider using PSIS which is more robust to such cases.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -225,11 +244,15 @@ def loo_i(
 
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
     kwargs = {"input_core_dims": [["__sample__"]]}
-    loo_lppd_i = scale_value * wrap_xarray_ufunc(_logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs)
+    loo_lppd_i = scale_value * wrap_xarray_ufunc(
+        _logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs
+    )
     loo_lppd = loo_lppd_i.values.sum()
 
     # Convert to linear scale for variance calculation
-    weights = np.exp(log_weights.values - np.max(log_weights.values, axis=-1, keepdims=True))
+    weights = np.exp(
+        log_weights.values - np.max(log_weights.values, axis=-1, keepdims=True)
+    )
     weights /= np.sum(weights, axis=-1, keepdims=True)
     w2 = weights**2
     lik = np.exp(log_likelihood_i.values)

@@ -15,7 +15,10 @@ from ..helpers import (
 def test_rel_eff_1d(centered_eight):
     """Test rel_eff with 1D input from real data."""
     x = centered_eight.posterior.mu.values.flatten()
-    chain_id = np.repeat(np.arange(1, centered_eight.posterior.chain.size + 1), centered_eight.posterior.draw.size)
+    chain_id = np.repeat(
+        np.arange(1, centered_eight.posterior.chain.size + 1),
+        centered_eight.posterior.draw.size,
+    )
     r_eff = rel_eff(x, chain_id)
     assert isinstance(r_eff, np.ndarray)
     assert r_eff.shape == (1,)
@@ -25,7 +28,10 @@ def test_rel_eff_1d(centered_eight):
 def test_rel_eff_2d(centered_eight):
     """Test rel_eff with 2D input from real data."""
     x = centered_eight.posterior.theta.values.reshape(-1, 8)
-    chain_id = np.repeat(np.arange(1, centered_eight.posterior.chain.size + 1), centered_eight.posterior.draw.size)
+    chain_id = np.repeat(
+        np.arange(1, centered_eight.posterior.chain.size + 1),
+        centered_eight.posterior.draw.size,
+    )
     r_eff = rel_eff(x, chain_id)
     assert isinstance(r_eff, np.ndarray)
     assert r_eff.shape == (8,)
@@ -45,7 +51,10 @@ def test_rel_eff_3d(multidim_data):
 def test_rel_eff_function(centered_eight, rng):
     """Test rel_eff with function input using real data."""
     draws = centered_eight.posterior.theta.values.reshape(-1, 8)
-    chain_id = np.repeat(np.arange(1, centered_eight.posterior.chain.size + 1), centered_eight.posterior.draw.size)
+    chain_id = np.repeat(
+        np.arange(1, centered_eight.posterior.chain.size + 1),
+        centered_eight.posterior.draw.size,
+    )
 
     def log_lik_fun(data_i, draws):
         # data_i is a slice with one element, we need its integer index
@@ -201,7 +210,10 @@ def test_mcmc_eff_size_validation():
 def test_mat_to_chains(centered_eight):
     """Test conversion from matrix to 3D array organized by chains using real data."""
     mat = centered_eight.posterior.theta.values.reshape(-1, 8)
-    chain_id = np.repeat(np.arange(1, centered_eight.posterior.chain.size + 1), centered_eight.posterior.draw.size)
+    chain_id = np.repeat(
+        np.arange(1, centered_eight.posterior.chain.size + 1),
+        centered_eight.posterior.draw.size,
+    )
     arr = _mat_to_chains(mat, chain_id)
 
     expected_shape = (
@@ -251,7 +263,10 @@ def test_input_validation(multidim_data, rng):
 def test_rel_eff_methods(centered_eight):
     """Test rel_eff with different ESS calculation methods."""
     x = centered_eight.posterior.theta.values.reshape(-1, 8)
-    chain_id = np.repeat(np.arange(1, centered_eight.posterior.chain.size + 1), centered_eight.posterior.draw.size)
+    chain_id = np.repeat(
+        np.arange(1, centered_eight.posterior.chain.size + 1),
+        centered_eight.posterior.draw.size,
+    )
 
     methods = ["bulk", "tail", "mean", "sd", "median", "mad"]
     for method in methods:

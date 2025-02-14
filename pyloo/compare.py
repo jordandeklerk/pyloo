@@ -126,7 +126,12 @@ def loo_compare(
 
     try:
         elpds, scale, ic = _calculate_ics(
-            compare_dict, scale=scale, ic=ic, var_name=var_name, observations=observations, estimator=estimator
+            compare_dict,
+            scale=scale,
+            ic=ic,
+            var_name=var_name,
+            observations=observations,
+            estimator=estimator,
         )
     except Exception as e:
         raise e.__class__("Encountered error in ELPD computation of compare.") from e
@@ -154,7 +159,9 @@ def loo_compare(
             elif scale == "deviance":
                 diff *= -2
 
-            pointwise_diff = elpds[name]["loo_i"].values - elpds[best_model]["loo_i"].values
+            pointwise_diff = (
+                elpds[name]["loo_i"].values - elpds[best_model]["loo_i"].values
+            )
             dse = np.sqrt(len(pointwise_diff) * np.var(pointwise_diff))
 
         diffs.append(diff)
@@ -205,7 +212,9 @@ def _ic_matrix(elpds: Mapping[str, ELPDData], ic_i: str) -> Tuple[int, int, np.n
     for idx, name in enumerate(model_names):
         ic = elpds[name][ic_i].values
         if len(ic) != rows:
-            raise ValueError("The number of observations should be the same across all models")
+            raise ValueError(
+                "The number of observations should be the same across all models"
+            )
         ic_i_val[:, idx] = ic
 
     return rows, cols, ic_i_val
@@ -248,7 +257,11 @@ def _calculate_ics(
     scale : str
     ic : str
     """
-    precomputed_elpds = {name: elpd_data for name, elpd_data in compare_dict.items() if isinstance(elpd_data, ELPDData)}
+    precomputed_elpds = {
+        name: elpd_data
+        for name, elpd_data in compare_dict.items()
+        if isinstance(elpd_data, ELPDData)
+    }
     precomputed_ic = None
     precomputed_scale = None
 
@@ -258,17 +271,30 @@ def _calculate_ics(
         precomputed_scale = arbitrary_elpd["scale"]
         raise_non_pointwise = f"{precomputed_ic}_i" not in arbitrary_elpd
 
-        if any(elpd_data.index[0].split("_")[1] != precomputed_ic for elpd_data in precomputed_elpds.values()):
+        if any(
+            elpd_data.index[0].split("_")[1] != precomputed_ic
+            for elpd_data in precomputed_elpds.values()
+        ):
             raise ValueError("All information criteria to be compared must be 'loo'")
 
-        if any(elpd_data["scale"] != precomputed_scale for elpd_data in precomputed_elpds.values()):
-            raise ValueError("All information criteria to be compared must use the same scale")
+        if any(
+            elpd_data["scale"] != precomputed_scale
+            for elpd_data in precomputed_elpds.values()
+        ):
+            raise ValueError(
+                "All information criteria to be compared must use the same scale"
+            )
 
         if (
-            any(f"{precomputed_ic}_i" not in elpd_data for elpd_data in precomputed_elpds.values())
+            any(
+                f"{precomputed_ic}_i" not in elpd_data
+                for elpd_data in precomputed_elpds.values()
+            )
             or raise_non_pointwise
         ):
-            raise ValueError("Not all provided ELPDData have been calculated with pointwise=True")
+            raise ValueError(
+                "Not all provided ELPDData have been calculated with pointwise=True"
+            )
 
         if ic is not None and ic.lower() != precomputed_ic:
             warnings.warn(
@@ -320,7 +346,9 @@ def _calculate_ics(
                     scale=scale,
                 )
             except Exception as e:
-                raise e.__class__(f"Encountered error trying to compute {ic} from model {name}.") from e
+                raise e.__class__(
+                    f"Encountered error trying to compute {ic} from model {name}."
+                ) from e
 
     if scale is None:
         scale = "log"
@@ -345,12 +373,16 @@ def _compute_weights(
         return _pseudo_bma_weights(elpds, ic, scale)
 
 
-def _stacking_weights(elpds: Mapping[str, ELPDData], ic: str, scale: str) -> Dict[str, float]:
+def _stacking_weights(
+    elpds: Mapping[str, ELPDData], ic: str, scale: str
+) -> Dict[str, float]:
     """Compute stacking weights."""
     model_names = list(elpds.keys())
     n_models = len(model_names)
 
-    pointwise_elpds = np.stack([elpds[name]["loo_i"].values for name in model_names], axis=1)
+    pointwise_elpds = np.stack(
+        [elpds[name]["loo_i"].values for name in model_names], axis=1
+    )
 
     if scale == "deviance":
         pointwise_elpds /= -2
@@ -425,7 +457,9 @@ def _bb_pseudo_bma_weights(
         ic_i_val *= -1
 
     rng = np.random.RandomState(seed) if isinstance(seed, int) else seed
-    b_weighting = st.dirichlet.rvs(alpha=[alpha] * rows, size=b_samples, random_state=rng)
+    b_weighting = st.dirichlet.rvs(
+        alpha=[alpha] * rows, size=b_samples, random_state=rng
+    )
     weights = np.zeros((b_samples, cols))
     z_bs = np.zeros_like(weights)
 
@@ -441,7 +475,9 @@ def _bb_pseudo_bma_weights(
     return dict(zip(model_names, mean_weights)), ses
 
 
-def _pseudo_bma_weights(elpds: Mapping[str, ELPDData], ic: str, scale: str) -> Dict[str, float]:
+def _pseudo_bma_weights(
+    elpds: Mapping[str, ELPDData], ic: str, scale: str
+) -> Dict[str, float]:
     """Compute pseudo-BMA weights."""
     model_names = list(elpds.keys())
     elpd_values = np.array([elpds[name][f"elpd_{ic}"] for name in model_names])

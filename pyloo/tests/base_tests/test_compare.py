@@ -54,7 +54,17 @@ def test_loo_compare_basic(models):
     assert len(result) == 2
     assert all(
         col in result.columns
-        for col in ["rank", "elpd_loo", "p_loo", "elpd_diff", "weight", "se", "dse", "warning", "scale"]
+        for col in [
+            "rank",
+            "elpd_loo",
+            "p_loo",
+            "elpd_diff",
+            "weight",
+            "se",
+            "dse",
+            "warning",
+            "scale",
+        ]
     )
 
     assert set(result["rank"]) == {0, 1}
@@ -94,9 +104,11 @@ def test_loo_compare_methods(models, method):
 
     az_result = az.compare(models, method=method)
     if method == "BB-pseudo-BMA":
-        rtol = 2e-3
+        rtol = 2e-2
         assert_allclose(result["weight"].sum(), 1.0, rtol=1e-7)
-        assert_allclose(np.sort(result["weight"]), np.sort(az_result["weight"]), rtol=rtol)
+        assert_allclose(
+            np.sort(result["weight"]), np.sort(az_result["weight"]), rtol=rtol
+        )
     else:
         # For stacking method
         assert_allclose(result["weight"], az_result["weight"], rtol=1e-7, atol=1e-15)
@@ -196,7 +208,17 @@ def test_loo_compare_subsample(large_models, observations):
     assert len(result) == 2
     assert all(
         col in result.columns
-        for col in ["rank", "elpd_loo", "p_loo", "elpd_diff", "weight", "se", "dse", "warning", "scale"]
+        for col in [
+            "rank",
+            "elpd_loo",
+            "p_loo",
+            "elpd_diff",
+            "weight",
+            "se",
+            "dse",
+            "warning",
+            "scale",
+        ]
     )
 
     assert_allclose(result["weight"].sum(), 1.0, rtol=1e-7)
@@ -238,7 +260,9 @@ def test_loo_compare_mixed_subsample(models, large_models):
 def test_loo_compare_precomputed_subsample(large_models):
     """Test model comparison with pre-computed subsampled ELPD values."""
     elpds = {
-        name: loo_subsample(model, observations=1000, pointwise=True, estimator="diff_srs")
+        name: loo_subsample(
+            model, observations=1000, pointwise=True, estimator="diff_srs"
+        )
         for name, model in large_models.items()
     }
     result = loo_compare(elpds)

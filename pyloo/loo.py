@@ -87,16 +87,16 @@ def loo(
         .. ipython::
 
             In [1]: import pyloo as pl
-               ...: import arviz as az
-               ...: data = az.load_arviz_data("centered_eight")
-               ...: pl.loo(data)
+                ...: import arviz as az
+                ...: data = az.load_arviz_data("centered_eight")
+                ...: pl.loo(data)
 
         Calculate LOO of a model and return the pointwise values:
 
         .. ipython::
 
             In [2]: data_loo = pl.loo(data, pointwise=True)
-               ...: data_loo.loo_i
+                ...: data_loo.loo_i
 
         See Also
         --------
@@ -130,14 +130,18 @@ def loo(
             reff = 1.0
         else:
             ess_p = ess(posterior, method="mean")
-            reff = np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean() / n_samples
+            reff = (
+                np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean()
+                / n_samples
+            )
 
     has_nan = np.any(np.isnan(log_likelihood.values))
     has_inf = np.any(np.isinf(log_likelihood.values))
 
     if has_nan:
         warnings.warn(
-            "NaN values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            "NaN values detected in log-likelihood. These will be ignored in the LOO"
+            " calculation.",
             UserWarning,
             stacklevel=2,
         )
@@ -145,29 +149,36 @@ def loo(
 
     if has_inf:
         warnings.warn(
-            "Infinite values detected in log-likelihood. These will be ignored in the LOO calculation.",
+            "Infinite values detected in log-likelihood. These will be ignored in the"
+            " LOO calculation.",
             UserWarning,
             stacklevel=2,
         )
         log_likelihood = log_likelihood.where(
-            ~np.isinf(log_likelihood), np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10)
+            ~np.isinf(log_likelihood),
+            np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10),
         )
 
     try:
         method = method if isinstance(method, ISMethod) else ISMethod(method.lower())
     except ValueError:
-        raise ValueError(f"Invalid method '{method}'. Must be one of: {', '.join(m.value for m in ISMethod)}")
+        valid_methods = ", ".join(m.value for m in ISMethod)
+        raise ValueError(f"Invalid method '{method}'. Must be one of: {valid_methods}")
 
     if method != ISMethod.PSIS:
+        method_name = (
+            method.value.upper() if isinstance(method, ISMethod) else method.upper()
+        )
         warnings.warn(
-            f"Using {method.value.upper() if isinstance(method, ISMethod) else method.upper()} "
-            "for LOO computation. Note that PSIS is the recommended method as it is typically "
-            "more efficient and reliable.",
+            f"Using {method_name} for LOO computation. Note that PSIS is the"
+            " recommended method as it is typically more efficient and reliable.",
             UserWarning,
             stacklevel=2,
         )
 
-    log_weights, diagnostic = compute_importance_weights(-log_likelihood, method=method, reff=reff)
+    log_weights, diagnostic = compute_importance_weights(
+        -log_likelihood, method=method, reff=reff
+    )
     log_weights += log_likelihood
 
     warn_mg = False
@@ -176,11 +187,12 @@ def loo(
     if method == ISMethod.PSIS:
         if np.any(diagnostic > good_k):
             warnings.warn(
-                f"Estimated shape parameter of Pareto distribution is greater than {good_k:.2f} "
-                "for one or more samples. You should consider using a more robust model, this is "
-                "because importance sampling is less likely to work well if the marginal posterior "
-                "and LOO posterior are very different. This is more likely to happen with a "
-                "non-robust model and highly influential observations.",
+                "Estimated shape parameter of Pareto distribution is greater than"
+                f" {good_k:.2f} for one or more samples. You should consider using a"
+                " more robust model, this is because importance sampling is less"
+                " likely to work well if the marginal posterior and LOO posterior are"
+                " very different. This is more likely to happen with a non-robust"
+                " model and highly influential observations.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -190,9 +202,9 @@ def loo(
         min_ess = np.min(diagnostic)
         if min_ess < n_samples * 0.1:
             warnings.warn(
-                f"Low effective sample size detected (minimum ESS: {min_ess:.1f}). "
-                "This indicates that the importance sampling approximation may be unreliable. "
-                "Consider using PSIS which is more robust to such cases.",
+                f"Low effective sample size detected (minimum ESS: {min_ess:.1f}). This"
+                " indicates that the importance sampling approximation may be"
+                " unreliable. Consider using PSIS which is more robust to such cases.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -200,7 +212,9 @@ def loo(
 
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
     kwargs = {"input_core_dims": [["__sample__"]]}
-    loo_lppd_i = scale_value * wrap_xarray_ufunc(_logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs)
+    loo_lppd_i = scale_value * wrap_xarray_ufunc(
+        _logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs
+    )
     loo_lppd = loo_lppd_i.values.sum()
     loo_lppd_se = (n_data_points * np.var(loo_lppd_i.values)) ** 0.5
 

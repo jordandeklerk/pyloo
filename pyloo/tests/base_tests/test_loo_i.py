@@ -48,7 +48,10 @@ def test_loo_i_matches_loo(centered_eight):
     for i in range(8):  # centered_eight has 8 observations
         single_loo = loo_i(i, centered_eight, pointwise=True)
         assert_allclose(
-            single_loo["loo_i"].values, full_loo["loo_i"].values[i], rtol=1e-10, err_msg=f"Mismatch at observation {i}"
+            single_loo["loo_i"].values,
+            full_loo["loo_i"].values[i],
+            rtol=1e-10,
+            err_msg=f"Mismatch at observation {i}",
         )
         if "pareto_k" in full_loo:
             assert_allclose(
@@ -80,7 +83,9 @@ def test_loo_i_pointwise(centered_eight):
 
 def test_loo_i_bad_scale(centered_eight):
     """Test LOO-i computation with invalid scale."""
-    with pytest.raises(TypeError, match='Valid scale values are "deviance", "log", "negative_log"'):
+    with pytest.raises(
+        TypeError, match='Valid scale values are "deviance", "log", "negative_log"'
+    ):
         loo_i(0, centered_eight, scale="invalid")
 
 
@@ -96,7 +101,9 @@ def test_loo_i_missing_posterior():
     data = az.from_dict(
         log_likelihood={"obs": np.random.randn(4, 100, 8)},
     )
-    with pytest.raises(TypeError, match="Must be able to extract a posterior group from data"):
+    with pytest.raises(
+        TypeError, match="Must be able to extract a posterior group from data"
+    ):
         loo_i(0, data, reff=None)
 
     assert loo_i(0, data, reff=0.7) is not None
@@ -216,7 +223,9 @@ def test_loo_i_method_results(centered_eight):
     assert tis_result["ess"] >= 1
     assert tis_result["ess"] <= n_samples
 
-    elpds = np.array([psis_result["elpd_loo"], sis_result["elpd_loo"], tis_result["elpd_loo"]])
+    elpds = np.array(
+        [psis_result["elpd_loo"], sis_result["elpd_loo"], tis_result["elpd_loo"]]
+    )
     assert np.all(np.isfinite(elpds))
 
     ses = np.array([psis_result["se"], sis_result["se"], tis_result["se"]])

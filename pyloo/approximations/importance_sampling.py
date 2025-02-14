@@ -66,7 +66,9 @@ class ImportanceSamplingApproximation(LooApproximation):
         ufunc_kwargs = {"n_dims": 1, "ravel": False}
         kwargs = {"input_core_dims": [["__sample__"]]}
 
-        loo_lppd = wrap_xarray_ufunc(_logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs)
+        loo_lppd = wrap_xarray_ufunc(
+            _logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs
+        )
 
         return loo_lppd.values
 

@@ -69,7 +69,9 @@ def thin_draws(
         available_draws = data.sizes.get("__sample__", 0)
 
     if n_draws is not None and n_draws > available_draws:
-        raise ValueError(f"Requested {n_draws} draws but only {available_draws} are available")
+        raise ValueError(
+            f"Requested {n_draws} draws but only {available_draws} are available"
+        )
 
     if isinstance(data, xr.Dataset):
         sample_dims = [dim for dim in data.dims if dim in ["__sample__", "sample"]]
@@ -91,7 +93,10 @@ def thin_draws(
             raise ValueError("No sample dimension found in DataArray")
 
     if n_draws > n_samples:
-        raise ValueError(f"Target number of draws ({n_draws}) cannot exceed " f"current number of draws ({n_samples})")
+        raise ValueError(
+            f"Target number of draws ({n_draws}) cannot exceed "
+            f"current number of draws ({n_samples})"
+        )
 
     idx = np.linspace(0, n_samples - 1, n_draws, dtype=int)
     return data.isel(__sample__=idx)

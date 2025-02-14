@@ -48,7 +48,9 @@ generated quantities {
 """
 
 
-def generate_synthetic_data(n_samples: int = 10000, seed: int = 42) -> Tuple[np.ndarray, np.ndarray]:
+def generate_synthetic_data(
+    n_samples: int = 10000, seed: int = 42
+) -> Tuple[np.ndarray, np.ndarray]:
     """Generate synthetic data similar to the wells dataset but larger."""
     rng = np.random.default_rng(seed)
 
@@ -58,9 +60,11 @@ def generate_synthetic_data(n_samples: int = 10000, seed: int = 42) -> Tuple[np.
 
     true_beta = np.array([0.5, -0.4, 0.8])
 
-    X = np.column_stack(
-        [np.ones(n_samples), (dist100 - dist100.mean()) / dist100.std(), (arsenic - arsenic.mean()) / arsenic.std()]
-    )
+    X = np.column_stack([
+        np.ones(n_samples),
+        (dist100 - dist100.mean()) / dist100.std(),
+        (arsenic - arsenic.mean()) / arsenic.std(),
+    ])
 
     logits = X @ true_beta
     probs = 1 / (1 + np.exp(-logits))
@@ -87,7 +91,9 @@ def main():
 
     logger.info("Compiling and fitting Stan model...")
     model = CmdStanModel(stan_file=str(model_path))
-    fit = model.sample(data=stan_data, chains=4, iter_sampling=2000, iter_warmup=1000, seed=42)
+    fit = model.sample(
+        data=stan_data, chains=4, iter_sampling=2000, iter_warmup=1000, seed=42
+    )
 
     logger.info("Converting to InferenceData format...")
     idata = to_inference_data(fit)
@@ -98,12 +104,20 @@ def main():
 
     logger.info("\nComputing subsampled LOO-CV...")
     n_subsample = 400
-    loo_subsample_results = loo_subsample(idata, observations=n_subsample, loo_approximation="plpd", pointwise=True)
+    loo_subsample_results = loo_subsample(
+        idata, observations=n_subsample, loo_approximation="plpd", pointwise=True
+    )
     logger.info(loo_subsample_results)
 
     logger.info("\nComparison of estimates:")
-    logger.info(f"Full LOO ELPD:      {loo_results.elpd_loo:.2f} ± {loo_results.se:.2f}")
-    logger.info(f"Subsampled LOO ELPD: {loo_subsample_results.elpd_loo:.2f} ± {loo_subsample_results.se:.2f}")
+    logger.info(
+        f"Full LOO ELPD:      {loo_results.elpd_loo:.2f} ± {loo_results.se:.2f}"
+    )
+    subsample_msg = (
+        f"Subsampled LOO ELPD: {loo_subsample_results.elpd_loo:.2f} ± "
+        f"{loo_subsample_results.se:.2f}"
+    )
+    logger.info(subsample_msg)
 
     logger.info("\nPareto k diagnostics:")
     k_values = loo_results.pareto_k

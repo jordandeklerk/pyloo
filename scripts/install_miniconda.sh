@@ -27,15 +27,15 @@ CONDA_DIR=$HOME/miniconda3
 if [ ! -d "$CONDA_DIR" ]; then
     echo "Downloading Miniconda..."
     wget $MINICONDA_URL -O miniconda.sh
-    
+
     echo "Installing Miniconda..."
     bash miniconda.sh -b -p $CONDA_DIR
     rm miniconda.sh
-    
+
     # Add conda to path
     echo "Configuring Miniconda..."
     $CONDA_DIR/bin/conda init "$(basename "$SHELL")"
-    
+
     echo "Miniconda installed successfully!"
     echo "Please restart your shell or run:"
     echo "    source ~/.$(basename "$SHELL")rc"

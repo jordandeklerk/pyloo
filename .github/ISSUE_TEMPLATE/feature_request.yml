@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to suggest a new feature!
-        
+
   - type: textarea
     id: problem
     attributes:

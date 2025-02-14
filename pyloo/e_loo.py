@@ -83,9 +83,23 @@ def e_loo(
     """
     x = np.asarray(x)
     if x.ndim == 1:
-        return _e_loo_vector(x, log_weights, type=type, probs=probs, log_ratios=log_ratios, pareto_k=pareto_k)
+        return _e_loo_vector(
+            x,
+            log_weights,
+            type=type,
+            probs=probs,
+            log_ratios=log_ratios,
+            pareto_k=pareto_k,
+        )
     elif x.ndim == 2:
-        return _e_loo_matrix(x, log_weights, type=type, probs=probs, log_ratios=log_ratios, pareto_k=pareto_k)
+        return _e_loo_matrix(
+            x,
+            log_weights,
+            type=type,
+            probs=probs,
+            log_ratios=log_ratios,
+            pareto_k=pareto_k,
+        )
     else:
         raise ValueError("x must be 1D or 2D")
 
@@ -193,7 +207,13 @@ def _e_loo_khat(
         exp_cutoff = np.exp(np.log(x_tail[-1]))
         khat_r, _ = _gpdfit(x_tail - exp_cutoff)
 
-    if x is None or np.allclose(x, x[0]) or len(np.unique(x)) == 2 or np.any(np.isnan(x)) or np.any(np.isinf(x)):
+    if (
+        x is None
+        or np.allclose(x, x[0])
+        or len(np.unique(x)) == 2
+        or np.any(np.isnan(x))
+        or np.any(np.isinf(x))
+    ):
         return khat_r
 
     hr = x * r_theta
@@ -282,6 +302,9 @@ def _e_loo_matrix(
         if log_ratios is None:
             log_ratios = log_weights
         h = None if type == "quantile" else x**2 if type in ("variance", "sd") else x
-        pareto_k = np.array([_e_loo_khat(None if h is None else h[:, i], log_ratios[:, i]) for i in range(n_cols)])
+        pareto_k = np.array([
+            _e_loo_khat(None if h is None else h[:, i], log_ratios[:, i])
+            for i in range(n_cols)
+        ])
 
     return ExpectationResult(value=value, pareto_k=pareto_k)

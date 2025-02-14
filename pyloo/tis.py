@@ -58,7 +58,11 @@ def tislw(log_weights):
     log_weights = deepcopy(log_weights)
     if hasattr(log_weights, "__sample__"):
         n_samples = len(log_weights.__sample__)
-        shape = [size for size, dim in zip(log_weights.shape, log_weights.dims) if dim != "__sample__"]
+        shape = [
+            size
+            for size, dim in zip(log_weights.shape, log_weights.dims)
+            if dim != "__sample__"
+        ]
     else:
         n_samples = log_weights.shape[-1]
         shape = log_weights.shape[:-1]
@@ -67,7 +71,10 @@ def tislw(log_weights):
 
     func_kwargs = {"n_samples": n_samples, "out": out}
     ufunc_kwargs = {"n_dims": 1, "n_output": 2, "ravel": False, "check_shape": False}
-    kwargs = {"input_core_dims": [["__sample__"]], "output_core_dims": [["__sample__"], []]}
+    kwargs = {
+        "input_core_dims": [["__sample__"]],
+        "output_core_dims": [["__sample__"], []],
+    }
     log_weights, ess = wrap_xarray_ufunc(
         _tislw,
         log_weights,

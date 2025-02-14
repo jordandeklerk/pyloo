@@ -20,7 +20,9 @@ def test_psis_equivalence(data_fixture, request):
 
     reff = 0.7
     orig_weights, orig_k = psislw(-log_likelihood, reff=reff)
-    new_weights, new_k = compute_importance_weights(-log_likelihood, method="psis", reff=reff)
+    new_weights, new_k = compute_importance_weights(
+        -log_likelihood, method="psis", reff=reff
+    )
 
     assert_arrays_allclose(orig_weights, new_weights)
     assert_arrays_allclose(orig_k, new_k)
@@ -72,7 +74,11 @@ def test_method_case_insensitive(centered_eight):
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
 
     for method in ISMethod:
-        upper_weights, upper_diag = compute_importance_weights(-log_likelihood, method=method.value.upper())
-        lower_weights, lower_diag = compute_importance_weights(-log_likelihood, method=method.value.lower())
+        upper_weights, upper_diag = compute_importance_weights(
+            -log_likelihood, method=method.value.upper()
+        )
+        lower_weights, lower_diag = compute_importance_weights(
+            -log_likelihood, method=method.value.lower()
+        )
         assert_arrays_allclose(upper_weights, lower_weights)
         assert_arrays_allclose(upper_diag, lower_diag)

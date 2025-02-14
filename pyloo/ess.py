@@ -80,7 +80,9 @@ def rel_eff(
     psis_eff_size : Compute effective sample size for PSIS
     """
     if callable(x):
-        return _relative_eff_function(x, chain_id, cores, data, draws, method=method, prob=prob)
+        return _relative_eff_function(
+            x, chain_id, cores, data, draws, method=method, prob=prob
+        )
 
     x = np.asarray(x)
 
@@ -100,15 +102,25 @@ def rel_eff(
     S = x.shape[0] * x.shape[1]
 
     if cores == 1:
-        n_eff = np.array([mcmc_eff_size(x[:, :, i], method=method, prob=prob) for i in range(x.shape[2])])
+        n_eff = np.array([
+            mcmc_eff_size(x[:, :, i], method=method, prob=prob)
+            for i in range(x.shape[2])
+        ])
     else:
         with mp.Pool(cores) as pool:
-            n_eff = np.array(pool.starmap(mcmc_eff_size, [(x[:, :, i], method, prob) for i in range(x.shape[2])]))
+            n_eff = np.array(
+                pool.starmap(
+                    mcmc_eff_size,
+                    [(x[:, :, i], method, prob) for i in range(x.shape[2])],
+                )
+            )
 
     return np.minimum(n_eff / S, 1.0)
 
 
-def psis_eff_size(w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None) -> Union[float, np.ndarray]:
+def psis_eff_size(
+    w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None
+) -> Union[float, np.ndarray]:
     """Compute effective sample size for Pareto Smoothed Importance Sampling (PSIS).
 
     Parameters
@@ -264,7 +276,9 @@ def _is_valid_draws(x: np.ndarray, min_draws: int = 4, min_chains: int = 1) -> b
         if np.any(np.isnan(x)):
             warnings.warn("Input contains NaN values", RuntimeWarning, stacklevel=2)
         if np.any(np.isinf(x)):
-            warnings.warn("Input contains infinite values", RuntimeWarning, stacklevel=2)
+            warnings.warn(
+                "Input contains infinite values", RuntimeWarning, stacklevel=2
+            )
         return False
     if len(x.shape) > 2:
         raise ValueError("Input array must be 1-D or 2-D")
@@ -297,7 +311,9 @@ def _ess_bulk(x: np.ndarray) -> float:
     return min(_ess_raw(z), x.size)
 
 
-def _ess_tail(x: np.ndarray, prob: Optional[Union[float, Tuple[float, float]]] = None) -> float:
+def _ess_tail(
+    x: np.ndarray, prob: Optional[Union[float, Tuple[float, float]]] = None
+) -> float:
     """Compute tail ESS."""
     if prob is None:
         prob_low, prob_high = 0.05, 0.95
@@ -308,7 +324,9 @@ def _ess_tail(x: np.ndarray, prob: Optional[Union[float, Tuple[float, float]]] =
 
     q1 = np.quantile(x, prob_low)
     q2 = np.quantile(x, prob_high)
-    return min(_ess_raw(_split_chains(x <= q1)), _ess_raw(_split_chains(x >= q2)), x.size)
+    return min(
+        _ess_raw(_split_chains(x <= q1)), _ess_raw(_split_chains(x >= q2)), x.size
+    )
 
 
 def _ess_mean(x: np.ndarray) -> float:
