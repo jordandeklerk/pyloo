@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Union, cast
 
 import numpy as np
 import xarray as xr
-from arviz.data import InferenceData, convert_to_inference_data
+from arviz.data import InferenceData
 from arviz.stats.diagnostics import ess
 
 from .approximations import (
@@ -21,7 +21,7 @@ from .estimators.hansen_hurwitz import compute_sampling_probabilities
 from .importance_sampling import ISMethod, compute_importance_weights
 from .loo import loo
 from .rcparams import rcParams
-from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
+from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
 APPROXIMATION_METHODS = {
     LooApproximationMethod.LPD: lambda: LPDApproximation(),
@@ -49,21 +49,21 @@ def loo_subsample(
         Any object that can be converted to an InferenceData object
         containing the log likelihood data.
     observations : Optional[Union[int, np.ndarray]], default 400
-        The subsample observations to use. Can be:
-        * An integer specifying the number of observations to subsample
-        * An array of integers providing specific indices to use
-        * None to use all observations (equivalent to standard LOO)
+        The subsample observations to use:
+        - An integer specifying the number of observations to subsample
+        - An array of integers providing specific indices to use
+        - None to use all observations (equivalent to standard LOO)
     loo_approximation : str, default "plpd"
         The type of approximation to use for the loo_i values:
-        * "plpd": Point estimate based approximation (default)
-        * "lpd": Log predictive density
-        * "tis": Truncated importance sampling
-        * "sis": Standard importance sampling
+        - "plpd": Point estimate based approximation (default)
+        - "lpd": Log predictive density
+        - "tis": Truncated importance sampling
+        - "sis": Standard importance sampling
     estimator : str, default "diff_srs"
         The estimation method to use:
-        * "diff_srs": Difference estimator with simple random sampling (default)
-        * "hh_pps": Hansen-Hurwitz estimator
-        * "srs": Simple random sampling
+        - "diff_srs": Difference estimator with simple random sampling (default)
+        - "hh_pps": Hansen-Hurwitz estimator
+        - "srs": Simple random sampling
     loo_approximation_draws : Optional[int], default None
         The number of posterior draws to use for approximation methods that
         require integration over the posterior.
@@ -76,22 +76,29 @@ def loo_subsample(
         Relative MCMC efficiency, ess / n. If not provided, computed from trace.
     scale : Optional[str], default None
         Output scale for LOO. Available options are:
-        * "log": (default) log-score
-        * "negative_log": -1 * log-score
-        * "deviance": -2 * log-score
+        - "log": (default) log-score
+        - "negative_log": -1 * log-score
+        - "deviance": -2 * log-score
 
     Returns
     -------
-    ELPDData
-        The computed LOO-CV results including:
-        * elpd_loo: Expected log pointwise predictive density
-        * se: Standard error of elpd_loo (includes both approximation and sampling uncertainty)
-        * subsampling_SE: Standard error from subsampling uncertainty only
-        * p_loo: Effective number of parameters
-        * loo_i: Pointwise values (if pointwise=True)
-        * warning: Warning flag for unreliable estimates
-        * diagnostic: Diagnostic values
-        * scale: Output scale used
+    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
+    elpd_loo: approximated expected log pointwise predictive density (elpd)
+    se: standard error of the elpd (includes both approximation and sampling uncertainty)
+    subsampling_SE: standard error from subsampling uncertainty only
+    p_loo: effective number of parameters
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: bool
+        True if using PSIS and the estimated shape parameter of Pareto distribution
+        is greater than good_k
+    loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+        only if pointwise=True
+    diagnostic: array of diagnostic values, only if pointwise=True
+    scale: scale of the elpd
+    good_k: threshold computed as min(1 - 1/log10(S), 0.7)
+
+    The returned object has a custom print method that overrides pd.Series method.
 
     Notes
     -----
@@ -121,7 +128,7 @@ def loo_subsample(
     loo_i : Pointwise LOO-CV values
     update_subsample : Update subsampling results with new observations
     """
-    inference_data = convert_to_inference_data(data)
+    inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
 
@@ -262,9 +269,7 @@ def loo_subsample(
 
     # For multidimensional data, we need to handle the indices differently
     if len(obs_dims) > 1:
-        # Flatten the indices to match the flattened observation dimensions
         flat_idx = indices.idx
-        # Convert flat indices to multi-dimensional indices
         idx_arrays = np.unravel_index(
             flat_idx, [log_likelihood.sizes[dim] for dim in obs_dims]
         )
@@ -410,9 +415,8 @@ def loo_subsample(
     index = list(base_data.keys())
     result = ELPDData(data=data, index=index)
 
-    # Store additional information needed for updates
     result.estimates = estimates
-    result.estimates.data = inference_data  # Store original data
+    result.estimates.data = inference_data
     result.estimates.loo_approximation = loo_approximation
     result.estimates.estimator = estimator
     result.estimates.loo_approximation_draws = loo_approximation_draws
@@ -437,17 +441,20 @@ def update_subsample(
     loo_data : ELPDData
         The original LOO-CV results from loo_subsample()
     observations : Optional[Union[int, np.ndarray]], default None
-        The new subsample observations to use. Can be:
-        * An integer specifying the number of observations to subsample
-        * An array of integers providing specific indices to use
-        * None to use all observations (equivalent to standard LOO)
+        The new subsample observations to use:
+        - An integer specifying the number of observations to subsample
+        - An array of integers providing specific indices to use
+        - None to use all observations (equivalent to standard LOO)
     **kwargs
         Additional keyword arguments to pass to loo_subsample()
 
     Returns
     -------
-    ELPDData
-        A new ELPDData object containing the updated results
+    ELPDData object (inherits from :class:`pandas.Series`):
+    A new ELPDData object containing the updated results with the same attributes
+    as described in :func:`loo_subsample`
+
+    The returned object has a custom print method that overrides pd.Series method.
 
     Examples
     --------
