@@ -404,9 +404,6 @@ def _stacking_weights(elpds: Mapping[str, ELPDData], ic: str, scale: str) -> Dic
     weights = np.concatenate((result.x, [max(1.0 - np.sum(result.x), 0.0)]))
     weights = np.maximum(weights, 0)
     weights = weights / np.sum(weights)
-    weights[weights < 1e-12] = 0
-    if weights.sum() > 0:
-        weights = weights / weights.sum()
     return dict(zip(model_names, weights))
 
 

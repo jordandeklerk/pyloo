@@ -97,7 +97,8 @@ def test_loo_compare_methods(models, method):
         assert_allclose(result["weight"].sum(), 1.0, rtol=1e-7)
         assert_allclose(np.sort(result["weight"]), np.sort(az_result["weight"]), rtol=rtol)
     else:
-        assert_allclose(result["weight"], az_result["weight"], rtol=1e-7)
+        # For stacking method
+        assert_allclose(result["weight"], az_result["weight"], rtol=1e-7, atol=1e-15)
 
 
 def test_loo_compare_precomputed_elpd(models):
@@ -164,7 +165,8 @@ def test_loo_compare_stacking_optimization(models):
     assert np.all(result["weight"] >= 0)
 
     az_result = az.compare(models, method="stacking")
-    assert_allclose(result["weight"], az_result["weight"], rtol=1e-7)
+    # For stacking method
+    assert_allclose(result["weight"], az_result["weight"], rtol=1e-7, atol=1e-15)
 
 
 def test_loo_compare_missing_var_name(models):
