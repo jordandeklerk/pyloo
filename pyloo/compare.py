@@ -14,6 +14,7 @@ from .elpd import ELPDData
 from .loo import loo
 from .loo_subsample import loo_subsample
 from .rcparams import _validate_scale
+from .waic import waic
 
 
 def loo_compare(
@@ -29,17 +30,17 @@ def loo_compare(
     estimator: Optional[Literal["diff_srs", "srs", "hh_pps"]] = None,
 ) -> pd.DataFrame:
     """Compare models based on their expected log pointwise predictive density (ELPD).
-
-    The ELPD is estimated using Pareto smoothed importance sampling leave-one-out
-    cross-validation (LOO), with optional subsampling for large datasets.
+    The ELPD is estimated either by Pareto smoothed importance sampling leave-one-out
+    cross-validation (LOO) or using the widely applicable information criterion (WAIC).
+    We recommend LOO. For large datasets, LOO can be approximated using subsampling.
 
     Parameters
     ----------
     compare_dict : dict of {str: InferenceData or ELPDData}
         A dictionary of model names and InferenceData or ELPDData objects
     ic : str, optional
-        Information Criterion (LOO) used to compare models.
-        Default is "loo".
+        Information Criterion (LOO or WAIC) used to compare models.
+        Default is "loo". We recommend using LOO over WAIC.
     method : str, optional
         Method used to estimate the weights for each model. Available options are:
         - 'stacking' : stacking of predictive distributions.
@@ -107,6 +108,7 @@ def loo_compare(
     --------
     loo : Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
     loo_subsample : Compute approximate LOO-CV using subsampling.
+    waic : Compute the widely applicable information criterion (WAIC).
     """
     if not isinstance(compare_dict, dict):
         raise TypeError("compare_dict must be a dictionary")
@@ -124,17 +126,17 @@ def loo_compare(
     if method not in ["stacking", "bb-pseudo-bma", "pseudo-bma"]:
         raise ValueError("Method must be 'stacking', 'BB-pseudo-BMA' or 'pseudo-BMA'")
 
-    try:
-        elpds, scale, ic = _calculate_ics(
-            compare_dict,
-            scale=scale,
-            ic=ic,
-            var_name=var_name,
-            observations=observations,
-            estimator=estimator,
-        )
-    except Exception as e:
-        raise e.__class__("Encountered error in ELPD computation of compare.") from e
+    if ic not in ["loo", "waic"]:
+        raise ValueError("ic must be 'loo' or 'waic'")
+
+    elpds, scale, ic = _calculate_ics(
+        compare_dict,
+        scale=scale,
+        ic=ic,
+        var_name=var_name,
+        observations=observations,
+        estimator=estimator,
+    )
 
     ascending = scale != "log"
 
@@ -159,9 +161,8 @@ def loo_compare(
             elif scale == "deviance":
                 diff *= -2
 
-            pointwise_diff = (
-                elpds[name]["loo_i"].values - elpds[best_model]["loo_i"].values
-            )
+            ic_i = f"{ic}_i"
+            pointwise_diff = elpds[name][ic_i].values - elpds[best_model][ic_i].values
             dse = np.sqrt(len(pointwise_diff) * np.var(pointwise_diff))
 
         diffs.append(diff)
@@ -275,7 +276,7 @@ def _calculate_ics(
             elpd_data.index[0].split("_")[1] != precomputed_ic
             for elpd_data in precomputed_elpds.values()
         ):
-            raise ValueError("All information criteria to be compared must be 'loo'")
+            raise ValueError("All information criteria to be compared must be the same")
 
         if any(
             elpd_data["scale"] != precomputed_scale
@@ -318,10 +319,6 @@ def _calculate_ics(
         ic = precomputed_ic
     else:
         ic = ic.lower()
-
-    if ic not in ["loo"]:
-        raise ValueError("ic must be 'loo'")
-
     if scale is None and precomputed_scale is None:
         scale = "log"
     elif scale is None:
@@ -330,7 +327,9 @@ def _calculate_ics(
         scale = _validate_scale(scale)
 
     ic_func: Callable[..., ELPDData]
-    if observations is not None:
+    if ic == "waic":
+        ic_func = waic
+    elif observations is not None:
         ic_func = loo_subsample
     else:
         ic_func = loo
@@ -352,7 +351,7 @@ def _calculate_ics(
 
     if scale is None:
         scale = "log"
-    return dict(compare_dict), scale, ic
+    return dict(compare_dict), scale, ic  # type: ignore
 
 
 def _compute_weights(
@@ -380,8 +379,9 @@ def _stacking_weights(
     model_names = list(elpds.keys())
     n_models = len(model_names)
 
+    ic_i = f"{ic}_i"
     pointwise_elpds = np.stack(
-        [elpds[name]["loo_i"].values for name in model_names], axis=1
+        [elpds[name][ic_i].values for name in model_names], axis=1
     )
 
     if scale == "deviance":

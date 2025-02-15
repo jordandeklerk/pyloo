@@ -11,9 +11,9 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/1c08ec7d782c451784293c996537de14)](https://www.codacy.com/gh/jordandeklerk/pyloo/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=jordandeklerk/pyloo&amp;utm_campaign=Badge_Grade)
 [![Python version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/)
 
-__pyloo__ is a framework-agnostic Python implementation of the [R package loo](https://github.com/stan-dev/loo), providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models.
+__pyloo__ is a framework-agnostic Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models. This package has an R twin [loo](https://github.com/stan-dev/loo).
 <br><br><br>
-> ⚠️ **Note**: This project is in active development and not all features from the R package have been implemented yet. While the core functionality is available, some advanced features are still being worked on. We recommend checking the documentation for the current status of specific features.
+> ⚠️ **Note**: This project is in active development and not all features from the R package have been implemented yet. While the core functionality is available, some advanced features are still being worked on.
 
 
 From existing posterior simulation draws, we compute approximate LOO-CV using Pareto smoothed importance sampling (PSIS), a procedure for regularizing importance weights. As a byproduct of our calculations, we also obtain approximate standard errors for estimated predictive errors, enabling robust model comparison and evaluation across multiple models.
@@ -63,7 +63,6 @@ Pareto k diagnostic values:
 For large datasets, we provide efficient subsampling-based computation:
 
 ```python
-# PSIS-LOO-CV with subsampling
 subsample_result = pl.loo_subsample(
     data,
     observations=400,          # Subsample size
@@ -89,7 +88,6 @@ Compare multiple models using stacking weights or other methods:
 model1 = az.load_arviz_data("centered_eight")
 model2 = az.load_arviz_data("non_centered_eight")
 
-# Compare models using stacking weights (default)
 comparison = pl.loo_compare(
     {
         "centered": model1,
@@ -110,37 +108,6 @@ non_centered     -11.2    2.1    3.1     0.62        0.0       0.0
 centered         -11.5    2.3    3.3     0.38       -0.3       0.4
 
 All Pareto k estimates are good (k < 0.7)
-```
-
-#### Diagnostics and Warnings
-When the model fit is problematic, you'll receive warnings about high Pareto k values:
-
-```python
-problematic_loo = pl.loo(
-    data,
-    pointwise=True
-)
-
-print(problematic_loo)
-```
-```
-Computed from 4000 samples using all 8 observations.
-
-           Estimate   SE
-elpd_loo   -15.6     4.8
-p_loo       5.2      -
-looic       31.2     9.6
-
-Some Pareto k estimates are high (k >= 0.7).
-See help('pareto-k-diagnostic') for details.
-
-Pareto k diagnostic values:
-                          Count    Pct.
-(-Inf, 0.70)                 5    62.5
-[0.70, 1)                    2    25.0
-[1, Inf)                     1    12.5
-
-There has been a warning during the calculation. Please check the results.
 ```
 
 ### Installation
