@@ -113,9 +113,7 @@ def loo_subsample(
 
         In [1]: import arviz as az
            ...: from pyloo import loo_subsample
-           ...: # Load example dataset
            ...: data = az.load_arviz_data("centered_eight")
-           ...: # Compute LOO-CV with subsampling
            ...: result = loo_subsample(
            ...:     data,
            ...:     observations=4,  # subsample 4 out of 8 observations
