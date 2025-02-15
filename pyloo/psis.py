@@ -1,4 +1,4 @@
-"""Functions for Pareto smoothed importance sampling (PSIS) with adaptations from ArviZ."""
+"""Functions for Pareto smoothed importance sampling (PSIS) based on ArviZ."""
 
 from copy import deepcopy
 

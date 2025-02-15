@@ -1,4 +1,4 @@
-"""Helper functions for pyloo package with adaptations from ArviZ."""
+"""Helper functions for pyloo package."""
 
 import warnings
 from collections.abc import Sequence
