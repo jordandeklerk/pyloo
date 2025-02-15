@@ -229,7 +229,7 @@ def _calculate_ics(
     observations: Optional[Union[int, np.ndarray]] = None,
     estimator: Optional[Literal["diff_srs", "srs", "hh_pps"]] = None,
 ) -> Tuple[Dict[str, ELPDData], str, str]:
-    """Calculate LOO or subsampled LOO.
+    """Calculate LOO, WAIC, or subsampled LOO.
 
     Parameters
     ----------

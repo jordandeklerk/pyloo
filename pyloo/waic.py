@@ -1,4 +1,4 @@
-"""Widely applicable information criterion (WAIC) for model comparison."""
+"""Widely applicable information criterion (WAIC) based on Arviz."""
 
 import warnings
 from typing import Any, Optional, Union
