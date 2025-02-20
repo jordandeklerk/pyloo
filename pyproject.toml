@@ -41,20 +41,62 @@ dev = [
     "isort>=5.0.0",
     "flake8>=4.0.0",
     "pre-commit>=2.20.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
 ]
-
-[tool.black]
-line-length = 88
-target-version = ["py310"]
-include = '\.pyi?$'
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 minversion = "7.0"
-addopts = "-ra -q --cov=pyloo"
-testpaths = [
-    "pyloo/tests",
+xfail_strict = true
+addopts = ["-ra", "--cov=pyloo", "--color=yes"]
+
+[tool.mypy]
+python_version = "3.10"
+no_implicit_optional = false
+strict_optional = true
+warn_redundant_casts = false
+check_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+ignore_missing_imports = true
+warn_unused_ignores = false
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["C4", "D", "E", "F", "I", "UP", "W", "RUF", "T20", "TID"]
+ignore = [
+    "E501",  # Line too long
+    "F841",  # Local variable is assigned to but never used
+    "RUF001",  # String contains ambiguous character
+    "RUF002",  # Docstring contains ambiguous character
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D105",  # Missing docstring in magic method
 ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+lines-between-types = 1
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: nocover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
+[tool.coverage.run]
+omit = ["*examples*"]
