@@ -7,7 +7,7 @@ name = "pyloo"
 version = "0.1.0"
 description = "Python implementation of Leave-One-Out cross-validation (LOO-CV) and Pareto Smoothed Importance Sampling (PSIS) for Bayesian models"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "Jordan Deklerk", email = "jordan.deklerk@gmail.com"}
@@ -17,8 +17,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
@@ -47,7 +45,7 @@ dev = [
 
 [tool.black]
 line-length = 88
-target-version = ["py38"]
+target-version = ["py310"]
 include = '\.pyi?$'
 
 [tool.isort]
