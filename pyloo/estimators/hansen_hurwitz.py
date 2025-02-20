@@ -103,10 +103,7 @@ def compute_sampling_probabilities(
         # If all values are zero or negative, use uniform probabilities
         pi_values = np.ones_like(pi_values)
 
-    # Ensure no zeros to avoid division issues
     pi_values = np.maximum(pi_values, np.finfo(float).tiny)
-
-    # Normalize to sum to 1
     pi_values = pi_values / np.sum(pi_values)
 
     return pi_values
