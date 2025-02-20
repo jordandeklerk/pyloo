@@ -1,7 +1,7 @@
 """Leave-one-out cross-validation (LOO-CV) using importance sampling methods based on ArviZ."""
 
 import warnings
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 import numpy as np
 from arviz.data import InferenceData
@@ -14,12 +14,12 @@ from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarra
 
 
 def loo(
-    data: Union[InferenceData, Any],
-    pointwise: Optional[bool] = None,
-    var_name: Optional[str] = None,
-    reff: Optional[float] = None,
-    scale: Optional[str] = None,
-    method: Union[Literal["psis", "sis", "tis"], ISMethod] = "psis",
+    data: InferenceData | Any,
+    pointwise: bool | None = None,
+    var_name: str | None = None,
+    reff: float | None = None,
+    scale: str | None = None,
+    method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
 ) -> ELPDData:
     """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
 
