@@ -1,7 +1,7 @@
 """Efficient approximate leave-one-out cross-validation (LOO-CV) using subsampling."""
 
 import warnings
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Optional, cast
 
 import numpy as np
 import xarray as xr
@@ -31,8 +31,8 @@ APPROXIMATION_METHODS = {
 
 
 def loo_subsample(
-    data: Union[InferenceData, Dict[str, Any]],
-    observations: Optional[Union[int, np.ndarray]] = 400,
+    data: InferenceData | dict[str, Any],
+    observations: Optional[int | np.ndarray] = 400,
     loo_approximation: str = "plpd",
     estimator: str = "diff_srs",
     loo_approximation_draws: Optional[int] = None,
@@ -425,7 +425,7 @@ def loo_subsample(
 
 def update_subsample(
     loo_data: ELPDData,
-    observations: Optional[Union[int, np.ndarray]] = None,
+    observations: Optional[int | np.ndarray] = None,
     **kwargs,
 ) -> ELPDData:
     """Update subsampling results with new observations or parameters.

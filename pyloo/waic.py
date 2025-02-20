@@ -1,7 +1,7 @@
 """Widely applicable information criterion (WAIC) based on Arviz."""
 
 import warnings
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 from arviz.data import InferenceData
@@ -12,10 +12,10 @@ from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarra
 
 
 def waic(
-    data: Union[InferenceData, Any],
-    pointwise: Optional[bool] = None,
-    var_name: Optional[str] = None,
-    scale: Optional[str] = None,
+    data: InferenceData | Any,
+    pointwise: bool | None = None,
+    var_name: str | None = None,
+    scale: str | None = None,
 ) -> ELPDData:
     """Compute the widely applicable information criterion (WAIC).
 

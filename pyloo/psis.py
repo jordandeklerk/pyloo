@@ -8,7 +8,9 @@ import xarray as xr
 from .utils import _logsumexp, wrap_xarray_ufunc
 
 
-def psislw(log_weights, reff=1.0):
+def psislw(
+    log_weights, reff: float = 1.0
+) -> tuple[xr.DataArray | np.ndarray, xr.DataArray | np.ndarray]:
     """
     Pareto smoothed importance sampling (PSIS).
 
@@ -96,7 +98,7 @@ def psislw(log_weights, reff=1.0):
     return log_weights, pareto_shape
 
 
-def _psislw(log_weights, cutoff_ind, cutoffmin):
+def _psislw(log_weights, cutoff_ind: int, cutoffmin: float) -> tuple[np.ndarray, float]:
     """
     Pareto smoothed importance sampling (PSIS) for a 1D vector.
 
@@ -145,7 +147,7 @@ def _psislw(log_weights, cutoff_ind, cutoffmin):
     return x, k
 
 
-def _gpdfit(ary):
+def _gpdfit(ary: np.ndarray) -> tuple[float, float]:
     """Estimate the parameters for the Generalized Pareto Distribution (GPD).
 
     Empirical Bayes estimate for the parameters of the generalized Pareto
@@ -193,7 +195,7 @@ def _gpdfit(ary):
     return k_post, sigma
 
 
-def _gpinv(probs, kappa, sigma):
+def _gpinv(probs: np.ndarray, kappa: float, sigma: float) -> np.ndarray:
     """Inverse Generalized Pareto distribution function."""
     x = np.full_like(probs, np.nan)
     if sigma <= 0:
