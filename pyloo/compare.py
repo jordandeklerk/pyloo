@@ -2,7 +2,7 @@
 
 import warnings
 from copy import deepcopy
-from typing import Callable, Dict, Literal, Mapping, Optional, Tuple, Union
+from typing import Callable, Literal, Mapping, Optional
 
 import numpy as np
 import pandas as pd
@@ -18,15 +18,15 @@ from .waic import waic
 
 
 def loo_compare(
-    compare_dict: Mapping[str, Union[InferenceData, ELPDData]],
+    compare_dict: Mapping[str, InferenceData | ELPDData],
     ic: str = "loo",
     method: Literal["stacking", "bb-pseudo-bma", "pseudo-bma"] = "stacking",
     b_samples: int = 1000,
     alpha: float = 1,
-    seed: Optional[Union[int, np.random.RandomState]] = None,
+    seed: Optional[int | np.random.RandomState] = None,
     scale: Optional[str] = None,
     var_name: Optional[str] = None,
-    observations: Optional[Union[int, np.ndarray]] = None,
+    observations: Optional[int | np.ndarray] = None,
     estimator: Optional[Literal["diff_srs", "srs", "hh_pps"]] = None,
 ) -> pd.DataFrame:
     """Compare models based on their expected log pointwise predictive density (ELPD).
@@ -203,7 +203,7 @@ def loo_compare(
     return df
 
 
-def _ic_matrix(elpds: Mapping[str, ELPDData], ic_i: str) -> Tuple[int, int, np.ndarray]:
+def _ic_matrix(elpds: Mapping[str, ELPDData], ic_i: str) -> tuple[int, int, np.ndarray]:
     """Store the previously computed pointwise predictive accuracy values (elpds) in a 2D matrix."""
     model_names = list(elpds.keys())
     cols = len(model_names)
@@ -222,13 +222,13 @@ def _ic_matrix(elpds: Mapping[str, ELPDData], ic_i: str) -> Tuple[int, int, np.n
 
 
 def _calculate_ics(
-    compare_dict: Mapping[str, Union[InferenceData, ELPDData]],
+    compare_dict: Mapping[str, InferenceData | ELPDData],
     scale: Optional[str] = None,
     ic: Optional[str] = None,
     var_name: Optional[str] = None,
-    observations: Optional[Union[int, np.ndarray]] = None,
+    observations: Optional[int | np.ndarray] = None,
     estimator: Optional[Literal["diff_srs", "srs", "hh_pps"]] = None,
-) -> Tuple[Dict[str, ELPDData], str, str]:
+) -> tuple[dict[str, ELPDData], str, str]:
     """Calculate LOO, WAIC, or subsampled LOO.
 
     Parameters
@@ -360,9 +360,9 @@ def _compute_weights(
     method: Literal["stacking", "bb-pseudo-bma", "pseudo-bma"],
     b_samples: int,
     alpha: float,
-    seed: Optional[Union[int, np.random.RandomState]],
+    seed: Optional[int | np.random.RandomState],
     scale: str,
-) -> Union[Dict[str, float], Tuple[Dict[str, float], pd.Series]]:
+) -> dict[str, float] | tuple[dict[str, float], pd.Series]:
     """Compute model weights using the specified method."""
     if method == "stacking":
         return _stacking_weights(elpds, ic, scale)
@@ -374,7 +374,7 @@ def _compute_weights(
 
 def _stacking_weights(
     elpds: Mapping[str, ELPDData], ic: str, scale: str
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute stacking weights."""
     model_names = list(elpds.keys())
     n_models = len(model_names)
@@ -439,9 +439,9 @@ def _bb_pseudo_bma_weights(
     ic: str,
     b_samples: int,
     alpha: float,
-    seed: Optional[Union[int, np.random.RandomState]],
+    seed: Optional[int | np.random.RandomState],
     scale: str,
-) -> Tuple[Dict[str, float], pd.Series]:
+) -> tuple[dict[str, float], pd.Series]:
     """Compute Bayesian bootstrap pseudo-BMA weights."""
     if seed is not None:
         np.random.seed(seed)
@@ -477,7 +477,7 @@ def _bb_pseudo_bma_weights(
 
 def _pseudo_bma_weights(
     elpds: Mapping[str, ELPDData], ic: str, scale: str
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute pseudo-BMA weights."""
     model_names = list(elpds.keys())
     elpd_values = np.array([elpds[name][f"elpd_{ic}"] for name in model_names])
