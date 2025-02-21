@@ -3,6 +3,7 @@
 import numpy as np
 import pymc as pm
 import pytest
+import xarray as xr
 from arviz import InferenceData
 
 from .pymc_wrapper import PyMCWrapper
@@ -146,12 +147,12 @@ def test_wrapper_initialization(simple_model):
         PyMCWrapper(model, idata_no_posterior)
 
 
-def test_get_log_likelihood(simple_model):
+def test_log_likelihood(simple_model):
     """Test log likelihood computation."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like = wrapper.get_log_likelihood()
+    log_like = wrapper.log_likelihood()
     assert isinstance(log_like, dict)
     assert "y" in log_like
 
@@ -159,7 +160,7 @@ def test_get_log_likelihood(simple_model):
     assert log_like["y"].shape == (n_samples, 100)
 
     indices = {"y": slice(0, 50)}
-    log_like_subset = wrapper.get_log_likelihood(indices=indices)
+    log_like_subset = wrapper.log_likelihood(indices=indices)
     assert log_like_subset["y"].shape == (n_samples, 50)
 
 
@@ -273,7 +274,7 @@ def test_hierarchical_model_no_coords(hierarchical_model_no_coords):
     dims_y = wrapper.get_dims("Y")
     assert dims_y is None or dims_y == []
 
-    log_like = wrapper.get_log_likelihood()
+    log_like = wrapper.log_likelihood()
     assert set(log_like.keys()) == {"Y"}
     n_samples = len(idata.posterior.chain) * len(idata.posterior.draw)
     assert log_like["Y"].shape == (n_samples, 8, 20)
@@ -324,7 +325,7 @@ def test_hierarchical_model_wrapper(hierarchical_model):
     dims_y = wrapper.get_dims("Y")
     assert list(dims_y) == ["group", "obs_id"]
 
-    log_like = wrapper.get_log_likelihood()
+    log_like = wrapper.log_likelihood()
     assert set(log_like.keys()) == {"Y"}
     n_samples = len(idata.posterior.chain) * len(idata.posterior.draw)
     assert log_like["Y"].shape == (n_samples, 8, 20)
@@ -360,9 +361,7 @@ def test_hierarchical_model_wrapper(hierarchical_model):
 
     subset_indices = {"Y": slice(0, 4)}
     subset_axis = {"Y": 0}
-    subset_log_like = wrapper.get_log_likelihood(
-        indices=subset_indices, axis=subset_axis
-    )
+    subset_log_like = wrapper.log_likelihood(indices=subset_indices, axis=subset_axis)
     assert subset_log_like["Y"].shape == (n_samples, 4, 20)
 
 
@@ -400,3 +399,49 @@ def test_sample_posterior(simple_model):
 
     assert np.abs(np.mean(alpha_samples) - 1.0) < 0.5
     assert np.abs(np.mean(beta_samples) - 2.0) < 0.5
+
+
+def test_log_likelihood__i_workflow(simple_model):
+    """Test the full LOO-CV workflow including exact computation for problematic observations."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    import arviz as az
+
+    loo_results = az.loo(idata, pointwise=True)
+
+    # Force a problematic observation by artificially setting its pareto k high
+    loo_results.pareto_k[0] = 0.8
+    problematic_idx = 0
+
+    var_name = "y"
+    original_data = wrapper.observed_data[var_name].copy()
+    holdout_data, coords = wrapper.select_observations(
+        var_name, np.array([problematic_idx])
+    )
+
+    training_mask = np.ones_like(original_data, dtype=bool)
+    training_mask[problematic_idx] = False
+    training_data = original_data[training_mask]
+
+    wrapper.set_data({"y": training_data})
+    refitted_idata = wrapper.sample_posterior(
+        draws=1000, tune=1000, chains=2, random_seed=42
+    )
+
+    log_like = wrapper.log_likelihood__i("y", problematic_idx, refitted_idata)
+
+    assert isinstance(log_like, xr.DataArray)
+
+    assert "chain" in log_like.dims
+    assert "draw" in log_like.dims
+    assert log_like.sizes["chain"] == 2
+    assert log_like.sizes["draw"] == 1000
+
+    if "obs_id" in log_like.dims:
+        assert log_like.sizes["obs_id"] == 1
+
+    assert np.all(np.isfinite(log_like))
+    assert np.all(log_like < 0)
+
+    wrapper.set_data({"y": original_data})

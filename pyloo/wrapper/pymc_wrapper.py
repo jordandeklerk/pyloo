@@ -1,11 +1,13 @@
 """Wrapper for fitted PyMC models to support LOO-CV computations."""
 
+import copy
 import warnings
 from typing import Any, Sequence
 
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
+import xarray as xr
 from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
@@ -56,11 +58,12 @@ class PyMCWrapper:
         self.model = model
         self.idata = idata
         self.var_names = list(var_names) if var_names is not None else None
-        self._untransformed_model = remove_value_transforms(model)
+        # Work with a deep copy of the original model to avoid issues with extra dimensions
+        self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
         self._validate_model_state()
         self._extract_model_components()
 
-    def get_log_likelihood(
+    def log_likelihood(
         self,
         var_names: Sequence[str] | None = None,
         indices: dict[str, np.ndarray | slice] | None = None,
@@ -96,9 +99,9 @@ class PyMCWrapper:
         --------
         compute_pointwise_log_likelihood : Internal method for log likelihood computation
         """
-        return self.compute_pointwise_log_likelihood(var_names, indices, axis)
+        return self._compute_log_likelihood(var_names, indices, axis)
 
-    def compute_pointwise_log_likelihood(
+    def _compute_log_likelihood(
         self,
         var_names: Sequence[str] | None = None,
         indices: dict[str, np.ndarray | slice] | None = None,
@@ -402,6 +405,64 @@ class PyMCWrapper:
 
             if coords is not None:
                 self._validate_coords(var_name, coords)
+
+    def log_likelihood__i(
+        self,
+        var_name: str,
+        idx: int,
+        refitted_idata: InferenceData,
+    ) -> xr.DataArray:
+        """Compute pointwise log likelihood for a single held-out observation.
+
+        Handles multidimensional observations and coordinate systems by properly
+        managing dimension mappings and coordinate selections when computing
+        log likelihoods for held-out data.
+
+        Parameters
+        ----------
+        var_name : str
+            Name of the variable to compute log likelihood for
+        idx : int
+            Index of the observation to compute log likelihood for
+        refitted_idata : InferenceData
+            InferenceData object from a model refit without the observation
+
+        Returns
+        -------
+        xr.DataArray
+            Log likelihood values for the held-out observation with dimensions (chain, draw)
+        """
+        holdout_data, holdout_coords = self.select_observations(
+            var_name, np.array([idx])
+        )
+        # dims = self.get_dims(var_name)
+        original_data = self.observed_data[var_name].copy()
+
+        try:
+            # Set just the held-out observation as the observed data
+            self.set_data({var_name: holdout_data}, coords=holdout_coords)
+
+            log_like = pm.compute_log_likelihood(
+                refitted_idata,
+                var_names=[var_name],
+                model=self._untransformed_model,
+                extend_inferencedata=False,
+            )
+
+            log_like_i = log_like[var_name]
+
+            # Get all observation-related dimensions (excluding chain and draw)
+            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+
+            # For each observation dimension, select the first (and only) element
+            # since we only provided one observation
+            for dim in obs_dims:
+                log_like_i = log_like_i.isel({dim: 0})
+
+            return log_like_i
+
+        finally:
+            self.set_data({var_name: original_data})
 
     def get_missing_mask(
         self,
