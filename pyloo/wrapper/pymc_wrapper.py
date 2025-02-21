@@ -1,5 +1,6 @@
 """Wrapper for fitted PyMC models to support LOO-CV computations."""
 
+import warnings
 from typing import Any, Sequence
 
 import numpy as np
@@ -121,7 +122,7 @@ class PyMCWrapper:
         -------
         dict[str, np.ndarray]
             Dictionary mapping variable names to their pointwise log likelihoods
-            with shape (n_chains, n_draws, n_points)
+            with shape (n_samples, n_points) where n_samples = n_chains * n_draws
         """
         if var_names is None:
             var_names = list(self.observed_data.keys())
@@ -133,11 +134,20 @@ class PyMCWrapper:
 
         log_likes = {}
         for var_name in var_names:
-            log_like = self.idata.log_likelihood[var_name].values
+            log_like = (
+                self.idata.log_likelihood[var_name]
+                .stack(__sample__=("chain", "draw"))
+                .values
+            )
+
+            n_dims = len(log_like.shape)
+            sample_dim = n_dims - 1
+            log_like = np.moveaxis(log_like, sample_dim, 0)
+
             if var_name in indices:
                 idx = indices[var_name]
                 ax = axis.get(var_name, 0)
-                ax += 2
+                ax += 1  # Account for sample dimension at front
                 if isinstance(idx, slice):
                     idx_range = range(*idx.indices(log_like.shape[ax]))
                     log_like = np.take(log_like, idx_range, axis=ax)
@@ -179,8 +189,28 @@ class PyMCWrapper:
         Returns
         -------
         InferenceData
-            ArviZ InferenceData object containing the posterior samples
+            ArviZ InferenceData object containing the posterior samples and
+            log likelihood values
+
+        Notes
+        -----
+        Log likelihood computation is always enabled as it is required for
+        LOO-CV computations.
         """
+        idata_kwargs = kwargs.get("idata_kwargs", {})
+        if isinstance(idata_kwargs, dict):
+            if not idata_kwargs.get("log_likelihood", False):
+                warnings.warn(
+                    "Automatically enabling log likelihood computation as it is "
+                    "required for LOO-CV.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                idata_kwargs["log_likelihood"] = True
+                kwargs["idata_kwargs"] = idata_kwargs
+        else:
+            kwargs["idata_kwargs"] = {"log_likelihood": True}
+
         with self._untransformed_model:
             idata = pm.sample(
                 draws=draws,
