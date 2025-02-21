@@ -6,8 +6,8 @@ import pytest
 import xarray as xr
 from arviz import InferenceData
 
-from ..loo import loo
-from .pymc_wrapper import PyMCWrapper
+from ...loo import loo
+from ...wrapper.pymc_wrapper import PyMCWrapper
 
 
 @pytest.fixture
