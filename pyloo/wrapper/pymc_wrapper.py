@@ -263,94 +263,124 @@ class PyMCWrapper:
 
     def select_observations(
         self,
-        var_name: str,
         indices: np.ndarray | slice,
+        var_name: str | None = None,
         axis: int | None = None,
-    ) -> tuple[np.ndarray, dict[str, Sequence] | None]:
-        """Select specific observations from a variable's data.
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Select and partition observations from a variable's data.
+
+        This method partitions the data into two sets: selected observations and remaining
+        observations. This is particularly useful for leave-one-out cross-validation where
+        you need both the held-out data and the training data. If no variable name is provided,
+        uses the first observed variable in the model.
 
         Parameters
         ----------
-        var_name : str
-            Name of the variable
         indices : array-like or slice
-            Indices of observations to select
+            Indices of observations to select for the held-out set
+        var_name : Optional[str]
+            Name of the variable. If None, uses the first observed variable.
         axis : Optional[int]
             Axis along which to select observations.
             If None, assumes the first axis is the observation axis.
 
         Returns
         -------
-        Tuple[np.ndarray, Optional[Dict[str, Sequence]]]
-            - Selected observations
-            - Dictionary of coordinates for the selected data (if available)
-              or None if no coordinates are associated with the variable
+        Tuple[np.ndarray, np.ndarray]
+            - Selected (held-out) observations
+            - Remaining (training) observations
 
         Raises
         ------
         ValueError
-            If the variable name is not found or indices are invalid
+            If no observed variables exist, the specified variable name is not found,
+            or indices are invalid
         """
-        if var_name not in self.observed_data:
+        if not self.observed_data:
+            raise ValueError("No observed variables found in the model")
+
+        if var_name is None:
+            var_name = next(iter(self.observed_data))
+        elif var_name not in self.observed_data:
             raise ValueError(f"Variable {var_name} not found in observed data")
 
         data = self.observed_data[var_name]
         if axis is None:
             axis = 0
 
-        dims = self.get_dims(var_name)
-        selected_coords: dict[str, Sequence] | None = None
-
         try:
+            mask = np.zeros(data.shape[axis], dtype=bool)
             if isinstance(indices, slice):
                 idx_range = range(*indices.indices(data.shape[axis]))
-                selected = np.take(data, idx_range, axis=axis)
-
-                if dims is not None:
-                    selected_dim = dims[axis] if axis < len(dims) else None
-                    if (
-                        selected_dim is not None
-                        and selected_dim in self._untransformed_model.coords
-                    ):
-                        selected_coords = {}
-                        for i, dim in enumerate(dims):
-                            if dim is None:
-                                continue
-                            if i == axis:
-                                selected_coords[dim] = [
-                                    list(self._untransformed_model.coords[dim])[i]
-                                    for i in idx_range
-                                ]
-                            else:
-                                selected_coords[dim] = list(
-                                    self._untransformed_model.coords[dim]
-                                )
+                mask[idx_range] = True
             else:
-                selected = np.take(data, indices, axis=axis)
+                mask[indices] = True
 
-                if dims is not None:
-                    selected_dim = dims[axis] if axis < len(dims) else None
-                    if (
-                        selected_dim is not None
-                        and selected_dim in self._untransformed_model.coords
-                    ):
-                        selected_coords = {}
-                        for i, dim in enumerate(dims):
-                            if dim is None:
-                                continue
-                            if i == axis:
-                                selected_coords[dim] = [
-                                    list(self._untransformed_model.coords[dim])[i]
-                                    for i in indices
-                                ]
-                            else:
-                                selected_coords[dim] = list(
-                                    self._untransformed_model.coords[dim]
-                                )
+            selected_indices = np.where(mask)[0]
+            remaining_indices = np.where(~mask)[0]
 
-            return selected, selected_coords
+            selected = np.take(data, selected_indices, axis=axis)
+            remaining = np.take(data, remaining_indices, axis=axis)
+
+            return selected, remaining
         except Exception as e:
             raise ValueError(f"Failed to select observations: {str(e)}")
+
+    def log_likelihood__i(
+        self,
+        var_name: str,
+        idx: int,
+        refitted_idata: InferenceData,
+    ) -> xr.DataArray:
+        """Compute pointwise log likelihood for a single held-out observation.
+
+        Handles multidimensional observations and coordinate systems by properly
+        managing dimension mappings and coordinate selections when computing
+        log likelihoods for held-out data.
+
+        Parameters
+        ----------
+        var_name : str
+            Name of the variable to compute log likelihood for
+        idx : int
+            Index of the observation to compute log likelihood for
+        refitted_idata : InferenceData
+            InferenceData object from a model refit without the observation
+
+        Returns
+        -------
+        xr.DataArray
+            Log likelihood values for the held-out observation with dimensions (chain, draw)
+        """
+        holdout_data, remaining = self.select_observations(
+            np.array([idx]), var_name=var_name
+        )
+        # dims = self.get_dims(var_name)
+        original_data = self.observed_data[var_name].copy()
+
+        try:
+            # Set just the held-out observation as the observed data
+            self.set_data({var_name: holdout_data})
+
+            log_like = pm.compute_log_likelihood(
+                refitted_idata,
+                var_names=[var_name],
+                model=self._untransformed_model,
+                extend_inferencedata=False,
+            )
+
+            log_like_i = log_like[var_name]
+            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+
+            # For each observation dimension, select the first (and only) element
+            # since we only provided one observation
+            for dim in obs_dims:
+                log_like_i = log_like_i.isel({dim: 0})
+
+            return log_like_i
+
+        finally:
+            self.set_data({var_name: original_data})
 
     def set_data(
         self,
@@ -406,64 +436,6 @@ class PyMCWrapper:
             if coords is not None:
                 self._validate_coords(var_name, coords)
 
-    def log_likelihood__i(
-        self,
-        var_name: str,
-        idx: int,
-        refitted_idata: InferenceData,
-    ) -> xr.DataArray:
-        """Compute pointwise log likelihood for a single held-out observation.
-
-        Handles multidimensional observations and coordinate systems by properly
-        managing dimension mappings and coordinate selections when computing
-        log likelihoods for held-out data.
-
-        Parameters
-        ----------
-        var_name : str
-            Name of the variable to compute log likelihood for
-        idx : int
-            Index of the observation to compute log likelihood for
-        refitted_idata : InferenceData
-            InferenceData object from a model refit without the observation
-
-        Returns
-        -------
-        xr.DataArray
-            Log likelihood values for the held-out observation with dimensions (chain, draw)
-        """
-        holdout_data, holdout_coords = self.select_observations(
-            var_name, np.array([idx])
-        )
-        # dims = self.get_dims(var_name)
-        original_data = self.observed_data[var_name].copy()
-
-        try:
-            # Set just the held-out observation as the observed data
-            self.set_data({var_name: holdout_data}, coords=holdout_coords)
-
-            log_like = pm.compute_log_likelihood(
-                refitted_idata,
-                var_names=[var_name],
-                model=self._untransformed_model,
-                extend_inferencedata=False,
-            )
-
-            log_like_i = log_like[var_name]
-
-            # Get all observation-related dimensions (excluding chain and draw)
-            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
-
-            # For each observation dimension, select the first (and only) element
-            # since we only provided one observation
-            for dim in obs_dims:
-                log_like_i = log_like_i.isel({dim: 0})
-
-            return log_like_i
-
-        finally:
-            self.set_data({var_name: original_data})
-
     def get_missing_mask(
         self,
         var_name: str,
@@ -507,6 +479,38 @@ class PyMCWrapper:
                     mask, axis=tuple(i for i in range(mask.ndim) if i != axis)
                 )
             return mask
+
+    def get_observed_name(self) -> str:
+        """Get the name of the first (and typically only) observed variable.
+
+        Returns
+        -------
+        str
+            Name of the first observed variable
+
+        Raises
+        ------
+        ValueError
+            If no observed variables exist in the model
+        """
+        if not self.observed_data:
+            raise ValueError("No observed variables found in the model")
+        return next(iter(self.observed_data))
+
+    def get_observed_data(self) -> np.ndarray:
+        """Get the data of the first (and typically only) observed variable.
+
+        Returns
+        -------
+        np.ndarray
+            Data of the first observed variable
+
+        Raises
+        ------
+        ValueError
+            If no observed variables exist in the model
+        """
+        return self.observed_data[self.get_observed_name()].copy()
 
     def get_variable(self, var_name: str) -> pt.TensorVariable | None:
         """Retrieve a variable from the model by name.

@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 from arviz import InferenceData
 
+from ..loo import loo
 from .pymc_wrapper import PyMCWrapper
 
 
@@ -169,21 +170,39 @@ def test_select_observations(simple_model):
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    data, coords = wrapper.select_observations("y", slice(0, 50))
-    assert data.shape[0] == 50
-    assert coords is not None
-    assert "obs_id" in coords
-    assert len(coords["obs_id"]) == 50
+    selected, remaining = wrapper.select_observations(slice(0, 50))
+    assert selected.shape[0] == 50
+    assert remaining.shape[0] == 50
+
+    all_data = np.concatenate([selected, remaining])
+    original_data = wrapper.observed_data["y"].copy()
+    all_data.sort()
+    original_data.sort()
+    np.testing.assert_array_almost_equal(all_data, original_data)
+
+    selected, remaining = wrapper.select_observations(slice(0, 50), var_name="y")
+    assert selected.shape[0] == 50
+    assert remaining.shape[0] == 50
+
+    all_data = np.concatenate([selected, remaining])
+    original_data = wrapper.observed_data["y"].copy()
+    all_data.sort()
+    original_data.sort()
+    np.testing.assert_array_almost_equal(all_data, original_data)
 
     indices = np.array([0, 10, 20])
-    data, coords = wrapper.select_observations("y", indices)
-    assert data.shape[0] == 3
-    assert coords is not None
-    assert "obs_id" in coords
-    assert len(coords["obs_id"]) == 3
+    selected, remaining = wrapper.select_observations(indices)
+    assert selected.shape[0] == 3
+    assert remaining.shape[0] == 97
+
+    all_data = np.concatenate([selected, remaining])
+    original_data = wrapper.observed_data["y"].copy()
+    all_data.sort()
+    original_data.sort()
+    np.testing.assert_array_almost_equal(all_data, original_data)
 
     with pytest.raises(ValueError, match="not found in observed data"):
-        wrapper.select_observations("invalid_var", slice(0, 50))
+        wrapper.select_observations(slice(0, 50), var_name="invalid_var")
 
 
 def test_set_data(simple_model):
@@ -279,11 +298,11 @@ def test_hierarchical_model_no_coords(hierarchical_model_no_coords):
     n_samples = len(idata.posterior.chain) * len(idata.posterior.draw)
     assert log_like["Y"].shape == (n_samples, 8, 20)
 
-    data_y, coords_y = wrapper.select_observations(
-        "Y", indices=np.array([0, 2]), axis=0
+    selected_y, remaining_y = wrapper.select_observations(
+        indices=np.array([0, 2]), axis=0
     )
-    assert data_y.shape == (2, 20)
-    assert coords_y is None
+    assert selected_y.shape == (2, 20)
+    assert remaining_y.shape == (6, 20)  # Original had 8 groups
 
     new_y = np.random.normal(0, 1, size=(8, 20))
     wrapper.set_data({"Y": new_y})
@@ -330,12 +349,34 @@ def test_hierarchical_model_wrapper(hierarchical_model):
     n_samples = len(idata.posterior.chain) * len(idata.posterior.draw)
     assert log_like["Y"].shape == (n_samples, 8, 20)
 
-    data_y, coords_y = wrapper.select_observations(
-        "Y", indices=np.array([0, 2]), axis=0
+    selected_y, remaining_y = wrapper.select_observations(
+        indices=np.array([0, 2]), axis=0
     )
-    assert data_y.shape == (2, 20)
-    assert "group" in coords_y
-    assert len(coords_y["group"]) == 2
+    assert selected_y.shape == (2, 20)
+    assert remaining_y.shape == (6, 20)  # Original had 8 groups
+
+    # Verify that selected and remaining data together make up the complete dataset
+    all_data = np.concatenate([selected_y, remaining_y], axis=0)
+    original_data = wrapper.observed_data["Y"].copy()
+    all_data.sort(axis=0)
+    all_data.sort(axis=1)
+    original_data.sort(axis=0)
+    original_data.sort(axis=1)
+    np.testing.assert_array_almost_equal(all_data, original_data)
+
+    selected_y, remaining_y = wrapper.select_observations(
+        indices=np.array([0, 2]), var_name="Y", axis=0
+    )
+    assert selected_y.shape == (2, 20)
+    assert remaining_y.shape == (6, 20)
+
+    all_data = np.concatenate([selected_y, remaining_y], axis=0)
+    original_data = wrapper.observed_data["Y"].copy()
+    all_data.sort(axis=0)
+    all_data.sort(axis=1)
+    original_data.sort(axis=0)
+    original_data.sort(axis=1)
+    np.testing.assert_array_almost_equal(all_data, original_data)
 
     new_y = np.random.normal(0, 1, size=(8, 20))
     wrapper.set_data({"Y": new_y}, coords={"group": range(8), "obs_id": range(20)})
@@ -406,30 +447,25 @@ def test_log_likelihood__i_workflow(simple_model):
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    import arviz as az
-
-    loo_results = az.loo(idata, pointwise=True)
+    loo_results = loo(idata, pointwise=True)
 
     # Force a problematic observation by artificially setting its pareto k high
     loo_results.pareto_k[0] = 0.8
     problematic_idx = 0
 
-    var_name = "y"
-    original_data = wrapper.observed_data[var_name].copy()
-    holdout_data, coords = wrapper.select_observations(
-        var_name, np.array([problematic_idx])
+    original_data = wrapper.get_observed_data()
+    holdout_data, training_data = wrapper.select_observations(
+        np.array([problematic_idx])
     )
 
-    training_mask = np.ones_like(original_data, dtype=bool)
-    training_mask[problematic_idx] = False
-    training_data = original_data[training_mask]
-
-    wrapper.set_data({"y": training_data})
+    wrapper.set_data({wrapper.get_observed_name(): training_data})
     refitted_idata = wrapper.sample_posterior(
         draws=1000, tune=1000, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood__i("y", problematic_idx, refitted_idata)
+    log_like = wrapper.log_likelihood__i(
+        wrapper.get_observed_name(), problematic_idx, refitted_idata
+    )
 
     assert isinstance(log_like, xr.DataArray)
 
@@ -444,4 +480,4 @@ def test_log_likelihood__i_workflow(simple_model):
     assert np.all(np.isfinite(log_like))
     assert np.all(log_like < 0)
 
-    wrapper.set_data({"y": original_data})
+    wrapper.set_data({wrapper.get_observed_name(): original_data})
