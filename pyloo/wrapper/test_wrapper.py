@@ -5,7 +5,7 @@ import pymc as pm
 import pytest
 from arviz import InferenceData
 
-from ..wrapper.model_wrapper import PyMCWrapper
+from .pymc_wrapper import PyMCWrapper
 
 
 @pytest.fixture
