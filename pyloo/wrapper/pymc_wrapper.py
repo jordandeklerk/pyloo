@@ -2,7 +2,7 @@
 
 import copy
 import warnings
-from typing import Any, Sequence
+from typing import Any, Dict, Sequence
 
 import numpy as np
 import pymc as pm
@@ -378,6 +378,115 @@ class PyMCWrapper:
             return predictions
         except Exception as e:
             raise ValueError(f"Failed to generate posterior predictions: {str(e)}")
+
+    def get_unconstrained_parameters(self) -> Dict[str, xr.DataArray]:
+        """Get unconstrained parameters from posterior samples.
+
+        This method transforms the parameters from the constrained space (where they
+        follow their specified prior distributions) to the unconstrained space where
+        they can be treated as approximately normal for various computations like
+        moment matching in LOO-CV.
+
+        Returns
+        -------
+        Dict[str, xr.DataArray]
+            Dictionary mapping parameter names to their unconstrained values
+            with dimensions (chain, draw) and any parameter-specific dimensions
+
+        Notes
+        -----
+        This uses PyMC's internal transformation infrastructure to properly
+        handle different parameter types (e.g. positive parameters become log
+        transformed, simplex parameters use stick breaking, etc.)
+        """
+        unconstrained_params = {}
+
+        for var in self.model.free_RVs:
+            var_name = var.name
+            if var_name not in self.idata.posterior:
+                continue
+
+            param_samples = self.idata.posterior[var_name]
+            untransformed_var = self._untransformed_model.named_vars[var_name]
+            dist = untransformed_var.owner.op
+            transform = getattr(dist, "transform", None)
+
+            if transform is not None:
+                # Apply backward transformation to get unconstrained space
+                samples_np = param_samples.values
+                unconstrained_np = transform.backward(
+                    samples_np, *var.owner.inputs[1:]
+                ).eval()
+                unconstrained_samples = xr.DataArray(
+                    unconstrained_np,
+                    dims=param_samples.dims,
+                    coords=param_samples.coords,
+                    name=param_samples.name,
+                )
+            else:
+                unconstrained_samples = param_samples.copy()
+
+            unconstrained_params[var_name] = unconstrained_samples
+
+        return unconstrained_params
+
+    def constrain_parameters(
+        self, unconstrained_params: Dict[str, xr.DataArray]
+    ) -> Dict[str, xr.DataArray]:
+        """Transform parameters from unconstrained to constrained space.
+
+        This method transforms parameters from the unconstrained space back to
+        their original constrained space where they follow their specified
+        prior distributions.
+
+        Parameters
+        ----------
+        unconstrained_params : Dict[str, xr.DataArray]
+            Dictionary mapping parameter names to their unconstrained values
+            with dimensions (chain, draw) and any parameter-specific dimensions
+
+        Returns
+        -------
+        Dict[str, xr.DataArray]
+            Dictionary mapping parameter names to their constrained values
+            with dimensions (chain, draw) and any parameter-specific dimensions
+
+        Notes
+        -----
+        This is the inverse operation of get_unconstrained_parameters()
+        """
+        constrained_params = {}
+
+        for var in self.model.free_RVs:
+            var_name = var.name
+            if var_name not in unconstrained_params:
+                continue
+
+            unconstrained = unconstrained_params[var_name]
+
+            # Get the distribution and its transform from the untransformed model
+            untransformed_var = self._untransformed_model.named_vars[var_name]
+            dist = untransformed_var.owner.op
+            transform = getattr(dist, "transform", None)
+
+            if transform is not None:
+                # Apply forward transformation to get constrained space
+                unconstrained_np = unconstrained.values
+                constrained_np = transform.forward(
+                    unconstrained_np, *var.owner.inputs[1:]
+                ).eval()
+                constrained = xr.DataArray(
+                    constrained_np,
+                    dims=unconstrained.dims,
+                    coords=unconstrained.coords,
+                    name=unconstrained.name,
+                )
+            else:
+                constrained = unconstrained.copy()
+
+            constrained_params[var_name] = constrained
+
+        return constrained_params
 
     def log_likelihood(
         self,

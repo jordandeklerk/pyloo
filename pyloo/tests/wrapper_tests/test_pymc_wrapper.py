@@ -652,3 +652,124 @@ def test_shared_variable_handling(shared_variable_model):
     assert "shared_effect" in refitted_idata.posterior
     assert "group_effects" in refitted_idata.posterior
     assert refitted_idata.posterior["group_effects"].sizes["group"] == 3
+
+
+def test_parameter_transformations(simple_model):
+    """Test parameter transformation between constrained and unconstrained spaces."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    assert set(unconstrained.keys()) == {"alpha", "beta", "sigma"}
+
+    # Check dimensions match original posterior
+    assert unconstrained["alpha"].dims == ("chain", "draw")
+    assert unconstrained["beta"].dims == ("chain", "draw")
+    assert unconstrained["sigma"].dims == ("chain", "draw")
+
+    # Check shapes match original posterior
+    assert unconstrained["alpha"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+    )
+    assert unconstrained["beta"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+    )
+    assert unconstrained["sigma"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+    )
+
+    # Check coordinates are preserved
+    assert (
+        unconstrained["alpha"].coords["chain"].equals(idata.posterior.coords["chain"])
+    )
+    assert unconstrained["alpha"].coords["draw"].equals(idata.posterior.coords["draw"])
+
+    constrained = wrapper.constrain_parameters(unconstrained)
+    assert set(constrained.keys()) == {"alpha", "beta", "sigma"}
+
+    assert constrained["alpha"].shape == unconstrained["alpha"].shape
+    assert constrained["beta"].shape == unconstrained["beta"].shape
+    assert constrained["sigma"].shape == unconstrained["sigma"].shape
+
+    # Check that sigma is positive in constrained space
+    assert np.all(constrained["sigma"] > 0)
+
+    # Check that transformations approximately invert each other
+    np.testing.assert_allclose(
+        constrained["alpha"], wrapper.idata.posterior.alpha.values, rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        constrained["beta"], wrapper.idata.posterior.beta.values, rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        constrained["sigma"], wrapper.idata.posterior.sigma.values, rtol=1e-5
+    )
+
+
+def test_hierarchical_parameter_transformations(hierarchical_model):
+    """Test parameter transformations with hierarchical model structure."""
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    expected_params = {"alpha", "beta", "group_sigma", "group_effects_raw", "sigma_y"}
+    assert set(unconstrained.keys()) == expected_params
+
+    # Check dimensions match original posterior
+    assert unconstrained["alpha"].dims == ("chain", "draw")
+    assert unconstrained["beta"].dims == ("chain", "draw")
+    assert unconstrained["group_sigma"].dims == ("chain", "draw")
+    assert unconstrained["group_effects_raw"].dims == ("chain", "draw", "group")
+    assert unconstrained["sigma_y"].dims == ("chain", "draw")
+
+    # Check shapes match original posterior
+    assert unconstrained["alpha"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+    )
+    assert unconstrained["beta"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+    )
+    assert unconstrained["group_sigma"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+    )
+    assert unconstrained["group_effects_raw"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+        8,
+    )
+    assert unconstrained["sigma_y"].shape == (
+        len(idata.posterior.chain),
+        len(idata.posterior.draw),
+    )
+
+    # Check coordinates are preserved
+    assert (
+        unconstrained["alpha"].coords["chain"].equals(idata.posterior.coords["chain"])
+    )
+    assert unconstrained["alpha"].coords["draw"].equals(idata.posterior.coords["draw"])
+    assert (
+        unconstrained["group_effects_raw"]
+        .coords["group"]
+        .equals(idata.posterior.coords["group"])
+    )
+
+    constrained = wrapper.constrain_parameters(unconstrained)
+
+    assert set(constrained.keys()) == expected_params
+
+    # Check that constrained parameters match original posterior
+    for param in expected_params:
+        if param in idata.posterior:
+            np.testing.assert_allclose(
+                constrained[param], idata.posterior[param].values, rtol=1e-5
+            )
+
+    # Check that sigma parameters are positive in constrained space
+    assert np.all(constrained["group_sigma"] > 0)
+    assert np.all(constrained["sigma_y"] > 0)
