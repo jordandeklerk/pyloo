@@ -91,6 +91,8 @@ class PyMCWrapper:
         ValueError
             If no observed variables exist, the specified variable name is not found,
             or indices are invalid
+        IndexError
+            If indices are out of bounds or negative
         """
         if not self.observed_data:
             raise ValueError("No observed variables found in the model")
@@ -105,21 +107,40 @@ class PyMCWrapper:
             axis = 0
 
         try:
-            mask = np.zeros(data.shape[axis], dtype=bool)
-            if isinstance(indices, slice):
-                idx_range = range(*indices.indices(data.shape[axis]))
-                mask[idx_range] = True
+            if isinstance(indices, np.ndarray) and indices.dtype == bool:
+                if indices.shape[0] != data.shape[axis]:
+                    raise ValueError(
+                        f"Boolean mask shape {indices.shape[0]} does not match "
+                        f"data shape {data.shape[axis]} along axis {axis}"
+                    )
+                selected_indices = np.where(indices)[0]
+                remaining_indices = np.where(~indices)[0]
             else:
-                mask[indices] = True
+                if not isinstance(indices, slice):
+                    indices = np.asarray(indices, dtype=int)
+                    if indices.size > 0:
+                        if np.any(indices < 0):
+                            raise IndexError("Negative indices are not allowed")
+                        if np.any(indices >= data.shape[axis]):
+                            raise IndexError("Index out of bounds")
 
-            selected_indices = np.where(mask)[0]
-            remaining_indices = np.where(~mask)[0]
+                mask = np.zeros(data.shape[axis], dtype=bool)
+                if isinstance(indices, slice):
+                    idx_range = range(*indices.indices(data.shape[axis]))
+                    mask[idx_range] = True
+                else:
+                    mask[indices] = True
+
+                selected_indices = np.where(mask)[0]
+                remaining_indices = np.where(~mask)[0]
 
             selected = np.take(data, selected_indices, axis=axis)
             remaining = np.take(data, remaining_indices, axis=axis)
 
             return selected, remaining
         except Exception as e:
+            if isinstance(e, IndexError):
+                raise
             raise ValueError(f"Failed to select observations: {str(e)}")
 
     def log_likelihood__i(
@@ -147,9 +168,22 @@ class PyMCWrapper:
         -------
         xr.DataArray
             Log likelihood values for the held-out observation with dimensions (chain, draw)
+
+        Raises
+        ------
+        ValueError
+            If the variable has missing values or if the data is invalid
         """
-        holdout_data, _ = self.select_observations(np.array([idx]), var_name=var_name)
-        # dims = self.get_dims(var_name)
+        if var_name not in self.observed_data:
+            raise ValueError(f"Variable {var_name} not found in observed data")
+
+        data = self.observed_data[var_name]
+        if np.any(np.isnan(data)):
+            raise ValueError("Missing values found in the data")
+
+        holdout_data, _ = self.select_observations(
+            np.array([idx], dtype=int), var_name=var_name
+        )
         original_data = self.observed_data[var_name].copy()
 
         try:
@@ -211,11 +245,21 @@ class PyMCWrapper:
             ArviZ InferenceData object containing the posterior samples and
             log likelihood values
 
+        Raises
+        ------
+        ValueError
+            If draws or chains are not positive integers
+
         Notes
         -----
         Log likelihood computation is always enabled as it is required for
         LOO-CV computations.
         """
+        if draws <= 0:
+            raise ValueError("Number of draws must be positive")
+        if chains <= 0:
+            raise ValueError("Number of chains must be positive")
+
         idata_kwargs = kwargs.get("idata_kwargs", {})
         if isinstance(idata_kwargs, dict):
             if not idata_kwargs.get("log_likelihood", False):
@@ -416,7 +460,8 @@ class PyMCWrapper:
         ValueError
             If the provided data has incompatible dimensions with the model,
             if the variable name is not found in the model,
-            or if the coordinates are invalid.
+            if the coordinates are invalid,
+            or if the data violates distribution constraints (e.g., negative values for Poisson)
         """
         for var_name, values in new_data.items():
             if var_name not in self._untransformed_model.named_vars:
