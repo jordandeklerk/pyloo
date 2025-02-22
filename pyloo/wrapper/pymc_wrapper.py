@@ -387,7 +387,7 @@ class PyMCWrapper:
     ) -> xr.DataArray:
         """Compute pointwise log likelihoods using the original model fit.
 
-        This is the main method for accessing pre-computed log likelihood values from the
+        Main method for accessing pre-computed log likelihood values from the
         original model fit. It provides flexible indexing to access log likelihoods for
         specific observations. Unlike log_likelihood__i, this uses the original model fit
         and doesn't require refitting.
