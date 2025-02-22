@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from enum import Enum
-from typing import Callable, Tuple, Union, cast
+from typing import Callable, cast
 
 import numpy as np
 import xarray as xr
@@ -21,14 +21,14 @@ class ISMethod(str, Enum):
     TIS = "tis"
 
 
-ImplFunc = Callable[..., Tuple[np.ndarray, Union[float, np.ndarray]]]
+ImplFunc = Callable[..., tuple[np.ndarray, float | np.ndarray]]
 
 
 def compute_importance_weights(
-    log_weights: Union[xr.DataArray, np.ndarray],
-    method: Union[ISMethod, str] = ISMethod.PSIS,
+    log_weights: xr.DataArray | np.ndarray,
+    method: ISMethod | str = ISMethod.PSIS,
     reff: float = 1.0,
-) -> Tuple[Union[xr.DataArray, np.ndarray], Union[xr.DataArray, np.ndarray]]:
+) -> tuple[xr.DataArray | np.ndarray, xr.DataArray | np.ndarray]:
     """
     Unified importance sampling computation that supports multiple methods.
 
@@ -109,8 +109,13 @@ def compute_importance_weights(
 
     out = np.empty_like(log_weights), np.empty(shape)
 
-    ufunc_kwargs = {"n_dims": 1, "n_output": 2, "ravel": False, "check_shape": False}
-    kwargs = {
+    ufunc_kwargs: dict[str, bool | int] = {
+        "n_dims": 1,
+        "n_output": 2,
+        "ravel": False,
+        "check_shape": False,
+    }
+    kwargs: dict[str, list[list[str]]] = {
         "input_core_dims": [["__sample__"]],
         "output_core_dims": [["__sample__"], []],
     }
