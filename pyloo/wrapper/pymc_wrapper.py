@@ -98,13 +98,20 @@ class PyMCWrapper:
             raise ValueError("No observed variables found in the model")
 
         if var_name is None:
-            var_name = next(iter(self.observed_data))
+            var_name = self.get_observed_name()
         elif var_name not in self.observed_data:
             raise ValueError(f"Variable {var_name} not found in observed data")
 
         data = self.observed_data[var_name]
         if axis is None:
             axis = 0
+
+        if np.any(self.get_missing_mask(var_name)):
+            warnings.warn(
+                f"Missing values detected in {var_name}. This may affect the results.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         try:
             if isinstance(indices, np.ndarray) and indices.dtype == bool:
@@ -174,20 +181,41 @@ class PyMCWrapper:
         ValueError
             If the variable has missing values or if the data is invalid
         """
+        if self.get_variable(var_name) is None:
+            raise ValueError(f"Variable {var_name} not found in model")
+
         if var_name not in self.observed_data:
-            raise ValueError(f"Variable {var_name} not found in observed data")
+            raise ValueError(f"No observed data found for variable {var_name}")
 
-        data = self.observed_data[var_name]
-        if np.any(np.isnan(data)):
-            raise ValueError("Missing values found in the data")
+        if np.any(self.get_missing_mask(var_name)):
+            raise ValueError(f"Missing values found in {var_name}")
 
-        holdout_data, _ = self.select_observations(
-            np.array([idx], dtype=int), var_name=var_name
-        )
-        original_data = self.observed_data[var_name].copy()
+        if not hasattr(refitted_idata, "posterior"):
+            raise ValueError("refitted_idata must contain posterior samples")
+
+        data_shape = self.get_shape(var_name)
+        if data_shape is None:
+            raise ValueError(f"Could not determine shape for variable {var_name}")
+
+        if idx < 0 or idx >= data_shape[0]:
+            raise IndexError(
+                f"Index {idx} is out of bounds for axis 0 with size {data_shape[0]}"
+            )
+
+        dims = self.get_dims(var_name)
+        if dims is None:
+            warnings.warn(
+                f"Could not determine dimensions for variable {var_name}. "
+                "This may affect coordinate handling.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         try:
-            # Set just the held-out observation as the observed data
+            holdout_data, _ = self.select_observations(
+                np.array([idx], dtype=int), var_name=var_name
+            )
+            original_data = self.observed_data[var_name].copy()
             self.set_data({var_name: holdout_data})
 
             log_like = pm.compute_log_likelihood(
@@ -197,15 +225,23 @@ class PyMCWrapper:
                 extend_inferencedata=False,
             )
 
+            if var_name not in log_like:
+                raise ValueError(
+                    f"Failed to compute log likelihood for variable {var_name}"
+                )
+
             log_like_i = log_like[var_name]
             obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
 
-            # For each observation dimension, select the first (and only) element
-            # since we only provided one observation
             for dim in obs_dims:
                 log_like_i = log_like_i.isel({dim: 0})
 
             return log_like_i
+
+        except Exception as e:
+            if isinstance(e, (ValueError, IndexError)):
+                raise
+            raise ValueError(f"Failed to compute log likelihood: {str(e)}")
 
         finally:
             self.set_data({var_name: original_data})
@@ -311,15 +347,36 @@ class PyMCWrapper:
         """
         if var_names is None:
             var_names = list(self.observed_data.keys())
+        else:
+            for var_name in var_names:
+                if self.get_variable(var_name) is None:
+                    raise ValueError(f"Variable {var_name} not found in model")
 
-        with self._untransformed_model:
-            predictions = pm.sample_posterior_predictive(
-                self.idata,
-                var_names=var_names,
-                progressbar=progressbar,
-                **kwargs,
-            )
-        return predictions
+        if not hasattr(self.idata, "posterior"):
+            raise ValueError("No posterior samples found in InferenceData object")
+
+        for var_name in var_names:
+            if var_name in self.observed_data and np.any(
+                self.get_missing_mask(var_name)
+            ):
+                warnings.warn(
+                    f"Missing values detected in {var_name}. This may affect"
+                    " predictions.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+        try:
+            with self._untransformed_model:
+                predictions = pm.sample_posterior_predictive(
+                    self.idata,
+                    var_names=var_names,
+                    progressbar=progressbar,
+                    **kwargs,
+                )
+            return predictions
+        except Exception as e:
+            raise ValueError(f"Failed to generate posterior predictions: {str(e)}")
 
     def log_likelihood(
         self,
@@ -359,15 +416,20 @@ class PyMCWrapper:
         if var_name is None:
             var_name = self.get_observed_name()
 
+        if (
+            not hasattr(self.idata, "log_likelihood")
+            or var_name not in self.idata.log_likelihood
+        ):
+            raise ValueError(f"No log likelihood values found for variable {var_name}")
+
         log_like = self.idata.log_likelihood[var_name]
 
         rename_dict = {}
         for dim in log_like.dims:
             if dim not in ("chain", "draw"):
-                # Check if dimension has variable name prefix
                 prefix = f"{var_name}_dim_"
                 if dim.startswith(prefix):
-                    # Remove prefix to get standard dimension name
+                    new_name = dim[len(prefix) :]
                     new_name = dim[len(prefix) :]
                     rename_dict[dim] = f"dim_{new_name}"
 
@@ -464,13 +526,13 @@ class PyMCWrapper:
             or if the data violates distribution constraints (e.g., negative values for Poisson)
         """
         for var_name, values in new_data.items():
-            if var_name not in self._untransformed_model.named_vars:
+            var = self.get_variable(var_name)
+            if var is None:
                 raise ValueError(f"Variable {var_name} not found in model")
 
-            var = self._untransformed_model.named_vars[var_name]
-            expected_shape = tuple(
-                d.eval() if hasattr(d, "eval") else d for d in var.shape
-            )
+            expected_shape = self.get_shape(var_name)
+            if expected_shape is None:
+                raise ValueError(f"Could not determine shape for variable {var_name}")
 
             if mask is not None and var_name in mask:
                 mask_array = mask[var_name]
@@ -481,14 +543,13 @@ class PyMCWrapper:
                     )
                 values = np.ma.masked_array(values, mask=~mask_array)
 
-            self.observed_data[var_name] = values
-
             if len(values.shape) != len(expected_shape):
                 raise ValueError(
                     f"Incompatible dimensions for {var_name}. "
                     f"Expected {len(expected_shape)} dims, got {len(values.shape)}"
                 )
 
+            self.observed_data[var_name] = values
             if coords is not None:
                 self._validate_coords(var_name, coords)
 
@@ -624,13 +685,7 @@ class PyMCWrapper:
         return None
 
     def _validate_model_state(self) -> None:
-        """Validate that the model is properly fitted and ready for use.
-
-        Raises
-        ------
-        ValueError
-            If the model state is invalid or inconsistent
-        """
+        """Validate that the model is properly fitted and ready for use."""
         # Check that posterior samples exist
         if not hasattr(self.idata, "posterior"):
             raise ValueError(
@@ -693,20 +748,7 @@ class PyMCWrapper:
         var_name: str,
         coords: dict[str, Sequence],
     ) -> None:
-        """Validate coordinate values against variable dimensions.
-
-        Parameters
-        ----------
-        var_name : str
-            Name of the variable
-        coords : Dict[str, Sequence]
-            Coordinate values for each dimension
-
-        Raises
-        ------
-        ValueError
-            If coordinates are invalid or incompatible with the variable
-        """
+        """Validate coordinate values against variable dimensions."""
         dims = self.get_dims(var_name)
         if dims is None:
             return

@@ -523,7 +523,7 @@ def test_log_likelihood__i_workflow(simple_model, poisson_model, multi_observed_
     assert np.all(np.isfinite(log_like_y1))
     assert np.all(np.isfinite(log_like_y2))
 
-    with pytest.raises(ValueError, match="not found in observed data"):
+    with pytest.raises(ValueError, match="Variable invalid_var not found in model"):
         wrapper.log_likelihood__i("invalid_var", 0, idata)
 
     with pytest.raises(IndexError):
