@@ -114,11 +114,17 @@ def loo_subsample(
         In [1]: import arviz as az
            ...: from pyloo import loo_subsample
            ...: data = az.load_arviz_data("centered_eight")
+           ...:
            ...: result = loo_subsample(
            ...:     data,
            ...:     observations=4,  # subsample 4 out of 8 observations
            ...:     loo_approximation="plpd",  # use point estimate based approximation
            ...: )
+           ...: # Update with more observations
+           ...: updated = update_subsample(result, observations=6)  # increase to 6 observations
+           ...: # Can also update with specific indices
+           ...: indices = np.array([0, 2, 4, 6])  # select specific observations
+           ...: updated_specific = update_subsample(result, observations=indices)
 
     See Also
     --------
