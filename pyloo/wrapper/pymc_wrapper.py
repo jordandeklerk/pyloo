@@ -42,11 +42,6 @@ class PyMCWrapper:
         Mapping of observed variable names to their data
     constant_data : Dict[str, np.ndarray]
         Mapping of constant data names to their values
-
-    See Also
-    --------
-    get_log_likelihood : Compute pointwise log likelihoods
-    sample_posterior_predictive : Generate posterior predictions
     """
 
     def __init__(
