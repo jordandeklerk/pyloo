@@ -2,7 +2,7 @@
 
 import copy
 import warnings
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 import numpy as np
 import pymc as pm
@@ -36,11 +36,11 @@ class PyMCWrapper:
         The underlying PyMC model
     idata : InferenceData
         ArviZ InferenceData object containing the model's posterior samples
-    var_names : List[str]
+    var_names : list[str]
         Names of variables being tracked
-    observed_data : Dict[str, np.ndarray]
+    observed_data : dict[str, np.ndarray]
         Mapping of observed variable names to their data
-    constant_data : Dict[str, np.ndarray]
+    constant_data : dict[str, np.ndarray]
         Mapping of constant data names to their values
     """
 
@@ -74,15 +74,15 @@ class PyMCWrapper:
         ----------
         indices : array-like or slice
             Indices of observations to select for the held-out set
-        var_name : Optional[str]
+        var_name : str | None
             Name of the variable. If None, uses the first observed variable.
-        axis : Optional[int]
+        axis : int | None
             Axis along which to select observations.
             If None, assumes the first axis is the observation axis.
 
         Returns
         -------
-        Tuple[np.ndarray, np.ndarray]
+        tuple[np.ndarray, np.ndarray]
             - Selected (held-out) observations
             - Remaining (training) observations
 
@@ -269,7 +269,7 @@ class PyMCWrapper:
             Number of chains to sample
         target_accept : float
             Target acceptance rate for the sampler
-        random_seed : Optional[int]
+        random_seed : int | None
             Random seed for reproducibility
         progressbar : bool
             Whether to display a progress bar
@@ -333,7 +333,7 @@ class PyMCWrapper:
 
         Parameters
         ----------
-        var_names : Optional[Sequence[str]]
+        var_names : Sequence[str] | None
             Names of variables to predict.
             If None, predicts for all observed variables.
         progressbar : bool
@@ -379,7 +379,7 @@ class PyMCWrapper:
         except Exception as e:
             raise ValueError(f"Failed to generate posterior predictions: {str(e)}")
 
-    def get_unconstrained_parameters(self) -> Dict[str, xr.DataArray]:
+    def get_unconstrained_parameters(self) -> dict[str, xr.DataArray]:
         """Get unconstrained parameters from posterior samples.
 
         This method transforms the parameters from the constrained space (where they
@@ -389,7 +389,7 @@ class PyMCWrapper:
 
         Returns
         -------
-        Dict[str, xr.DataArray]
+        dict[str, xr.DataArray]
             Dictionary mapping parameter names to their unconstrained values
             with dimensions (chain, draw) and any parameter-specific dimensions
 
@@ -431,8 +431,8 @@ class PyMCWrapper:
         return unconstrained_params
 
     def constrain_parameters(
-        self, unconstrained_params: Dict[str, xr.DataArray]
-    ) -> Dict[str, xr.DataArray]:
+        self, unconstrained_params: dict[str, xr.DataArray]
+    ) -> dict[str, xr.DataArray]:
         """Transform parameters from unconstrained to constrained space.
 
         This method transforms parameters from the unconstrained space back to
@@ -441,13 +441,13 @@ class PyMCWrapper:
 
         Parameters
         ----------
-        unconstrained_params : Dict[str, xr.DataArray]
+        unconstrained_params : dict[str, xr.DataArray]
             Dictionary mapping parameter names to their unconstrained values
             with dimensions (chain, draw) and any parameter-specific dimensions
 
         Returns
         -------
-        Dict[str, xr.DataArray]
+        dict[str, xr.DataArray]
             Dictionary mapping parameter names to their constrained values
             with dimensions (chain, draw) and any parameter-specific dimensions
 
@@ -619,11 +619,11 @@ class PyMCWrapper:
 
         Parameters
         ----------
-        new_data : Dict[str, np.ndarray]
+        new_data : dict[str, np.ndarray]
             Dictionary mapping variable names to new observed values
-        coords : Optional[Dict[str, Sequence]]
+        coords : dict[str, Sequence] | None
             Optional coordinates for the new data dimensions
-        mask : Optional[Dict[str, np.ndarray]]
+        mask : dict[str, np.ndarray] | None
             Optional boolean masks for each variable to handle missing data or
             to select specific observations. True values indicate valid data points.
 
@@ -674,7 +674,7 @@ class PyMCWrapper:
         ----------
         var_name : str
             Name of the variable
-        axis : Optional[int]
+        axis : int | None
             Axis along which to check for missing values.
             If None, returns mask for all dimensions.
 
@@ -749,7 +749,7 @@ class PyMCWrapper:
 
         Returns
         -------
-        Optional[pt.TensorVariable]
+        pt.TensorVariable | None
             The requested variable or None if not found
         """
         return self._untransformed_model.named_vars.get(var_name)
@@ -764,7 +764,7 @@ class PyMCWrapper:
 
         Returns
         -------
-        Optional[Tuple[str, ...]]
+        tuple[str, ...] | None
             Tuple of dimension names or None if variable not found
         """
         return self._untransformed_model.named_vars_to_dims.get(var_name)
@@ -779,7 +779,7 @@ class PyMCWrapper:
 
         Returns
         -------
-        Optional[Tuple[int, ...]]
+        tuple[int, ...] | None
             Shape of the variable or None if variable not found
 
         Notes
