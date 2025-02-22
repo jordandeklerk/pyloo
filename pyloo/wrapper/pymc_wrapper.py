@@ -150,31 +150,32 @@ class PyMCWrapper:
                 raise
             raise ValueError(f"Failed to select observations: {str(e)}")
 
-    def log_likelihood__i(
+    def log_likelihood_i(
         self,
         var_name: str,
         idx: int,
         refitted_idata: InferenceData,
     ) -> xr.DataArray:
-        """Compute pointwise log likelihood for a single held-out observation.
+        """Compute pointwise log likelihood for a single held-out observation using a refitted model.
 
-        Handles multidimensional observations and coordinate systems by properly
-        managing dimension mappings and coordinate selections when computing
-        log likelihoods for held-out data.
+        This method is specifically designed for leave-one-out cross-validation (LOO-CV) where
+        we need to compute the log likelihood of a held-out observation using a model that was
+        refitted without that observation. This is different from the regular log_likelihood method
+        which uses the original model fit.
 
         Parameters
         ----------
         var_name : str
             Name of the variable to compute log likelihood for
         idx : int
-            Index of the observation to compute log likelihood for
+            Index of the single observation to compute log likelihood for
         refitted_idata : InferenceData
-            InferenceData object from a model refit without the observation
+            InferenceData object from a model that was refit without the observation at idx
 
         Returns
         -------
         xr.DataArray
-            Log likelihood values for the held-out observation with dimensions (chain, draw)
+            Log likelihood values for the single held-out observation with dimensions (chain, draw)
 
         Raises
         ------
@@ -384,11 +385,12 @@ class PyMCWrapper:
         indices: np.ndarray | slice | None = None,
         axis: int | None = None,
     ) -> xr.DataArray:
-        """Compute pointwise log likelihoods for a variable.
+        """Compute pointwise log likelihoods using the original model fit.
 
-        Calculates the log likelihood values for each observation point in the specified
-        variable using the model's posterior samples. Supports computing log likelihoods
-        for specific subsets of observations through indexing.
+        This is the main method for accessing pre-computed log likelihood values from the
+        original model fit. It provides flexible indexing to access log likelihoods for
+        specific observations. Unlike log_likelihood__i, this uses the original model fit
+        and doesn't require refitting.
 
         Parameters
         ----------
@@ -397,7 +399,7 @@ class PyMCWrapper:
             If None, uses the first observed variable.
         indices : np.ndarray | slice | None
             Indices for selecting specific observations.
-            If None, uses all observations.
+            If None, returns log likelihoods for all observations.
         axis : int | None
             Axis along which to select observations.
             If None, assumes the first axis.
@@ -406,8 +408,7 @@ class PyMCWrapper:
         -------
         xr.DataArray
             Log likelihood values with dimensions (chain, draw) and any observation
-            dimensions from the original data. For models without explicit coordinates,
-            dimension names are standardized to "dim_0", "dim_1", etc.
+            dimensions from the original data.
 
         See Also
         --------
@@ -452,11 +453,11 @@ class PyMCWrapper:
         indices: dict[str, np.ndarray | slice] | None = None,
         axis: dict[str, int] | None = None,
     ) -> dict[str, xr.DataArray]:
-        """Internal method to compute pointwise log likelihoods.
+        """Internal method to compute pointwise log likelihoods for multiple variables.
 
-        This is an internal helper method that handles multiple variables.
-        For external use, prefer the log_likelihood method which provides
-        a simpler interface for single variable computations.
+        This is a lower-level helper method that handles the computation of log likelihoods
+        for multiple variables simultaneously. It's used internally by log_likelihood() to
+        handle the actual computations.
 
         Parameters
         ----------
@@ -464,10 +465,10 @@ class PyMCWrapper:
             Names of variables to compute log likelihoods for
         indices : dict[str, np.ndarray | slice] | None
             Dictionary mapping variable names to indices for selecting specific
-            observations. If None, uses all observations
+            observations. If None, uses all observations.
         axis : dict[str, int] | None
             Dictionary mapping variable names to axes along which to select
-            observations. If None for a variable, assumes the first axis
+            observations. If None for a variable, assumes the first axis.
 
         Returns
         -------

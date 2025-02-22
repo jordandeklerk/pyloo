@@ -440,12 +440,12 @@ def test_coordinate_handling(simple_model):
         wrapper.set_data({"y": new_data}, coords=invalid_coords)
 
 
-def test_log_likelihood__i(simple_model):
+def test_log_likelihood_i(simple_model):
     """Test single observation log likelihood computation."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like_i = wrapper.log_likelihood__i("y", 0, idata)
+    log_like_i = wrapper.log_likelihood_i("y", 0, idata)
     assert isinstance(log_like_i, xr.DataArray)
     assert set(log_like_i.dims) == {"chain", "draw"}
 
@@ -458,7 +458,7 @@ def test_log_likelihood__i(simple_model):
     assert np.all(log_like_i < 0)
 
 
-def test_log_likelihood__i_workflow(simple_model, poisson_model, multi_observed_model):
+def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_model):
     """Test the full LOO-CV workflow including exact computation for problematic observations."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
@@ -478,7 +478,7 @@ def test_log_likelihood__i_workflow(simple_model, poisson_model, multi_observed_
         draws=1000, tune=1000, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood__i(
+    log_like = wrapper.log_likelihood_i(
         wrapper.get_observed_name(), problematic_idx, refitted_idata
     )
 
@@ -503,7 +503,7 @@ def test_log_likelihood__i_workflow(simple_model, poisson_model, multi_observed_
         draws=1000, tune=1000, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood__i("y", 0, refitted_idata)
+    log_like = wrapper.log_likelihood_i("y", 0, refitted_idata)
     assert isinstance(log_like, xr.DataArray)
     assert set(log_like.dims) == {"chain", "draw"}
     assert np.all(np.isfinite(log_like))
@@ -513,8 +513,8 @@ def test_log_likelihood__i_workflow(simple_model, poisson_model, multi_observed_
     model, idata = multi_observed_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like_y1 = wrapper.log_likelihood__i("y1", 0, idata)
-    log_like_y2 = wrapper.log_likelihood__i("y2", 0, idata)
+    log_like_y1 = wrapper.log_likelihood_i("y1", 0, idata)
+    log_like_y2 = wrapper.log_likelihood_i("y2", 0, idata)
 
     assert isinstance(log_like_y1, xr.DataArray)
     assert isinstance(log_like_y2, xr.DataArray)
@@ -524,10 +524,10 @@ def test_log_likelihood__i_workflow(simple_model, poisson_model, multi_observed_
     assert np.all(np.isfinite(log_like_y2))
 
     with pytest.raises(ValueError, match="Variable invalid_var not found in model"):
-        wrapper.log_likelihood__i("invalid_var", 0, idata)
+        wrapper.log_likelihood_i("invalid_var", 0, idata)
 
     with pytest.raises(IndexError):
-        wrapper.log_likelihood__i("y1", 1000, idata)
+        wrapper.log_likelihood_i("y1", 1000, idata)
 
 
 def test_sample_posterior_options(simple_model):
