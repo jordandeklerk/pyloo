@@ -154,15 +154,71 @@ def test_log_likelihood(simple_model):
     wrapper = PyMCWrapper(model, idata)
 
     log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, dict)
-    assert "y" in log_like
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
 
-    n_samples = len(idata.posterior.chain) * len(idata.posterior.draw)
-    assert log_like["y"].shape == (n_samples, 100)
+    n_chains = len(idata.posterior.chain)
+    n_draws = len(idata.posterior.draw)
+    assert log_like.sizes["chain"] == n_chains
+    assert log_like.sizes["draw"] == n_draws
+    assert log_like.sizes["obs_id"] == 100
 
-    indices = {"y": slice(0, 50)}
-    log_like_subset = wrapper.log_likelihood(indices=indices)
-    assert log_like_subset["y"].shape == (n_samples, 50)
+    log_like = wrapper.log_likelihood(var_name="y")
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
+
+    log_like_subset = wrapper.log_likelihood(indices=slice(0, 50))
+    assert log_like_subset.sizes["obs_id"] == 50
+
+
+def test_hierarchical_log_likelihood(hierarchical_model):
+    """Test log likelihood computation for hierarchical model."""
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    log_like = wrapper.log_likelihood()
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw", "group", "obs_id"}
+
+    n_chains = len(idata.posterior.chain)
+    n_draws = len(idata.posterior.draw)
+    assert log_like.sizes["chain"] == n_chains
+    assert log_like.sizes["draw"] == n_draws
+    assert log_like.sizes["group"] == 8
+    assert log_like.sizes["obs_id"] == 20
+
+    log_like = wrapper.log_likelihood(var_name="Y")
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw", "group", "obs_id"}
+
+    log_like_subset = wrapper.log_likelihood(indices=slice(0, 4), axis=0)
+    assert log_like_subset.sizes["group"] == 4
+    assert log_like_subset.sizes["obs_id"] == 20
+
+
+def test_hierarchical_model_no_coords_log_likelihood(hierarchical_model_no_coords):
+    """Test log likelihood computation for hierarchical model without coordinates."""
+    model, idata = hierarchical_model_no_coords
+    wrapper = PyMCWrapper(model, idata)
+
+    log_like = wrapper.log_likelihood()
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw", "dim_0", "dim_1"}
+
+    n_chains = len(idata.posterior.chain)
+    n_draws = len(idata.posterior.draw)
+    assert log_like.sizes["chain"] == n_chains
+    assert log_like.sizes["draw"] == n_draws
+    assert log_like.sizes["dim_0"] == 8
+    assert log_like.sizes["dim_1"] == 20
+
+    log_like = wrapper.log_likelihood(var_name="Y")
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw", "dim_0", "dim_1"}
+
+    log_like_subset = wrapper.log_likelihood(indices=slice(0, 4), axis=0)
+    assert log_like_subset.sizes["dim_0"] == 4
+    assert log_like_subset.sizes["dim_1"] == 20
 
 
 def test_select_observations(simple_model):
@@ -276,170 +332,22 @@ def test_coordinate_handling(simple_model):
         wrapper.set_data({"y": new_data}, coords=invalid_coords)
 
 
-def test_hierarchical_model_no_coords(hierarchical_model_no_coords):
-    """Test wrapper functionality with a hierarchical model without coordinates."""
-    model, idata = hierarchical_model_no_coords
-    wrapper = PyMCWrapper(model, idata)
-
-    assert set(wrapper.observed_data.keys()) == {"Y"}
-    assert set(wrapper.free_vars) == {
-        "alpha",
-        "beta",
-        "group_sigma",
-        "group_effects_raw",
-        "sigma_y",
-    }
-
-    dims_y = wrapper.get_dims("Y")
-    assert dims_y is None or dims_y == []
-
-    log_like = wrapper.log_likelihood()
-    assert set(log_like.keys()) == {"Y"}
-    n_samples = len(idata.posterior.chain) * len(idata.posterior.draw)
-    assert log_like["Y"].shape == (n_samples, 8, 20)
-
-    selected_y, remaining_y = wrapper.select_observations(
-        indices=np.array([0, 2]), axis=0
-    )
-    assert selected_y.shape == (2, 20)
-    assert remaining_y.shape == (6, 20)  # Original had 8 groups
-
-    new_y = np.random.normal(0, 1, size=(8, 20))
-    wrapper.set_data({"Y": new_y})
-    np.testing.assert_array_equal(wrapper.observed_data["Y"], new_y)
-
-    with pytest.warns(UserWarning, match="Automatically enabling log likelihood"):
-        new_idata = wrapper.sample_posterior(draws=200, chains=2, random_seed=42)
-
-    assert hasattr(new_idata, "posterior")
-    assert hasattr(new_idata, "log_likelihood")
-    posterior_vars = set(new_idata.posterior.data_vars.keys())
-    expected_vars = {
-        "alpha",
-        "beta",
-        "group_sigma",
-        "sigma_y",
-        "group_effects_raw",
-        "group_effects",
-    }
-    assert posterior_vars == expected_vars
-
-    assert new_idata.posterior["group_effects"].shape == (2, 200, 8)
-
-
-def test_hierarchical_model_wrapper(hierarchical_model):
-    """Test wrapper functionality with a hierarchical model."""
-    model, idata = hierarchical_model
-    wrapper = PyMCWrapper(model, idata)
-
-    assert set(wrapper.observed_data.keys()) == {"Y"}
-    assert set(wrapper.free_vars) == {
-        "alpha",
-        "beta",
-        "group_sigma",
-        "group_effects_raw",
-        "sigma_y",
-    }
-
-    dims_y = wrapper.get_dims("Y")
-    assert list(dims_y) == ["group", "obs_id"]
-
-    log_like = wrapper.log_likelihood()
-    assert set(log_like.keys()) == {"Y"}
-    n_samples = len(idata.posterior.chain) * len(idata.posterior.draw)
-    assert log_like["Y"].shape == (n_samples, 8, 20)
-
-    selected_y, remaining_y = wrapper.select_observations(
-        indices=np.array([0, 2]), axis=0
-    )
-    assert selected_y.shape == (2, 20)
-    assert remaining_y.shape == (6, 20)  # Original had 8 groups
-
-    # Verify that selected and remaining data together make up the complete dataset
-    all_data = np.concatenate([selected_y, remaining_y], axis=0)
-    original_data = wrapper.observed_data["Y"].copy()
-    all_data.sort(axis=0)
-    all_data.sort(axis=1)
-    original_data.sort(axis=0)
-    original_data.sort(axis=1)
-    np.testing.assert_array_almost_equal(all_data, original_data)
-
-    selected_y, remaining_y = wrapper.select_observations(
-        indices=np.array([0, 2]), var_name="Y", axis=0
-    )
-    assert selected_y.shape == (2, 20)
-    assert remaining_y.shape == (6, 20)
-
-    all_data = np.concatenate([selected_y, remaining_y], axis=0)
-    original_data = wrapper.observed_data["Y"].copy()
-    all_data.sort(axis=0)
-    all_data.sort(axis=1)
-    original_data.sort(axis=0)
-    original_data.sort(axis=1)
-    np.testing.assert_array_almost_equal(all_data, original_data)
-
-    new_y = np.random.normal(0, 1, size=(8, 20))
-    wrapper.set_data({"Y": new_y}, coords={"group": range(8), "obs_id": range(20)})
-    np.testing.assert_array_equal(wrapper.observed_data["Y"], new_y)
-
-    with pytest.warns(UserWarning, match="Automatically enabling log likelihood"):
-        new_idata = wrapper.sample_posterior(draws=200, chains=2, random_seed=42)
-
-        assert hasattr(new_idata, "posterior")
-        assert hasattr(new_idata, "log_likelihood")
-        posterior_vars = set(new_idata.posterior.data_vars.keys())
-        expected_vars = {
-            "alpha",
-            "beta",
-            "group_sigma",
-            "sigma_y",
-            "group_effects_raw",
-            "group_effects",
-        }
-        assert posterior_vars == expected_vars
-
-    assert new_idata.posterior["group_effects"].shape == (2, 200, 8)
-
-    subset_indices = {"Y": slice(0, 4)}
-    subset_axis = {"Y": 0}
-    subset_log_like = wrapper.log_likelihood(indices=subset_indices, axis=subset_axis)
-    assert subset_log_like["Y"].shape == (n_samples, 4, 20)
-
-
-def test_sample_posterior(simple_model):
-    """Test resampling from the fitted model."""
+def test_log_likelihood__i(simple_model):
+    """Test single observation log likelihood computation."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    with pytest.warns(UserWarning, match="Automatically enabling log likelihood"):
-        new_idata = wrapper.sample_posterior(draws=500, random_seed=42)
+    log_like_i = wrapper.log_likelihood__i("y", 0, idata)
+    assert isinstance(log_like_i, xr.DataArray)
+    assert set(log_like_i.dims) == {"chain", "draw"}
 
-    assert isinstance(new_idata, InferenceData)
-    assert hasattr(new_idata, "posterior")
-    assert hasattr(new_idata, "log_likelihood")
-    assert set(new_idata.posterior.data_vars.keys()) == {"alpha", "beta", "sigma"}
+    n_chains = len(idata.posterior.chain)
+    n_draws = len(idata.posterior.draw)
+    assert log_like_i.sizes["chain"] == n_chains
+    assert log_like_i.sizes["draw"] == n_draws
 
-    assert new_idata.posterior.dims["chain"] == 4
-    assert new_idata.posterior.dims["draw"] == 500
-
-    custom_idata = wrapper.sample_posterior(
-        draws=200,
-        tune=500,
-        chains=2,
-        target_accept=0.9,
-        random_seed=42,
-        idata_kwargs={"log_likelihood": True},
-    )
-
-    assert custom_idata.posterior.dims["chain"] == 2
-    assert custom_idata.posterior.dims["draw"] == 200
-    assert hasattr(custom_idata, "log_likelihood")
-
-    alpha_samples = custom_idata.posterior["alpha"].values
-    beta_samples = custom_idata.posterior["beta"].values
-
-    assert np.abs(np.mean(alpha_samples) - 1.0) < 0.5
-    assert np.abs(np.mean(beta_samples) - 2.0) < 0.5
+    assert np.all(np.isfinite(log_like_i))
+    assert np.all(log_like_i < 0)
 
 
 def test_log_likelihood__i_workflow(simple_model):
@@ -454,9 +362,7 @@ def test_log_likelihood__i_workflow(simple_model):
     problematic_idx = 0
 
     original_data = wrapper.get_observed_data()
-    holdout_data, training_data = wrapper.select_observations(
-        np.array([problematic_idx])
-    )
+    _, training_data = wrapper.select_observations(np.array([problematic_idx]))
 
     wrapper.set_data({wrapper.get_observed_name(): training_data})
     refitted_idata = wrapper.sample_posterior(

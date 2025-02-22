@@ -58,107 +58,128 @@ class PyMCWrapper:
         self.model = model
         self.idata = idata
         self.var_names = list(var_names) if var_names is not None else None
-        # Work with a deep copy of the original model to avoid issues with extra dimensions
         self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
         self._validate_model_state()
         self._extract_model_components()
 
-    def log_likelihood(
+    def select_observations(
         self,
-        var_names: Sequence[str] | None = None,
-        indices: dict[str, np.ndarray | slice] | None = None,
-        axis: dict[str, int] | None = None,
-    ) -> dict[str, np.ndarray]:
-        """Compute pointwise log likelihoods for specified variables.
+        indices: np.ndarray | slice,
+        var_name: str | None = None,
+        axis: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Select and partition observations from a variable's data.
 
-        Calculates the log likelihood values for each observation point in the specified
-        variables using the model's posterior samples. Supports computing log likelihoods
-        for specific subsets of observations through indexing.
+        This method partitions the data into two sets: selected observations and remaining
+        observations. This is particularly useful for leave-one-out cross-validation where
+        you need both the held-out data and the training data. If no variable name is provided,
+        uses the first observed variable in the model.
 
         Parameters
         ----------
-        var_names : Sequence[str] | None
-            Names of variables to compute log likelihoods for.
-            If None, computes for all observed variables
-        indices : dict[str, np.ndarray | slice] | None
-            Dictionary mapping variable names to indices for selecting specific
-            observations. If None, uses all observations
-        axis : dict[str, int] | None
-            Dictionary mapping variable names to axes along which to select
-            observations. If None for a variable, assumes the first axis
-        progressbar : bool
-            Whether to display a progress bar during computation
+        indices : array-like or slice
+            Indices of observations to select for the held-out set
+        var_name : Optional[str]
+            Name of the variable. If None, uses the first observed variable.
+        axis : Optional[int]
+            Axis along which to select observations.
+            If None, assumes the first axis is the observation axis.
 
         Returns
         -------
-        dict[str, np.ndarray]
-            Dictionary mapping variable names to their pointwise log likelihoods
-            with shape (n_chains, n_draws, n_points)
+        Tuple[np.ndarray, np.ndarray]
+            - Selected (held-out) observations
+            - Remaining (training) observations
 
-        See Also
-        --------
-        compute_pointwise_log_likelihood : Internal method for log likelihood computation
+        Raises
+        ------
+        ValueError
+            If no observed variables exist, the specified variable name is not found,
+            or indices are invalid
         """
-        return self._compute_log_likelihood(var_names, indices, axis)
+        if not self.observed_data:
+            raise ValueError("No observed variables found in the model")
 
-    def _compute_log_likelihood(
-        self,
-        var_names: Sequence[str] | None = None,
-        indices: dict[str, np.ndarray | slice] | None = None,
-        axis: dict[str, int] | None = None,
-    ) -> dict[str, np.ndarray]:
-        """Internal method to compute pointwise log likelihoods.
+        if var_name is None:
+            var_name = next(iter(self.observed_data))
+        elif var_name not in self.observed_data:
+            raise ValueError(f"Variable {var_name} not found in observed data")
 
-        Parameters
-        ----------
-        var_names : Sequence[str] | None
-            Names of variables to compute log likelihoods for.
-            If None, computes for all observed variables
-        indices : dict[str, np.ndarray | slice] | None
-            Dictionary mapping variable names to indices for selecting specific
-            observations. If None, uses all observations
-        axis : dict[str, int] | None
-            Dictionary mapping variable names to axes along which to select
-            observations. If None for a variable, assumes the first axis
-
-        Returns
-        -------
-        dict[str, np.ndarray]
-            Dictionary mapping variable names to their pointwise log likelihoods
-            with shape (n_samples, n_points) where n_samples = n_chains * n_draws
-        """
-        if var_names is None:
-            var_names = list(self.observed_data.keys())
-
-        if indices is None:
-            indices = {}
+        data = self.observed_data[var_name]
         if axis is None:
-            axis = {}
+            axis = 0
 
-        log_likes = {}
-        for var_name in var_names:
-            log_like = (
-                self.idata.log_likelihood[var_name]
-                .stack(__sample__=("chain", "draw"))
-                .values
+        try:
+            mask = np.zeros(data.shape[axis], dtype=bool)
+            if isinstance(indices, slice):
+                idx_range = range(*indices.indices(data.shape[axis]))
+                mask[idx_range] = True
+            else:
+                mask[indices] = True
+
+            selected_indices = np.where(mask)[0]
+            remaining_indices = np.where(~mask)[0]
+
+            selected = np.take(data, selected_indices, axis=axis)
+            remaining = np.take(data, remaining_indices, axis=axis)
+
+            return selected, remaining
+        except Exception as e:
+            raise ValueError(f"Failed to select observations: {str(e)}")
+
+    def log_likelihood__i(
+        self,
+        var_name: str,
+        idx: int,
+        refitted_idata: InferenceData,
+    ) -> xr.DataArray:
+        """Compute pointwise log likelihood for a single held-out observation.
+
+        Handles multidimensional observations and coordinate systems by properly
+        managing dimension mappings and coordinate selections when computing
+        log likelihoods for held-out data.
+
+        Parameters
+        ----------
+        var_name : str
+            Name of the variable to compute log likelihood for
+        idx : int
+            Index of the observation to compute log likelihood for
+        refitted_idata : InferenceData
+            InferenceData object from a model refit without the observation
+
+        Returns
+        -------
+        xr.DataArray
+            Log likelihood values for the held-out observation with dimensions (chain, draw)
+        """
+        holdout_data, _ = self.select_observations(np.array([idx]), var_name=var_name)
+        # dims = self.get_dims(var_name)
+        original_data = self.observed_data[var_name].copy()
+
+        try:
+            # Set just the held-out observation as the observed data
+            self.set_data({var_name: holdout_data})
+
+            log_like = pm.compute_log_likelihood(
+                refitted_idata,
+                var_names=[var_name],
+                model=self._untransformed_model,
+                extend_inferencedata=False,
             )
 
-            n_dims = len(log_like.shape)
-            sample_dim = n_dims - 1
-            log_like = np.moveaxis(log_like, sample_dim, 0)
+            log_like_i = log_like[var_name]
+            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
 
-            if var_name in indices:
-                idx = indices[var_name]
-                ax = axis.get(var_name, 0)
-                ax += 1  # Account for sample dimension at front
-                if isinstance(idx, slice):
-                    idx_range = range(*idx.indices(log_like.shape[ax]))
-                    log_like = np.take(log_like, idx_range, axis=ax)
-                else:
-                    log_like = np.take(log_like, idx, axis=ax)
-            log_likes[var_name] = log_like
+            # For each observation dimension, select the first (and only) element
+            # since we only provided one observation
+            for dim in obs_dims:
+                log_like_i = log_like_i.isel({dim: 0})
 
-        return log_likes
+            return log_like_i
+
+        finally:
+            self.set_data({var_name: original_data})
 
     def sample_posterior(
         self,
@@ -261,126 +282,121 @@ class PyMCWrapper:
             )
         return predictions
 
-    def select_observations(
+    def log_likelihood(
         self,
-        indices: np.ndarray | slice,
         var_name: str | None = None,
+        indices: np.ndarray | slice | None = None,
         axis: int | None = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Select and partition observations from a variable's data.
-
-        This method partitions the data into two sets: selected observations and remaining
-        observations. This is particularly useful for leave-one-out cross-validation where
-        you need both the held-out data and the training data. If no variable name is provided,
-        uses the first observed variable in the model.
-
-        Parameters
-        ----------
-        indices : array-like or slice
-            Indices of observations to select for the held-out set
-        var_name : Optional[str]
-            Name of the variable. If None, uses the first observed variable.
-        axis : Optional[int]
-            Axis along which to select observations.
-            If None, assumes the first axis is the observation axis.
-
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray]
-            - Selected (held-out) observations
-            - Remaining (training) observations
-
-        Raises
-        ------
-        ValueError
-            If no observed variables exist, the specified variable name is not found,
-            or indices are invalid
-        """
-        if not self.observed_data:
-            raise ValueError("No observed variables found in the model")
-
-        if var_name is None:
-            var_name = next(iter(self.observed_data))
-        elif var_name not in self.observed_data:
-            raise ValueError(f"Variable {var_name} not found in observed data")
-
-        data = self.observed_data[var_name]
-        if axis is None:
-            axis = 0
-
-        try:
-            mask = np.zeros(data.shape[axis], dtype=bool)
-            if isinstance(indices, slice):
-                idx_range = range(*indices.indices(data.shape[axis]))
-                mask[idx_range] = True
-            else:
-                mask[indices] = True
-
-            selected_indices = np.where(mask)[0]
-            remaining_indices = np.where(~mask)[0]
-
-            selected = np.take(data, selected_indices, axis=axis)
-            remaining = np.take(data, remaining_indices, axis=axis)
-
-            return selected, remaining
-        except Exception as e:
-            raise ValueError(f"Failed to select observations: {str(e)}")
-
-    def log_likelihood__i(
-        self,
-        var_name: str,
-        idx: int,
-        refitted_idata: InferenceData,
     ) -> xr.DataArray:
-        """Compute pointwise log likelihood for a single held-out observation.
+        """Compute pointwise log likelihoods for a variable.
 
-        Handles multidimensional observations and coordinate systems by properly
-        managing dimension mappings and coordinate selections when computing
-        log likelihoods for held-out data.
+        Calculates the log likelihood values for each observation point in the specified
+        variable using the model's posterior samples. Supports computing log likelihoods
+        for specific subsets of observations through indexing.
 
         Parameters
         ----------
-        var_name : str
-            Name of the variable to compute log likelihood for
-        idx : int
-            Index of the observation to compute log likelihood for
-        refitted_idata : InferenceData
-            InferenceData object from a model refit without the observation
+        var_name : str | None
+            Name of the variable to compute log likelihoods for.
+            If None, uses the first observed variable.
+        indices : np.ndarray | slice | None
+            Indices for selecting specific observations.
+            If None, uses all observations.
+        axis : int | None
+            Axis along which to select observations.
+            If None, assumes the first axis.
 
         Returns
         -------
         xr.DataArray
-            Log likelihood values for the held-out observation with dimensions (chain, draw)
+            Log likelihood values with dimensions (chain, draw) and any observation
+            dimensions from the original data. For models without explicit coordinates,
+            dimension names are standardized to "dim_0", "dim_1", etc.
+
+        See Also
+        --------
+        compute_pointwise_log_likelihood : Internal method for log likelihood computation
         """
-        holdout_data, remaining = self.select_observations(
-            np.array([idx]), var_name=var_name
-        )
-        # dims = self.get_dims(var_name)
-        original_data = self.observed_data[var_name].copy()
+        if var_name is None:
+            var_name = self.get_observed_name()
 
-        try:
-            # Set just the held-out observation as the observed data
-            self.set_data({var_name: holdout_data})
+        log_like = self.idata.log_likelihood[var_name]
 
-            log_like = pm.compute_log_likelihood(
-                refitted_idata,
-                var_names=[var_name],
-                model=self._untransformed_model,
-                extend_inferencedata=False,
-            )
+        rename_dict = {}
+        for dim in log_like.dims:
+            if dim not in ("chain", "draw"):
+                # Check if dimension has variable name prefix
+                prefix = f"{var_name}_dim_"
+                if dim.startswith(prefix):
+                    # Remove prefix to get standard dimension name
+                    new_name = dim[len(prefix) :]
+                    rename_dict[dim] = f"dim_{new_name}"
 
-            log_like_i = log_like[var_name]
-            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+        if rename_dict:
+            log_like = log_like.rename(rename_dict)
 
-            # For each observation dimension, select the first (and only) element
-            # since we only provided one observation
-            for dim in obs_dims:
-                log_like_i = log_like_i.isel({dim: 0})
+        if indices is None and axis is None:
+            return log_like
 
-            return log_like_i
+        indices_dict = {var_name: indices} if indices is not None else None
+        axis_dict = {var_name: axis} if axis is not None else None
 
-        finally:
-            self.set_data({var_name: original_data})
+        return self._compute_log_likelihood([var_name], indices_dict, axis_dict)[
+            var_name
+        ]
+
+    def _compute_log_likelihood(
+        self,
+        var_names: Sequence[str],
+        indices: dict[str, np.ndarray | slice] | None = None,
+        axis: dict[str, int] | None = None,
+    ) -> dict[str, xr.DataArray]:
+        """Internal method to compute pointwise log likelihoods.
+
+        This is an internal helper method that handles multiple variables.
+        For external use, prefer the log_likelihood method which provides
+        a simpler interface for single variable computations.
+
+        Parameters
+        ----------
+        var_names : Sequence[str]
+            Names of variables to compute log likelihoods for
+        indices : dict[str, np.ndarray | slice] | None
+            Dictionary mapping variable names to indices for selecting specific
+            observations. If None, uses all observations
+        axis : dict[str, int] | None
+            Dictionary mapping variable names to axes along which to select
+            observations. If None for a variable, assumes the first axis
+
+        Returns
+        -------
+        dict[str, xr.DataArray]
+            Dictionary mapping variable names to their pointwise log likelihoods
+            as xarray DataArrays with dimensions (chain, draw) and any observation
+            dimensions from the original data
+        """
+        if indices is None:
+            indices = {}
+        if axis is None:
+            axis = {}
+
+        log_likes = {}
+        for var_name in var_names:
+            log_like = self.log_likelihood(var_name=var_name)
+
+            if var_name in indices:
+                idx = indices[var_name]
+                ax = axis.get(var_name, 0)
+                dim_name = [d for d in log_like.dims if d not in ("chain", "draw")][ax]
+
+                if isinstance(idx, slice):
+                    log_like = log_like.isel({dim_name: idx})
+                else:
+                    log_like = log_like.isel({dim_name: idx})
+
+            log_likes[var_name] = log_like
+
+        return log_likes
 
     def set_data(
         self,
