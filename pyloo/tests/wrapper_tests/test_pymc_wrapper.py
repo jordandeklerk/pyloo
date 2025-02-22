@@ -1,244 +1,21 @@
 """Tests for PyMC model wrapper."""
 
 import numpy as np
-import pymc as pm
 import pytest
 import xarray as xr
 from arviz import InferenceData
 
 from ...loo import loo
 from ...wrapper.pymc_wrapper import PyMCWrapper
-
-
-@pytest.fixture
-def hierarchical_model():
-    """Create a hierarchical model with multiple observations for testing."""
-    rng = np.random.default_rng(42)
-
-    n_groups = 8
-    n_points = 20
-
-    alpha = 0.8
-    beta = 1.2
-    group_effects = rng.normal(0, 0.5, size=n_groups)
-
-    X = rng.normal(0, 1, size=(n_groups, n_points))
-
-    Y = (
-        alpha
-        + group_effects[:, None]
-        + beta * X
-        + rng.normal(0, 0.2, size=(n_groups, n_points))
-    )
-
-    coords = {"group": range(n_groups), "obs_id": range(n_points)}
-
-    with pm.Model(coords=coords) as model:
-        alpha = pm.Normal("alpha", mu=0, sigma=2)
-        beta = pm.Normal("beta", mu=0, sigma=2)
-        group_sigma = pm.HalfNormal("group_sigma", sigma=0.5)
-
-        group_effects_raw = pm.Normal("group_effects_raw", mu=0, sigma=1, dims="group")
-        group_effects = pm.Deterministic(
-            "group_effects", group_effects_raw * group_sigma, dims="group"
-        )
-
-        mu = alpha + group_effects[:, None] + beta * X
-
-        sigma_y = pm.HalfNormal("sigma_y", sigma=0.5)
-        pm.Normal("Y", mu=mu, sigma=sigma_y, observed=Y, dims=("group", "obs_id"))
-
-        idata = pm.sample(
-            1000,
-            tune=2000,
-            target_accept=0.95,
-            random_seed=42,
-            idata_kwargs={"log_likelihood": True},
-        )
-
-    return model, idata
-
-
-@pytest.fixture
-def hierarchical_model_no_coords():
-    """Create a hierarchical model without explicit coordinates."""
-    rng = np.random.default_rng(42)
-
-    n_groups = 8
-    n_points = 20
-
-    alpha = 0.8
-    beta = 1.2
-    group_effects = rng.normal(0, 0.5, size=n_groups)
-
-    X = rng.normal(0, 1, size=(n_groups, n_points))
-    Y = (
-        alpha
-        + group_effects[:, None]
-        + beta * X
-        + rng.normal(0, 0.2, size=(n_groups, n_points))
-    )
-
-    with pm.Model() as model:
-        alpha = pm.Normal("alpha", mu=0, sigma=2)
-        beta = pm.Normal("beta", mu=0, sigma=2)
-        group_sigma = pm.HalfNormal("group_sigma", sigma=0.5)
-
-        group_effects_raw = pm.Normal(
-            "group_effects_raw", mu=0, sigma=1, shape=n_groups
-        )
-        group_effects = pm.Deterministic(
-            "group_effects", group_effects_raw * group_sigma
-        )
-
-        mu = alpha + group_effects[:, None] + beta * X
-
-        sigma_y = pm.HalfNormal("sigma_y", sigma=0.5)
-        pm.Normal("Y", mu=mu, sigma=sigma_y, observed=Y)
-
-        idata = pm.sample(
-            1000,
-            tune=2000,
-            target_accept=0.95,
-            random_seed=42,
-            idata_kwargs={"log_likelihood": True},
-        )
-
-    return model, idata
-
-
-@pytest.fixture
-def simple_model():
-    """Create a simple linear regression model for testing."""
-    rng = np.random.default_rng(42)
-    X = rng.normal(0, 1, size=100)
-    true_alpha = 1.0
-    true_beta = 2.0
-    true_sigma = 1.0
-    y = true_alpha + true_beta * X + rng.normal(0, true_sigma, size=100)
-
-    with pm.Model(coords={"obs_id": range(len(X))}) as model:
-        alpha = pm.Normal("alpha", mu=0, sigma=10)
-        beta = pm.Normal("beta", mu=0, sigma=10)
-        sigma = pm.HalfNormal("sigma", sigma=10)
-
-        mu = alpha + beta * X
-
-        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
-
-        idata = pm.sample(
-            1000, tune=1000, random_seed=42, idata_kwargs={"log_likelihood": True}
-        )
-
-    return model, idata
-
-
-@pytest.fixture
-def poisson_model():
-    """Create a Poisson regression model for testing different likelihood types."""
-    rng = np.random.default_rng(42)
-    X = rng.normal(0, 1, size=100)
-    true_alpha = 0.5
-    true_beta = 0.3
-
-    lambda_rate = np.exp(true_alpha + true_beta * X)
-    y = rng.poisson(lambda_rate)
-
-    with pm.Model(coords={"obs_id": range(len(X))}) as model:
-        alpha = pm.Normal("alpha", mu=0, sigma=1)
-        beta = pm.Normal("beta", mu=0, sigma=1)
-
-        lambda_rate = pm.math.exp(alpha + beta * X)
-        pm.Poisson("y", mu=lambda_rate, observed=y, dims="obs_id")
-
-        idata = pm.sample(
-            1000, tune=1000, random_seed=42, idata_kwargs={"log_likelihood": True}
-        )
-
-    return model, idata
-
-
-@pytest.fixture
-def multi_observed_model():
-    """Create a model with multiple observed variables."""
-    rng = np.random.default_rng(42)
-    n_samples = 100
-
-    X = rng.normal(0, 1, size=n_samples)
-    true_alpha = 1.0
-    true_beta = 2.0
-    true_sigma1 = 0.5
-    true_sigma2 = 0.8
-
-    y1 = true_alpha + true_beta * X + rng.normal(0, true_sigma1, size=n_samples)
-    y2 = true_alpha - true_beta * X + rng.normal(0, true_sigma2, size=n_samples)
-
-    with pm.Model(coords={"obs_id": range(n_samples)}) as model:
-        alpha = pm.Normal("alpha", mu=0, sigma=10)
-        beta = pm.Normal("beta", mu=0, sigma=10)
-        sigma1 = pm.HalfNormal("sigma1", sigma=10)
-        sigma2 = pm.HalfNormal("sigma2", sigma=10)
-
-        mu1 = alpha + beta * X
-        mu2 = alpha - beta * X
-
-        pm.Normal("y1", mu=mu1, sigma=sigma1, observed=y1, dims="obs_id")
-        pm.Normal("y2", mu=mu2, sigma=sigma2, observed=y2, dims="obs_id")
-
-        idata = pm.sample(
-            1000, tune=1000, random_seed=42, idata_kwargs={"log_likelihood": True}
-        )
-
-    return model, idata
-
-
-@pytest.fixture
-def shared_variable_model():
-    """Create a model with shared variables across observations."""
-    rng = np.random.default_rng(42)
-    n_groups = 3
-    n_per_group = 50
-
-    shared_effect = 0.5
-    group_effects = rng.normal(0, 0.3, size=n_groups)
-
-    X = []
-    y = []
-    groups = []
-
-    for i in range(n_groups):
-        X_group = rng.normal(0, 1, size=n_per_group)
-        y_group = (
-            shared_effect
-            + group_effects[i]
-            + 0.2 * X_group
-            + rng.normal(0, 0.1, size=n_per_group)
-        )
-
-        X.extend(X_group)
-        y.extend(y_group)
-        groups.extend([i] * n_per_group)
-
-    X = np.array(X)
-    y = np.array(y)
-    groups = np.array(groups)
-
-    coords = {"obs_id": range(len(X)), "group": range(n_groups)}
-
-    with pm.Model(coords=coords) as model:
-        shared_effect = pm.Normal("shared_effect", mu=0, sigma=1)
-        group_effects = pm.Normal("group_effects", mu=0, sigma=0.5, dims="group")
-        beta = pm.Normal("beta", mu=0, sigma=1)
-        sigma = pm.HalfNormal("sigma", sigma=0.5)
-
-        mu = shared_effect + group_effects[groups] + beta * X
-        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
-
-        idata = pm.sample(
-            1000, tune=1000, random_seed=42, idata_kwargs={"log_likelihood": True}
-        )
-
-    return model, idata
+from ..helpers import (
+    assert_arrays_allclose,
+    assert_arrays_almost_equal,
+    assert_arrays_equal,
+    assert_bounded,
+    assert_finite,
+    assert_positive,
+    assert_shape_equal,
+)
 
 
 def test_wrapper_initialization(simple_model):
@@ -342,7 +119,7 @@ def test_select_observations(simple_model):
     original_data = wrapper.observed_data["y"].copy()
     all_data.sort()
     original_data.sort()
-    np.testing.assert_array_almost_equal(all_data, original_data)
+    assert_arrays_almost_equal(all_data, original_data)
 
     selected, remaining = wrapper.select_observations(slice(0, 50), var_name="y")
     assert selected.shape[0] == 50
@@ -352,7 +129,7 @@ def test_select_observations(simple_model):
     original_data = wrapper.observed_data["y"].copy()
     all_data.sort()
     original_data.sort()
-    np.testing.assert_array_almost_equal(all_data, original_data)
+    assert_arrays_almost_equal(all_data, original_data)
 
     indices = np.array([0, 10, 20])
     selected, remaining = wrapper.select_observations(indices)
@@ -363,7 +140,7 @@ def test_select_observations(simple_model):
     original_data = wrapper.observed_data["y"].copy()
     all_data.sort()
     original_data.sort()
-    np.testing.assert_array_almost_equal(all_data, original_data)
+    assert_arrays_almost_equal(all_data, original_data)
 
     with pytest.raises(ValueError, match="not found in observed data"):
         wrapper.select_observations(slice(0, 50), var_name="invalid_var")
@@ -376,12 +153,12 @@ def test_set_data(simple_model):
 
     new_data = np.random.normal(0, 1, size=100)
     wrapper.set_data({"y": new_data})
-    np.testing.assert_array_equal(wrapper.observed_data["y"], new_data)
+    assert_arrays_equal(wrapper.observed_data["y"], new_data)
 
     new_coords = {"obs_id": list(range(50))}
     new_data = np.random.normal(0, 1, size=50)
     wrapper.set_data({"y": new_data}, coords=new_coords)
-    np.testing.assert_array_equal(wrapper.observed_data["y"], new_data)
+    assert_arrays_equal(wrapper.observed_data["y"], new_data)
 
     with pytest.raises(ValueError, match="Incompatible dimensions"):
         wrapper.set_data({"y": np.random.normal(0, 1, size=(100, 2))})
@@ -454,8 +231,8 @@ def test_log_likelihood_i(simple_model):
     assert log_like_i.sizes["chain"] == n_chains
     assert log_like_i.sizes["draw"] == n_draws
 
-    assert np.all(np.isfinite(log_like_i))
-    assert np.all(log_like_i < 0)
+    assert_finite(log_like_i)
+    assert_bounded(log_like_i, upper=0)
 
 
 def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_model):
@@ -487,8 +264,8 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     assert "draw" in log_like.dims
     assert log_like.sizes["chain"] == 2
     assert log_like.sizes["draw"] == 1000
-    assert np.all(np.isfinite(log_like))
-    assert np.all(log_like < 0)
+    assert_finite(log_like)
+    assert_bounded(log_like, upper=0)
 
     wrapper.set_data({wrapper.get_observed_name(): original_data})
 
@@ -506,7 +283,7 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     log_like = wrapper.log_likelihood_i("y", 0, refitted_idata)
     assert isinstance(log_like, xr.DataArray)
     assert set(log_like.dims) == {"chain", "draw"}
-    assert np.all(np.isfinite(log_like))
+    assert_finite(log_like)
 
     wrapper.set_data({"y": original_data})
 
@@ -520,8 +297,8 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     assert isinstance(log_like_y2, xr.DataArray)
     assert set(log_like_y1.dims) == {"chain", "draw"}
     assert set(log_like_y2.dims) == {"chain", "draw"}
-    assert np.all(np.isfinite(log_like_y1))
-    assert np.all(np.isfinite(log_like_y2))
+    assert_finite(log_like_y1)
+    assert_finite(log_like_y2)
 
     with pytest.raises(ValueError, match="Variable invalid_var not found in model"):
         wrapper.log_likelihood_i("invalid_var", 0, idata)
@@ -563,7 +340,7 @@ def test_different_likelihood_models(poisson_model):
     log_like = wrapper.log_likelihood()
     assert isinstance(log_like, xr.DataArray)
     assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-    assert np.all(np.isfinite(log_like))
+    assert_finite(log_like)
 
     selected, remaining = wrapper.select_observations(slice(0, 50))
     assert selected.shape[0] == 50
@@ -573,7 +350,7 @@ def test_different_likelihood_models(poisson_model):
 
     new_data = np.random.poisson(5, size=100)
     wrapper.set_data({"y": new_data})
-    np.testing.assert_array_equal(wrapper.observed_data["y"], new_data)
+    assert_arrays_equal(wrapper.observed_data["y"], new_data)
 
 
 def test_edge_cases_data_handling(simple_model):
@@ -628,8 +405,8 @@ def test_multi_observed_handling(multi_observed_model):
         "y2": np.random.normal(0, 1, size=100),
     }
     wrapper.set_data(new_data)
-    np.testing.assert_array_equal(wrapper.observed_data["y1"], new_data["y1"])
-    np.testing.assert_array_equal(wrapper.observed_data["y2"], new_data["y2"])
+    assert_arrays_equal(wrapper.observed_data["y1"], new_data["y1"])
+    assert_arrays_equal(wrapper.observed_data["y2"], new_data["y2"])
 
 
 def test_shared_variable_handling(shared_variable_model):
@@ -690,21 +467,21 @@ def test_parameter_transformations(simple_model):
     constrained = wrapper.constrain_parameters(unconstrained)
     assert set(constrained.keys()) == {"alpha", "beta", "sigma"}
 
-    assert constrained["alpha"].shape == unconstrained["alpha"].shape
-    assert constrained["beta"].shape == unconstrained["beta"].shape
-    assert constrained["sigma"].shape == unconstrained["sigma"].shape
+    assert_shape_equal(constrained["alpha"], unconstrained["alpha"])
+    assert_shape_equal(constrained["beta"], unconstrained["beta"])
+    assert_shape_equal(constrained["sigma"], unconstrained["sigma"])
 
     # Check that sigma is positive in constrained space
-    assert np.all(constrained["sigma"] > 0)
+    assert_positive(constrained["sigma"])
 
     # Check that transformations approximately invert each other
-    np.testing.assert_allclose(
+    assert_arrays_allclose(
         constrained["alpha"], wrapper.idata.posterior.alpha.values, rtol=1e-5
     )
-    np.testing.assert_allclose(
+    assert_arrays_allclose(
         constrained["beta"], wrapper.idata.posterior.beta.values, rtol=1e-5
     )
-    np.testing.assert_allclose(
+    assert_arrays_allclose(
         constrained["sigma"], wrapper.idata.posterior.sigma.values, rtol=1e-5
     )
 
@@ -766,10 +543,10 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
     # Check that constrained parameters match original posterior
     for param in expected_params:
         if param in idata.posterior:
-            np.testing.assert_allclose(
+            assert_arrays_allclose(
                 constrained[param], idata.posterior[param].values, rtol=1e-5
             )
 
     # Check that sigma parameters are positive in constrained space
-    assert np.all(constrained["group_sigma"] > 0)
-    assert np.all(constrained["sigma_y"] > 0)
+    assert_positive(constrained["group_sigma"])
+    assert_positive(constrained["sigma_y"])

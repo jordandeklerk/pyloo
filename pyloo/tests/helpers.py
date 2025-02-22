@@ -1,6 +1,5 @@
 """Test helper functions for pyloo."""
 
-import logging
 import warnings
 from contextlib import contextmanager
 
@@ -8,8 +7,6 @@ import numpy as np
 import pytest
 from arviz import from_dict
 from numpy.testing import assert_allclose, assert_array_almost_equal
-
-_log = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -24,62 +21,6 @@ def does_not_warn(warning=Warning):
                     f"{w.message}"
                 )
                 raise AssertionError(warning_msg)
-
-
-@pytest.fixture(scope="session")
-def numpy_arrays(rng):
-    """Return common numpy arrays used in tests."""
-    return {
-        "normal": rng.normal(size=1000),
-        "uniform": rng.uniform(size=1000),
-        "random_weights": rng.normal(size=(1000, 8)),
-        "random_ratios": rng.normal(size=(2000, 5)),
-    }
-
-
-@pytest.fixture(scope="session")
-def log_likelihood_data(centered_eight):
-    """Return log likelihood data for PSIS tests."""
-    return centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-
-
-@pytest.fixture(scope="session")
-def multidim_data(rng):
-    """Return multidimensional data for testing."""
-    return {
-        "llm": rng.normal(size=(4, 23, 15, 2)),  # chain, draw, dim1, dim2
-        "ll1": rng.normal(size=(4, 23, 30)),  # chain, draw, combined_dims
-    }
-
-
-@pytest.fixture(scope="session")
-def extreme_data(log_likelihood_data):
-    """Return data with extreme values for testing edge cases."""
-    data = log_likelihood_data.values.T.copy()
-    data[:, 1] = 10  # Add extreme values
-    return data
-
-
-@pytest.fixture(scope="module")
-def eight_schools_params():
-    """Share setup for eight schools."""
-    return {
-        "J": 8,
-        "y": np.array([28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0]),
-        "sigma": np.array([15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0]),
-    }
-
-
-@pytest.fixture(scope="module")
-def draws():
-    """Share default draw count."""
-    return 500
-
-
-@pytest.fixture(scope="module")
-def chains():
-    """Share default chain count."""
-    return 2
 
 
 def create_model(seed=10, transpose=False):
