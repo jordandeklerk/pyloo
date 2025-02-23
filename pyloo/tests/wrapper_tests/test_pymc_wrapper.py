@@ -83,8 +83,8 @@ def test_hierarchical_log_likelihood(hierarchical_model):
     assert log_like_subset.sizes["obs_id"] == 20
 
 
-def test_coordinate_handling(hierarchical_model):
-    """Test coordinate validation and handling."""
+def test_coordinate_handling_and_data_immutability(hierarchical_model):
+    """Test coordinate validation, handling, and data immutability."""
     model, idata = hierarchical_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -93,6 +93,9 @@ def test_coordinate_handling(hierarchical_model):
 
     wrapper.set_data({"Y": new_data}, coords=coords)
     assert_arrays_equal(wrapper.observed_data["Y"], new_data)
+
+    with pytest.raises((ValueError, RuntimeError)):
+        wrapper.observed_data["Y"][0, 0] = 100.0
 
     new_data = np.random.normal(0, 1, size=(10, 25))
     with pytest.warns(UserWarning) as record:
@@ -104,6 +107,10 @@ def test_coordinate_handling(hierarchical_model):
     assert len(record) >= 1
     assert any("length changed" in str(w.message) for w in record)
     assert_arrays_equal(wrapper.observed_data["Y"], new_data)
+
+    # Verify immutability is maintained after update
+    with pytest.raises((ValueError, RuntimeError)):
+        wrapper.observed_data["Y"][0, 0] = 100.0
 
     new_data = np.random.normal(0, 1, size=(12, 30))
     with pytest.raises(ValueError, match="Missing coordinates for dimensions"):
@@ -236,8 +243,8 @@ def test_get_missing_mask(simple_model):
         wrapper.get_missing_mask("invalid_var")
 
 
-def test_model_validation(simple_model):
-    """Test model state validation."""
+def test_model_validation_and_deep_copy(simple_model):
+    """Test model state validation and deep copy independence."""
     model, idata = simple_model
 
     idata_wrong_shape = idata.copy()
@@ -251,6 +258,22 @@ def test_model_validation(simple_model):
     del idata_missing_var.posterior["alpha"]
     with pytest.raises(PyMCWrapperError, match="Missing posterior samples"):
         PyMCWrapper(model, idata_missing_var)
+
+    wrapper1 = PyMCWrapper(model, idata)
+    wrapper2 = PyMCWrapper(model, idata)
+
+    # Verify that modifying one wrapper's model doesn't affect the other
+    wrapper1._untransformed_model.name = "modified_model"
+    assert wrapper1._untransformed_model.name != wrapper2._untransformed_model.name
+
+    # Verify that modifying data in one wrapper doesn't affect the other
+    original_data = wrapper1.get_observed_data()
+    new_data = original_data.copy()
+    new_data[0] = 999.0
+    wrapper1.set_data({wrapper1.get_observed_name(): new_data})
+    assert not np.array_equal(
+        wrapper1.get_observed_data(), wrapper2.get_observed_data()
+    )
 
 
 def test_log_likelihood_i(simple_model):
@@ -469,12 +492,11 @@ def test_shared_variable_handling(shared_variable_model):
     assert refitted_idata.posterior["group_effects"].sizes["group"] == 3
 
 
-def test_parameter_transformations(simple_model):
+def test_parameter_transformations(simple_model, caplog):
     """Test parameter transformation between constrained and unconstrained spaces."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
     unconstrained = wrapper.get_unconstrained_parameters()
-
     assert set(unconstrained.keys()) == {"alpha", "beta", "sigma"}
 
     # Check dimensions match original posterior
@@ -522,6 +544,23 @@ def test_parameter_transformations(simple_model):
     assert_arrays_allclose(
         constrained["sigma"], wrapper.idata.posterior.sigma.values, rtol=1e-5
     )
+
+    with caplog.at_level(logging.WARNING):
+
+        class MockTransform:
+            def backward(self, *args):
+                raise ValueError("Test error")
+
+            def forward(self, *args):
+                raise ValueError("Test error")
+
+        # Temporarily add failing transform to a variable
+        var = wrapper.model.free_RVs[0]
+        var.transform = MockTransform()
+        unconstrained = wrapper.get_unconstrained_parameters()
+        assert "Failed to transform" in caplog.text
+
+        delattr(var, "transform")
 
 
 def test_hierarchical_parameter_transformations(hierarchical_model):

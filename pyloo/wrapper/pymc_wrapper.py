@@ -66,6 +66,11 @@ class PyMCWrapper:
         self._validate_model_state()
         self._extract_model_components()
 
+        for var_name, data in self.observed_data.items():
+            if isinstance(data, np.ndarray):
+                self.observed_data[var_name] = data.copy()
+                self.observed_data[var_name].flags.writeable = False
+
     def select_observations(
         self,
         indices: np.ndarray | slice,
@@ -141,44 +146,6 @@ class PyMCWrapper:
                 raise
             raise PyMCWrapperError(f"Failed to select observations: {str(e)}")
 
-    def _create_selection_mask(
-        self, indices: np.ndarray | slice, length: int, axis: int
-    ) -> np.ndarray:
-        """Create a boolean mask for selecting observations."""
-        # Boolean mask input
-        if isinstance(indices, np.ndarray) and indices.dtype == bool:
-            if indices.shape[0] != length:
-                raise PyMCWrapperError(
-                    f"Boolean mask shape {indices.shape[0]} does not match "
-                    f"data shape {length} along axis {axis}"
-                )
-            return indices
-
-        # Slice input
-        if isinstance(indices, slice):
-            mask = np.zeros(length, dtype=bool)
-            idx_range = range(*indices.indices(length))
-            mask[idx_range] = True
-            return mask
-
-        # Integer array input
-        indices = np.asarray(indices, dtype=np.int64)
-        if indices.size > 0:
-            if np.any(indices < 0):
-                raise IndexError(
-                    "Negative indices are not allowed. Found indices:"
-                    f" {indices[indices < 0]}"
-                )
-            if np.any(indices >= length):
-                raise IndexError(
-                    f"Index {max(indices)} is out of bounds for axis {axis}"
-                    f" with size {length}"
-                )
-
-        mask = np.zeros(length, dtype=bool)
-        np.put(mask, indices, True)
-        return mask
-
     def log_likelihood_i(
         self,
         var_name: str,
@@ -210,6 +177,10 @@ class PyMCWrapper:
         ------
         PyMCWrapperError
             If the variable has missing values, if the data is invalid, or if computation fails
+
+        See Also
+        --------
+        log_likelihood : Compute pointwise log likelihood for all observations
         """
         if self.get_variable(var_name) is None:
             raise PyMCWrapperError(
@@ -392,6 +363,10 @@ class PyMCWrapper:
         ------
         PyMCWrapperError
             If variables are invalid or prediction fails
+
+        See Also
+        --------
+        sample_posterior : Sample from the model's posterior distribution
         """
         if var_names is None:
             var_names = list(self.observed_data.keys())
@@ -452,6 +427,14 @@ class PyMCWrapper:
         This uses PyMC's internal transformation infrastructure to properly
         handle different parameter types (e.g. positive parameters become log
         transformed, simplex parameters use stick breaking, etc.)
+
+        If a distribution does not provide a transform attribute, or if the
+        transformation fails, the original parameter values are returned with
+        a warning.
+
+        See Also
+        --------
+        constrain_parameters : Inverse operation to get_unconstrained_parameters
         """
         unconstrained_params = {}
 
@@ -465,7 +448,10 @@ class PyMCWrapper:
             dist = untransformed_var.owner.op
             transform = getattr(dist, "transform", None)
 
-            if transform is not None:
+            try:
+                if transform is None:
+                    raise ValueError("No transform available")
+
                 # Apply backward transformation to get unconstrained space
                 samples_np = param_samples.values
                 unconstrained_np = transform.backward(
@@ -477,7 +463,12 @@ class PyMCWrapper:
                     coords=param_samples.coords,
                     name=param_samples.name,
                 )
-            else:
+            except Exception as e:
+                logger.warning(
+                    "Failed to transform %s: %s",
+                    var_name,
+                    str(e),
+                )
                 unconstrained_samples = param_samples.copy()
 
             unconstrained_params[var_name] = unconstrained_samples
@@ -508,6 +499,10 @@ class PyMCWrapper:
         Notes
         -----
         This is the inverse operation of get_unconstrained_parameters()
+
+        See Also
+        --------
+        get_unconstrained_parameters : Inverse operation to constrain_parameters
         """
         constrained_params = {}
 
@@ -523,20 +518,33 @@ class PyMCWrapper:
             dist = untransformed_var.owner.op
             transform = getattr(dist, "transform", None)
 
-            if transform is not None:
-                # Apply forward transformation to get constrained space
-                unconstrained_np = unconstrained.values
-                constrained_np = transform.forward(
-                    unconstrained_np, *var.owner.inputs[1:]
-                ).eval()
-                constrained = xr.DataArray(
-                    constrained_np,
-                    dims=unconstrained.dims,
-                    coords=unconstrained.coords,
-                    name=unconstrained.name,
+            if transform is None:
+                logger.warning(
+                    "No transform found for variable %s. Using original values.",
+                    var_name,
                 )
-            else:
                 constrained = unconstrained.copy()
+            else:
+                try:
+                    # Apply forward transformation to get constrained space
+                    unconstrained_np = unconstrained.values
+                    constrained_np = transform.forward(
+                        unconstrained_np, *var.owner.inputs[1:]
+                    ).eval()
+                    constrained = xr.DataArray(
+                        constrained_np,
+                        dims=unconstrained.dims,
+                        coords=unconstrained.coords,
+                        name=unconstrained.name,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to transform %s to constrained space: %s. "
+                        "Using original values.",
+                        var_name,
+                        str(e),
+                    )
+                    constrained = unconstrained.copy()
 
             constrained_params[var_name] = constrained
 
@@ -575,6 +583,7 @@ class PyMCWrapper:
 
         See Also
         --------
+        log_likelihood_i : Compute pointwise log likelihood for a single held-out observation
         compute_pointwise_log_likelihood : Internal method for log likelihood computation
         """
         if var_name is None:
@@ -721,6 +730,9 @@ class PyMCWrapper:
                     f" {expected_shape}, got: {values.shape}"
                 )
 
+            # Create a copy of the data to ensure independence
+            values = values.copy()
+
             if mask is not None and var_name in mask:
                 mask_array = mask[var_name]
                 if mask_array.shape != values.shape:
@@ -733,6 +745,9 @@ class PyMCWrapper:
             orig_dims = self.get_dims(var_name)
             if orig_dims is None:
                 self.observed_data[var_name] = values
+                # Make data immutable
+                if isinstance(values, np.ndarray):
+                    values.flags.writeable = False
                 continue
 
             working_coords = {} if coords is None else coords.copy()
@@ -779,6 +794,9 @@ class PyMCWrapper:
                             )
 
             self.observed_data[var_name] = values
+            # Make data immutable
+            if isinstance(values, np.ndarray):
+                values.flags.writeable = False
 
     def get_missing_mask(
         self,
@@ -913,6 +931,44 @@ class PyMCWrapper:
             var = self._untransformed_model.named_vars[var_name]
             return tuple(d.eval() if hasattr(d, "eval") else d for d in var.shape)
         return None
+
+    def _create_selection_mask(
+        self, indices: np.ndarray | slice, length: int, axis: int
+    ) -> np.ndarray:
+        """Create a boolean mask for selecting observations."""
+        # Boolean mask input
+        if isinstance(indices, np.ndarray) and indices.dtype == bool:
+            if indices.shape[0] != length:
+                raise PyMCWrapperError(
+                    f"Boolean mask shape {indices.shape[0]} does not match "
+                    f"data shape {length} along axis {axis}"
+                )
+            return indices
+
+        # Slice input
+        if isinstance(indices, slice):
+            mask = np.zeros(length, dtype=bool)
+            idx_range = range(*indices.indices(length))
+            mask[idx_range] = True
+            return mask
+
+        # Integer array input
+        indices = np.asarray(indices, dtype=np.int64)
+        if indices.size > 0:
+            if np.any(indices < 0):
+                raise IndexError(
+                    "Negative indices are not allowed. Found indices:"
+                    f" {indices[indices < 0]}"
+                )
+            if np.any(indices >= length):
+                raise IndexError(
+                    f"Index {max(indices)} is out of bounds for axis {axis}"
+                    f" with size {length}"
+                )
+
+        mask = np.zeros(length, dtype=bool)
+        np.put(mask, indices, True)
+        return mask
 
     def _validate_model_state(self) -> None:
         """Validate that the model is properly fitted and ready for use."""
