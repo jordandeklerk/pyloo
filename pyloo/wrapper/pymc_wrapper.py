@@ -1,7 +1,7 @@
 """Wrapper for fitted PyMC models to support LOO-CV computations."""
 
 import copy
-import warnings
+import logging
 from typing import Any, Sequence
 
 import numpy as np
@@ -11,6 +11,14 @@ import xarray as xr
 from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
+
+logger = logging.getLogger(__name__)
+
+
+class PyMCWrapperError(Exception):
+    """Base exception class for PyMC wrapper errors."""
+
+    pass
 
 
 class PyMCWrapper:
@@ -88,35 +96,35 @@ class PyMCWrapper:
 
         Raises
         ------
-        ValueError
-            If no observed variables exist, the specified variable name is not found,
-            or indices are invalid
+        PyMCWrapperError
+            If no observed variables exist or the specified variable name is not found
         IndexError
             If indices are out of bounds or negative
         """
         if not self.observed_data:
-            raise ValueError("No observed variables found in the model")
+            raise PyMCWrapperError("No observed variables found in the model")
 
         if var_name is None:
             var_name = self.get_observed_name()
         elif var_name not in self.observed_data:
-            raise ValueError(f"Variable {var_name} not found in observed data")
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in observed data. "
+                f"Available variables: {list(self.observed_data.keys())}"
+            )
 
         data = self.observed_data[var_name]
         if axis is None:
             axis = 0
 
         if np.any(self.get_missing_mask(var_name)):
-            warnings.warn(
-                f"Missing values detected in {var_name}. This may affect the results.",
-                UserWarning,
-                stacklevel=2,
+            logger.warning(
+                "Missing values detected in %s. This may affect the results.", var_name
             )
 
         try:
             if isinstance(indices, np.ndarray) and indices.dtype == bool:
                 if indices.shape[0] != data.shape[axis]:
-                    raise ValueError(
+                    raise PyMCWrapperError(
                         f"Boolean mask shape {indices.shape[0]} does not match "
                         f"data shape {data.shape[axis]} along axis {axis}"
                     )
@@ -127,9 +135,15 @@ class PyMCWrapper:
                     indices = np.asarray(indices, dtype=int)
                     if indices.size > 0:
                         if np.any(indices < 0):
-                            raise IndexError("Negative indices are not allowed")
+                            raise IndexError(
+                                "Negative indices are not allowed. Found indices:"
+                                f" {indices[indices < 0]}"
+                            )
                         if np.any(indices >= data.shape[axis]):
-                            raise IndexError("Index out of bounds")
+                            raise IndexError(
+                                f"Index {max(indices)} is out of bounds for axis"
+                                f" {axis} with size {data.shape[axis]}"
+                            )
 
                 mask = np.zeros(data.shape[axis], dtype=bool)
                 if isinstance(indices, slice):
@@ -146,9 +160,9 @@ class PyMCWrapper:
 
             return selected, remaining
         except Exception as e:
-            if isinstance(e, IndexError):
+            if isinstance(e, (IndexError, PyMCWrapperError)):
                 raise
-            raise ValueError(f"Failed to select observations: {str(e)}")
+            raise PyMCWrapperError(f"Failed to select observations: {str(e)}")
 
     def log_likelihood_i(
         self,
@@ -179,24 +193,33 @@ class PyMCWrapper:
 
         Raises
         ------
-        ValueError
-            If the variable has missing values or if the data is invalid
+        PyMCWrapperError
+            If the variable has missing values, if the data is invalid, or if computation fails
         """
         if self.get_variable(var_name) is None:
-            raise ValueError(f"Variable {var_name} not found in model")
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in model. Available variables:"
+                f" {list(self._untransformed_model.named_vars.keys())}"
+            )
 
         if var_name not in self.observed_data:
-            raise ValueError(f"No observed data found for variable {var_name}")
+            raise PyMCWrapperError(
+                f"No observed data found for variable '{var_name}'. "
+                f"Available observed variables: {list(self.observed_data.keys())}"
+            )
 
         if np.any(self.get_missing_mask(var_name)):
-            raise ValueError(f"Missing values found in {var_name}")
+            raise PyMCWrapperError(f"Missing values found in {var_name}")
 
         if not hasattr(refitted_idata, "posterior"):
-            raise ValueError("refitted_idata must contain posterior samples")
+            raise PyMCWrapperError(
+                "refitted_idata must contain posterior samples. "
+                "Check that the model was properly refit."
+            )
 
         data_shape = self.get_shape(var_name)
         if data_shape is None:
-            raise ValueError(f"Could not determine shape for variable {var_name}")
+            raise PyMCWrapperError(f"Could not determine shape for variable {var_name}")
 
         if idx < 0 or idx >= data_shape[0]:
             raise IndexError(
@@ -205,11 +228,10 @@ class PyMCWrapper:
 
         dims = self.get_dims(var_name)
         if dims is None:
-            warnings.warn(
-                f"Could not determine dimensions for variable {var_name}. "
+            logger.warning(
+                "Could not determine dimensions for variable %s. "
                 "This may affect coordinate handling.",
-                UserWarning,
-                stacklevel=2,
+                var_name,
             )
 
         try:
@@ -227,8 +249,9 @@ class PyMCWrapper:
             )
 
             if var_name not in log_like:
-                raise ValueError(
-                    f"Failed to compute log likelihood for variable {var_name}"
+                raise PyMCWrapperError(
+                    f"Failed to compute log likelihood for variable {var_name}. "
+                    "Check that the model specification matches the data."
                 )
 
             log_like_i = log_like[var_name]
@@ -240,9 +263,9 @@ class PyMCWrapper:
             return log_like_i
 
         except Exception as e:
-            if isinstance(e, (ValueError, IndexError)):
+            if isinstance(e, (IndexError, PyMCWrapperError)):
                 raise
-            raise ValueError(f"Failed to compute log likelihood: {str(e)}")
+            raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
 
         finally:
             self.set_data({var_name: original_data})
@@ -284,44 +307,40 @@ class PyMCWrapper:
 
         Raises
         ------
-        ValueError
-            If draws or chains are not positive integers
-
-        Notes
-        -----
-        Log likelihood computation is always enabled as it is required for
-        LOO-CV computations.
+        PyMCWrapperError
+            If sampling parameters are invalid or sampling fails
         """
         if draws <= 0:
-            raise ValueError("Number of draws must be positive")
+            raise PyMCWrapperError(f"Number of draws must be positive, got {draws}")
         if chains <= 0:
-            raise ValueError("Number of chains must be positive")
+            raise PyMCWrapperError(f"Number of chains must be positive, got {chains}")
 
         idata_kwargs = kwargs.get("idata_kwargs", {})
         if isinstance(idata_kwargs, dict):
             if not idata_kwargs.get("log_likelihood", False):
-                warnings.warn(
+                logger.info(
                     "Automatically enabling log likelihood computation as it is "
-                    "required for LOO-CV.",
-                    UserWarning,
-                    stacklevel=2,
+                    "required for LOO-CV."
                 )
                 idata_kwargs["log_likelihood"] = True
                 kwargs["idata_kwargs"] = idata_kwargs
         else:
             kwargs["idata_kwargs"] = {"log_likelihood": True}
 
-        with self._untransformed_model:
-            idata = pm.sample(
-                draws=draws,
-                tune=tune,
-                chains=chains,
-                target_accept=target_accept,
-                random_seed=random_seed,
-                progressbar=progressbar,
-                **kwargs,
-            )
-        return idata
+        try:
+            with self._untransformed_model:
+                idata = pm.sample(
+                    draws=draws,
+                    tune=tune,
+                    chains=chains,
+                    target_accept=target_accept,
+                    random_seed=random_seed,
+                    progressbar=progressbar,
+                    **kwargs,
+                )
+            return idata
+        except Exception as e:
+            raise PyMCWrapperError(f"Sampling failed: {str(e)}")
 
     def sample_posterior_predictive(
         self,
@@ -345,26 +364,36 @@ class PyMCWrapper:
         -------
         InferenceData
             ArviZ InferenceData object containing the predictions
+
+        Raises
+        ------
+        PyMCWrapperError
+            If variables are invalid or prediction fails
         """
         if var_names is None:
             var_names = list(self.observed_data.keys())
         else:
             for var_name in var_names:
                 if self.get_variable(var_name) is None:
-                    raise ValueError(f"Variable {var_name} not found in model")
+                    raise PyMCWrapperError(
+                        f"Variable '{var_name}' not found in model. Available"
+                        " variables:"
+                        f" {list(self._untransformed_model.named_vars.keys())}"
+                    )
 
         if not hasattr(self.idata, "posterior"):
-            raise ValueError("No posterior samples found in InferenceData object")
+            raise PyMCWrapperError(
+                "No posterior samples found in InferenceData object. "
+                "The model must be fitted before generating predictions."
+            )
 
         for var_name in var_names:
             if var_name in self.observed_data and np.any(
                 self.get_missing_mask(var_name)
             ):
-                warnings.warn(
-                    f"Missing values detected in {var_name}. This may affect"
-                    " predictions.",
-                    UserWarning,
-                    stacklevel=2,
+                logger.warning(
+                    "Missing values detected in %s. This may affect predictions.",
+                    var_name,
                 )
 
         try:
@@ -377,7 +406,9 @@ class PyMCWrapper:
                 )
             return predictions
         except Exception as e:
-            raise ValueError(f"Failed to generate posterior predictions: {str(e)}")
+            raise PyMCWrapperError(
+                f"Failed to generate posterior predictions: {str(e)}"
+            )
 
     def get_unconstrained_parameters(self) -> dict[str, xr.DataArray]:
         """Get unconstrained parameters from posterior samples.
@@ -530,7 +561,10 @@ class PyMCWrapper:
             not hasattr(self.idata, "log_likelihood")
             or var_name not in self.idata.log_likelihood
         ):
-            raise ValueError(f"No log likelihood values found for variable {var_name}")
+            raise PyMCWrapperError(
+                f"No log likelihood values found for variable {var_name}. "
+                "Check that log_likelihood=True was set during model fitting."
+            )
 
         log_like = self.idata.log_likelihood[var_name]
 
@@ -629,34 +663,40 @@ class PyMCWrapper:
 
         Raises
         ------
-        ValueError
+        PyMCWrapperError
             If the provided data has incompatible dimensions with the model,
             if the variable name is not found in the model,
             if the coordinates are invalid,
-            or if the data violates distribution constraints (e.g., negative values for Poisson)
+            or if the data violates distribution constraints
         """
         for var_name, values in new_data.items():
             var = self.get_variable(var_name)
             if var is None:
-                raise ValueError(f"Variable {var_name} not found in model")
+                raise PyMCWrapperError(
+                    f"Variable '{var_name}' not found in model. Available variables:"
+                    f" {list(self._untransformed_model.named_vars.keys())}"
+                )
 
             expected_shape = self.get_shape(var_name)
             if expected_shape is None:
-                raise ValueError(f"Could not determine shape for variable {var_name}")
+                raise PyMCWrapperError(
+                    f"Could not determine shape for variable {var_name}"
+                )
 
             if mask is not None and var_name in mask:
                 mask_array = mask[var_name]
                 if mask_array.shape != values.shape:
-                    raise ValueError(
-                        f"Mask shape {mask_array.shape} does not match data shape"
-                        f" {values.shape} for variable {var_name}"
+                    raise PyMCWrapperError(
+                        f"Mask shape {mask_array.shape} does not match data shape "
+                        f"{values.shape} for variable {var_name}"
                     )
                 values = np.ma.masked_array(values, mask=~mask_array)
 
             if len(values.shape) != len(expected_shape):
-                raise ValueError(
+                raise PyMCWrapperError(
                     f"Incompatible dimensions for {var_name}. "
-                    f"Expected {len(expected_shape)} dims, got {len(values.shape)}"
+                    f"Expected {len(expected_shape)} dims, got {len(values.shape)}. "
+                    f"Expected shape: {expected_shape}, got: {values.shape}"
                 )
 
             self.observed_data[var_name] = values
@@ -685,11 +725,14 @@ class PyMCWrapper:
 
         Raises
         ------
-        ValueError
+        PyMCWrapperError
             If the variable name is not found
         """
         if var_name not in self.observed_data:
-            raise ValueError(f"Variable {var_name} not found in observed data")
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in observed data. "
+                f"Available variables: {list(self.observed_data.keys())}"
+            )
 
         data = self.observed_data[var_name]
         if isinstance(data, np.ma.MaskedArray):
@@ -717,11 +760,11 @@ class PyMCWrapper:
 
         Raises
         ------
-        ValueError
+        PyMCWrapperError
             If no observed variables exist in the model
         """
         if not self.observed_data:
-            raise ValueError("No observed variables found in the model")
+            raise PyMCWrapperError("No observed variables found in the model")
         return next(iter(self.observed_data))
 
     def get_observed_data(self) -> np.ndarray:
@@ -734,7 +777,7 @@ class PyMCWrapper:
 
         Raises
         ------
-        ValueError
+        PyMCWrapperError
             If no observed variables exist in the model
         """
         return self.observed_data[self.get_observed_name()].copy()
@@ -798,7 +841,7 @@ class PyMCWrapper:
         """Validate that the model is properly fitted and ready for use."""
         # Check that posterior samples exist
         if not hasattr(self.idata, "posterior"):
-            raise ValueError(
+            raise PyMCWrapperError(
                 "InferenceData object must contain posterior samples. "
                 "The model does not appear to be fitted."
             )
@@ -808,7 +851,7 @@ class PyMCWrapper:
         model_vars = {rv.name for rv in self.model.free_RVs}
         missing_vars = model_vars - posterior_vars
         if missing_vars:
-            raise ValueError(
+            raise PyMCWrapperError(
                 f"Missing posterior samples for variables: {missing_vars}. "
                 "The model may not be fully fitted."
             )
@@ -816,7 +859,7 @@ class PyMCWrapper:
         # Check that observed data exists for observed variables
         for obs_rv in self.model.observed_RVs:
             if not hasattr(obs_rv.tag, "observations"):
-                raise ValueError(
+                raise PyMCWrapperError(
                     f"Missing observed data for variable {obs_rv.name}. "
                     "The model is not properly initialized."
                 )
@@ -829,9 +872,11 @@ class PyMCWrapper:
             )
             posterior_shape = tuple(self.idata.posterior[var_name].shape[2:])
             if expected_shape != posterior_shape:
-                raise ValueError(
+                raise PyMCWrapperError(
                     f"Shape mismatch for variable {var_name}. Model expects shape"
-                    f" {expected_shape}, but posterior has shape {posterior_shape}"
+                    f" {expected_shape}, but posterior has shape {posterior_shape}."
+                    " This may indicate an issue with the model specification or"
+                    " fitting process."
                 )
 
     def _extract_model_components(self) -> None:

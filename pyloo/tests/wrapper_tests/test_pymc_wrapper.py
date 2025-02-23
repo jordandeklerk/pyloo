@@ -1,12 +1,14 @@
 """Tests for PyMC model wrapper."""
 
+import logging
+
 import numpy as np
 import pytest
 import xarray as xr
 from arviz import InferenceData
 
 from ...loo import loo
-from ...wrapper.pymc_wrapper import PyMCWrapper
+from ...wrapper.pymc_wrapper import PyMCWrapper, PyMCWrapperError
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,
@@ -29,7 +31,7 @@ def test_wrapper_initialization(simple_model):
     assert set(wrapper.free_vars) == {"alpha", "beta", "sigma"}
 
     idata_no_posterior = InferenceData()
-    with pytest.raises(ValueError, match="must contain posterior samples"):
+    with pytest.raises(PyMCWrapperError, match="must contain posterior samples"):
         PyMCWrapper(model, idata_no_posterior)
 
 
@@ -142,7 +144,7 @@ def test_select_observations(simple_model):
     original_data.sort()
     assert_arrays_almost_equal(all_data, original_data)
 
-    with pytest.raises(ValueError, match="not found in observed data"):
+    with pytest.raises(PyMCWrapperError, match="not found in observed data"):
         wrapper.select_observations(slice(0, 50), var_name="invalid_var")
 
 
@@ -160,10 +162,10 @@ def test_set_data(simple_model):
     wrapper.set_data({"y": new_data}, coords=new_coords)
     assert_arrays_equal(wrapper.observed_data["y"], new_data)
 
-    with pytest.raises(ValueError, match="Incompatible dimensions"):
+    with pytest.raises(PyMCWrapperError, match="Incompatible dimensions"):
         wrapper.set_data({"y": np.random.normal(0, 1, size=(100, 2))})
 
-    with pytest.raises(ValueError, match="not found in model"):
+    with pytest.raises(PyMCWrapperError, match="not found in model"):
         wrapper.set_data({"invalid_var": np.random.normal(0, 1, size=100)})
 
 
@@ -181,7 +183,7 @@ def test_get_missing_mask(simple_model):
     assert np.all(mask[::2])
     assert not np.any(mask[1::2])
 
-    with pytest.raises(ValueError, match="not found in observed data"):
+    with pytest.raises(PyMCWrapperError, match="not found in observed data"):
         wrapper.get_missing_mask("invalid_var")
 
 
@@ -193,12 +195,12 @@ def test_model_validation(simple_model):
     idata_wrong_shape.posterior["alpha"] = idata_wrong_shape.posterior[
         "alpha"
     ].expand_dims("new_dim")
-    with pytest.raises(ValueError, match="Shape mismatch"):
+    with pytest.raises(PyMCWrapperError, match="Shape mismatch"):
         PyMCWrapper(model, idata_wrong_shape)
 
     idata_missing_var = idata.copy()
     del idata_missing_var.posterior["alpha"]
-    with pytest.raises(ValueError, match="Missing posterior samples"):
+    with pytest.raises(PyMCWrapperError, match="Missing posterior samples"):
         PyMCWrapper(model, idata_missing_var)
 
 
@@ -300,7 +302,9 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     assert_finite(log_like_y1)
     assert_finite(log_like_y2)
 
-    with pytest.raises(ValueError, match="Variable invalid_var not found in model"):
+    with pytest.raises(
+        PyMCWrapperError, match="Variable 'invalid_var' not found in model"
+    ):
         wrapper.log_likelihood_i("invalid_var", 0, idata)
 
     with pytest.raises(IndexError):
@@ -325,10 +329,10 @@ def test_sample_posterior_options(simple_model):
     idata_multi = wrapper.sample_posterior(draws=100, chains=4, random_seed=42)
     assert len(idata_multi.posterior.chain) == 4
 
-    with pytest.raises(ValueError, match="Number of draws must be positive"):
+    with pytest.raises(PyMCWrapperError, match="Number of draws must be positive"):
         wrapper.sample_posterior(draws=-100)
 
-    with pytest.raises(ValueError, match="Number of chains must be positive"):
+    with pytest.raises(PyMCWrapperError, match="Number of chains must be positive"):
         wrapper.sample_posterior(chains=0)
 
 
@@ -372,7 +376,7 @@ def test_edge_cases_data_handling(simple_model):
     assert selected.shape[0] == 50
     assert remaining.shape[0] == 50
 
-    with pytest.raises(IndexError, match="Index out of bounds"):
+    with pytest.raises(IndexError, match="Index .* is out of bounds"):
         wrapper.select_observations(np.array([100], dtype=int))
 
     with pytest.raises(IndexError, match="Negative indices"):
@@ -550,3 +554,52 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
     # Check that sigma parameters are positive in constrained space
     assert_positive(constrained["group_sigma"])
     assert_positive(constrained["sigma_y"])
+
+
+def test_logging_functionality(simple_model, caplog):
+    """Test that logging messages are properly emitted."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    data = wrapper.observed_data["y"].copy()
+    data[::2] = np.nan
+    wrapper.set_data({"y": data})
+
+    with caplog.at_level(logging.WARNING):
+        wrapper.select_observations(slice(0, 50))
+        assert "Missing values detected in y" in caplog.text
+
+    wrapper.set_data({"y": wrapper.idata.observed_data["y"].values})
+
+    with caplog.at_level(logging.INFO):
+        wrapper.sample_posterior(draws=10, chains=1)
+        assert "Automatically enabling log likelihood computation" in caplog.text
+
+    model_no_dims = model.copy()
+    model_no_dims.named_vars_to_dims = {}
+    wrapper_no_dims = PyMCWrapper(model_no_dims, idata)
+
+    with caplog.at_level(logging.WARNING):
+        wrapper_no_dims.log_likelihood_i("y", 0, idata)
+        assert "Could not determine dimensions" in caplog.text
+
+
+def test_error_messages(simple_model):
+    """Test that error messages provide detailed context."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    with pytest.raises(PyMCWrapperError) as exc_info:
+        wrapper.set_data({"invalid_var": np.zeros(100)})
+    assert "Available variables:" in str(exc_info.value)
+
+    with pytest.raises(PyMCWrapperError) as exc_info:
+        wrapper.set_data({"y": np.zeros((100, 2))})
+    assert "Expected shape:" in str(exc_info.value)
+    assert "got:" in str(exc_info.value)
+
+    idata_missing = idata.copy()
+    del idata_missing.posterior["alpha"]
+    with pytest.raises(PyMCWrapperError) as exc_info:
+        PyMCWrapper(model, idata_missing)
+    assert "Missing posterior samples for variables:" in str(exc_info.value)
