@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import warnings
 from typing import Any, Sequence
 
 import numpy as np
@@ -122,47 +123,61 @@ class PyMCWrapper:
             )
 
         try:
-            if isinstance(indices, np.ndarray) and indices.dtype == bool:
-                if indices.shape[0] != data.shape[axis]:
-                    raise PyMCWrapperError(
-                        f"Boolean mask shape {indices.shape[0]} does not match "
-                        f"data shape {data.shape[axis]} along axis {axis}"
-                    )
-                selected_indices = np.where(indices)[0]
-                remaining_indices = np.where(~indices)[0]
-            else:
-                if not isinstance(indices, slice):
-                    indices = np.asarray(indices, dtype=int)
-                    if indices.size > 0:
-                        if np.any(indices < 0):
-                            raise IndexError(
-                                "Negative indices are not allowed. Found indices:"
-                                f" {indices[indices < 0]}"
-                            )
-                        if np.any(indices >= data.shape[axis]):
-                            raise IndexError(
-                                f"Index {max(indices)} is out of bounds for axis"
-                                f" {axis} with size {data.shape[axis]}"
-                            )
+            mask = self._create_selection_mask(indices, data.shape[axis], axis)
+            idx = [slice(None)] * data.ndim
 
-                mask = np.zeros(data.shape[axis], dtype=bool)
-                if isinstance(indices, slice):
-                    idx_range = range(*indices.indices(data.shape[axis]))
-                    mask[idx_range] = True
-                else:
-                    mask[indices] = True
+            # Select observations
+            idx[axis] = mask
+            selected = data[tuple(idx)]
 
-                selected_indices = np.where(mask)[0]
-                remaining_indices = np.where(~mask)[0]
-
-            selected = np.take(data, selected_indices, axis=axis)
-            remaining = np.take(data, remaining_indices, axis=axis)
+            # Remaining observations
+            idx[axis] = ~mask
+            remaining = data[tuple(idx)]
 
             return selected, remaining
+
         except Exception as e:
             if isinstance(e, (IndexError, PyMCWrapperError)):
                 raise
             raise PyMCWrapperError(f"Failed to select observations: {str(e)}")
+
+    def _create_selection_mask(
+        self, indices: np.ndarray | slice, length: int, axis: int
+    ) -> np.ndarray:
+        """Create a boolean mask for selecting observations."""
+        # Boolean mask input
+        if isinstance(indices, np.ndarray) and indices.dtype == bool:
+            if indices.shape[0] != length:
+                raise PyMCWrapperError(
+                    f"Boolean mask shape {indices.shape[0]} does not match "
+                    f"data shape {length} along axis {axis}"
+                )
+            return indices
+
+        # Slice input
+        if isinstance(indices, slice):
+            mask = np.zeros(length, dtype=bool)
+            idx_range = range(*indices.indices(length))
+            mask[idx_range] = True
+            return mask
+
+        # Integer array input
+        indices = np.asarray(indices, dtype=np.int64)
+        if indices.size > 0:
+            if np.any(indices < 0):
+                raise IndexError(
+                    "Negative indices are not allowed. Found indices:"
+                    f" {indices[indices < 0]}"
+                )
+            if np.any(indices >= length):
+                raise IndexError(
+                    f"Index {max(indices)} is out of bounds for axis {axis}"
+                    f" with size {length}"
+                )
+
+        mask = np.zeros(length, dtype=bool)
+        np.put(mask, indices, True)
+        return mask
 
     def log_likelihood_i(
         self,
@@ -229,9 +244,9 @@ class PyMCWrapper:
         dims = self.get_dims(var_name)
         if dims is None:
             logger.warning(
-                "Could not determine dimensions for variable %s. "
+                f"Could not determine dimensions for variable {var_name}. "
                 "This may affect coordinate handling.",
-                var_name,
+                stacklevel=2,
             )
 
         try:
@@ -239,7 +254,13 @@ class PyMCWrapper:
                 np.array([idx], dtype=int), var_name=var_name
             )
             original_data = self.observed_data[var_name].copy()
-            self.set_data({var_name: holdout_data})
+
+            orig_coords = None
+            if dims is not None:
+                orig_coords = self._get_coords(var_name)
+
+            # Set holdout data without coordinate validation
+            self.observed_data[var_name] = holdout_data
 
             log_like = pm.compute_log_likelihood(
                 refitted_idata,
@@ -266,9 +287,11 @@ class PyMCWrapper:
             if isinstance(e, (IndexError, PyMCWrapperError)):
                 raise
             raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
-
         finally:
-            self.set_data({var_name: original_data})
+            if orig_coords is not None:
+                self.set_data({var_name: original_data}, coords=orig_coords)
+            else:
+                self.set_data({var_name: original_data})
 
     def sample_posterior(
         self,
@@ -648,6 +671,7 @@ class PyMCWrapper:
         new_data: dict[str, np.ndarray],
         coords: dict[str, Sequence] | None = None,
         mask: dict[str, np.ndarray] | None = None,
+        update_coords: bool = True,
     ) -> None:
         """Update the observed data in the model.
 
@@ -660,14 +684,21 @@ class PyMCWrapper:
         mask : dict[str, np.ndarray] | None
             Optional boolean masks for each variable to handle missing data or
             to select specific observations. True values indicate valid data points.
+        update_coords : bool
+            If True, automatically update coordinates when data dimensions change.
+            If False, raise an error when new data would break coordinate consistency.
+
+        Returns
+        -------
+        None
 
         Raises
         ------
         PyMCWrapperError
             If the provided data has incompatible dimensions with the model,
-            if the variable name is not found in the model,
-            if the coordinates are invalid,
-            or if the data violates distribution constraints
+            if the variable name is not found in the model
+        ValueError
+            If coordinates are invalid or missing required dimensions
         """
         for var_name, values in new_data.items():
             var = self.get_variable(var_name)
@@ -683,6 +714,13 @@ class PyMCWrapper:
                     f"Could not determine shape for variable {var_name}"
                 )
 
+            if len(values.shape) != len(expected_shape):
+                raise PyMCWrapperError(
+                    f"New data for {var_name} has {len(values.shape)} dimensions but"
+                    f" model expects {len(expected_shape)} dimensions. Expected shape:"
+                    f" {expected_shape}, got: {values.shape}"
+                )
+
             if mask is not None and var_name in mask:
                 mask_array = mask[var_name]
                 if mask_array.shape != values.shape:
@@ -692,16 +730,55 @@ class PyMCWrapper:
                     )
                 values = np.ma.masked_array(values, mask=~mask_array)
 
-            if len(values.shape) != len(expected_shape):
-                raise PyMCWrapperError(
-                    f"Incompatible dimensions for {var_name}. "
-                    f"Expected {len(expected_shape)} dims, got {len(values.shape)}. "
-                    f"Expected shape: {expected_shape}, got: {values.shape}"
+            orig_dims = self.get_dims(var_name)
+            if orig_dims is None:
+                self.observed_data[var_name] = values
+                continue
+
+            working_coords = {} if coords is None else coords.copy()
+            required_dims = {d for d in orig_dims if d is not None}
+            missing_coords = required_dims - set(working_coords.keys())
+
+            if not update_coords and missing_coords:
+                raise ValueError(
+                    f"Missing coordinates for dimensions {missing_coords} of variable"
+                    f" {var_name}"
                 )
 
+            for dim, size in zip(orig_dims, values.shape):
+                if dim is not None:
+                    if dim not in working_coords:
+                        if update_coords:
+                            working_coords[dim] = list(range(size))
+                            warnings.warn(
+                                "Automatically created coordinates for dimension"
+                                f" {dim}",
+                                UserWarning,
+                                stacklevel=2,
+                            )
+                        else:
+                            raise ValueError(
+                                f"Missing coordinates for dimension {dim} of variable"
+                                f" {var_name}"
+                            )
+                    elif len(working_coords[dim]) != size:
+                        if update_coords:
+                            original_len = len(working_coords[dim])
+                            working_coords[dim] = list(range(size))
+                            warnings.warn(
+                                f"Coordinate length changed from {original_len} to"
+                                f" {size}",
+                                UserWarning,
+                                stacklevel=2,
+                            )
+                        else:
+                            raise ValueError(
+                                f"Coordinate length {len(working_coords[dim])} for"
+                                f" dimension {dim} does not match variable shape"
+                                f" {size} for {var_name}"
+                            )
+
             self.observed_data[var_name] = values
-            if coords is not None:
-                self._validate_coords(var_name, coords)
 
     def get_missing_mask(
         self,
@@ -897,6 +974,22 @@ class PyMCWrapper:
         self.deterministic_vars = [
             det.name for det in self._untransformed_model.deterministics
         ]
+
+    def _get_coords(self, var_name: str) -> dict[str, Sequence[int]] | None:
+        """Get the coordinates for a variable."""
+        dims = self.get_dims(var_name)
+        if dims is None:
+            return None
+
+        shape = self.get_shape(var_name)
+        if shape is None:
+            return None
+
+        coords: dict[str, Sequence[int]] = {}
+        for dim, size in zip(dims, shape):
+            if dim is not None:
+                coords[dim] = list(range(size))
+        return coords
 
     def _validate_coords(
         self,

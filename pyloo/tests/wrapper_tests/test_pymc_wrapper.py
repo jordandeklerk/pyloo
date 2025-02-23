@@ -83,6 +83,76 @@ def test_hierarchical_log_likelihood(hierarchical_model):
     assert log_like_subset.sizes["obs_id"] == 20
 
 
+def test_coordinate_handling(hierarchical_model):
+    """Test coordinate validation and handling."""
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    new_data = np.random.normal(0, 1, size=(8, 20))
+    coords = {"group": list(range(8)), "obs_id": list(range(20))}
+
+    wrapper.set_data({"Y": new_data}, coords=coords)
+    assert_arrays_equal(wrapper.observed_data["Y"], new_data)
+
+    new_data = np.random.normal(0, 1, size=(10, 25))
+    with pytest.warns(UserWarning) as record:
+        wrapper.set_data(
+            {"Y": new_data},
+            coords={"group": list(range(8)), "obs_id": list(range(20))},
+            update_coords=True,
+        )
+    assert len(record) >= 1
+    assert any("length changed" in str(w.message) for w in record)
+    assert_arrays_equal(wrapper.observed_data["Y"], new_data)
+
+    new_data = np.random.normal(0, 1, size=(12, 30))
+    with pytest.raises(ValueError, match="Missing coordinates for dimensions"):
+        wrapper.set_data({"Y": new_data}, update_coords=False)
+
+    new_data = np.random.normal(0, 1, size=(15, 35))
+    with pytest.warns(UserWarning) as record:
+        wrapper.set_data({"Y": new_data}, update_coords=True)
+
+    assert len(record) >= 1
+    assert any(
+        "Automatically created coordinates" in str(w.message)
+        or "length changed" in str(w.message)
+        for w in record
+    )
+    assert_arrays_equal(wrapper.observed_data["Y"], new_data)
+
+
+def test_dimension_validation(hierarchical_model):
+    """Test dimension validation in set_data."""
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    new_data = np.random.normal(0, 1, size=(8, 20, 5))
+    with pytest.raises(
+        PyMCWrapperError, match="New data .* has .* dimensions but model expects"
+    ):
+        wrapper.set_data({"Y": new_data})
+
+    new_data = np.random.normal(0, 1, size=(8, 20))
+    coords = {"group": list(range(8))}
+    with pytest.raises(ValueError, match="Missing coordinates for dimensions"):
+        wrapper.set_data({"Y": new_data}, coords=coords, update_coords=False)
+
+    coords = {"group": list(range(8)), "obs_id": list(range(10))}
+    with pytest.raises(ValueError, match="Coordinate length .* does not match"):
+        wrapper.set_data({"Y": new_data}, coords=coords, update_coords=False)
+
+
+def test_set_data_return_value(simple_model):
+    """Test that set_data returns None."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    new_data = np.random.normal(0, 1, size=100)
+    result = wrapper.set_data({"y": new_data})
+    assert result is None
+
+
 def test_hierarchical_model_no_coords_log_likelihood(hierarchical_model_no_coords):
     """Test log likelihood computation for hierarchical model without coordinates."""
     model, idata = hierarchical_model_no_coords
@@ -148,27 +218,6 @@ def test_select_observations(simple_model):
         wrapper.select_observations(slice(0, 50), var_name="invalid_var")
 
 
-def test_set_data(simple_model):
-    """Test data updating functionality."""
-    model, idata = simple_model
-    wrapper = PyMCWrapper(model, idata)
-
-    new_data = np.random.normal(0, 1, size=100)
-    wrapper.set_data({"y": new_data})
-    assert_arrays_equal(wrapper.observed_data["y"], new_data)
-
-    new_coords = {"obs_id": list(range(50))}
-    new_data = np.random.normal(0, 1, size=50)
-    wrapper.set_data({"y": new_data}, coords=new_coords)
-    assert_arrays_equal(wrapper.observed_data["y"], new_data)
-
-    with pytest.raises(PyMCWrapperError, match="Incompatible dimensions"):
-        wrapper.set_data({"y": np.random.normal(0, 1, size=(100, 2))})
-
-    with pytest.raises(PyMCWrapperError, match="not found in model"):
-        wrapper.set_data({"invalid_var": np.random.normal(0, 1, size=100)})
-
-
 def test_get_missing_mask(simple_model):
     """Test missing value mask functionality."""
     model, idata = simple_model
@@ -202,21 +251,6 @@ def test_model_validation(simple_model):
     del idata_missing_var.posterior["alpha"]
     with pytest.raises(PyMCWrapperError, match="Missing posterior samples"):
         PyMCWrapper(model, idata_missing_var)
-
-
-def test_coordinate_handling(simple_model):
-    """Test coordinate validation and handling."""
-    model, idata = simple_model
-    wrapper = PyMCWrapper(model, idata)
-
-    new_data = np.random.normal(0, 1, size=50)
-    invalid_coords = {"invalid_dim": list(range(50))}
-    with pytest.raises(ValueError, match="Missing coordinates"):
-        wrapper.set_data({"y": new_data}, coords=invalid_coords)
-
-    invalid_coords = {"obs_id": list(range(10))}
-    with pytest.raises(ValueError, match="Coordinate length"):
-        wrapper.set_data({"y": new_data}, coords=invalid_coords)
 
 
 def test_log_likelihood_i(simple_model):
