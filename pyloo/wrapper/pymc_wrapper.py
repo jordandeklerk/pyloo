@@ -343,7 +343,7 @@ class PyMCWrapper:
             kwargs["idata_kwargs"] = {"log_likelihood": True}
 
         try:
-            with self._untransformed_model:
+            with self.model:
                 idata = pm.sample(
                     draws=draws,
                     tune=tune,
@@ -397,7 +397,7 @@ class PyMCWrapper:
                     raise PyMCWrapperError(
                         f"Variable '{var_name}' not found in model. Available"
                         " variables:"
-                        f" {list(self._untransformed_model.named_vars.keys())}"
+                        f" {list(self.model.named_vars.keys())}"
                     )
 
         if not hasattr(self.idata, "posterior"):
@@ -416,7 +416,7 @@ class PyMCWrapper:
                 )
 
         try:
-            with self._untransformed_model:
+            with self.model:
                 predictions = pm.sample_posterior_predictive(
                     self.idata,
                     var_names=var_names,
