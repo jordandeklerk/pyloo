@@ -91,6 +91,37 @@ centered         -11.5    2.3    3.3     0.38       -0.3       0.4
 All Pareto k estimates are good (k < 0.7)
 ```
 
+### Advanced Usage
+For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations for PyMC models:
+
+```python
+import pyloo as pl
+import pymc as pm
+import numpy as np
+
+np.random.seed(0)
+N = 100
+y = np.random.normal(1.0, 2.0, N)
+
+with pm.Model() as model:
+    mu = pm.Normal('mu', mu=0, sigma=10)
+    sigma = pm.HalfNormal('sigma', sigma=10)
+    likelihood = pm.Normal('y', mu=mu, sigma=sigma, observed=y)
+    idata = pm.sample(1000, tune=1000)
+
+# Wrap the model in the PyMC wrapper
+wrapper = pl.PyMCWrapper(model, idata)
+loo_exact = pl.reloo(wrapper, k_thresh=0.7)
+
+# For large datasets, use subsampling
+loo_exact_subsample = pl.reloo(
+    wrapper,
+    k_thresh=0.7,
+    use_subsample=True,
+    subsample_observations=50  # Use 50 observations
+)
+```
+
 ### Installation
 
 ```bash
