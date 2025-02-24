@@ -353,16 +353,29 @@ def loo_subsample(
             warn_mg = True
     else:
         if max_k > good_k:
+            n_high_k = np.sum(diagnostic > good_k)
+
             warnings.warn(
                 "Estimated shape parameter of Pareto distribution is greater than"
-                f" {good_k:.2f} (k = {max_k:.2f}) for one or more samples. You should"
-                " consider using a more robust model, this is because importance"
-                " sampling is less likely to work well if the marginal posterior and"
-                " LOO posterior are very different. This is more likely to happen with"
-                " a non-robust model and highly influential observations.",
+                f" {good_k:.2f} (k = {max_k:.2f}) for {n_high_k} observations. You"
+                " should consider using a more robust model, this is because"
+                " importance sampling is less likely to work well if the marginal"
+                " posterior and LOO posterior are very different. This is more likely"
+                " to happen with a non-robust model and highly influential"
+                " observations.",
                 UserWarning,
                 stacklevel=2,
             )
+
+            warnings.warn(
+                f"Found {n_high_k} observations with high Pareto k estimates."
+                " If you're using a PyMC model, consider using pyloo.reloo()"
+                " to compute exact LOO for these problematic observations. reloo"
+                " has functionality for subsampling as well.",
+                UserWarning,
+                stacklevel=2,
+            )
+
             warn_mg = True
 
     if len(obs_dims) > 1:
