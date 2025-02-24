@@ -29,6 +29,8 @@ APPROXIMATION_METHODS = {
     LooApproximationMethod.SIS: lambda: SISApproximation(),
 }
 
+__all__ = ["loo_subsample", "update_subsample"]
+
 
 def loo_subsample(
     data: InferenceData | dict[str, Any],
@@ -131,6 +133,7 @@ def loo_subsample(
     loo : Standard LOO-CV computation
     loo_i : Pointwise LOO-CV values
     update_subsample : Update subsampling results with new observations
+    reloo : Exact LOO-CV computation for PyMC models
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)

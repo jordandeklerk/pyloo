@@ -12,6 +12,8 @@ from .importance_sampling import ISMethod, compute_importance_weights
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
+__all__ = ["loo"]
+
 
 def loo(
     data: InferenceData | Any,
@@ -101,7 +103,9 @@ def loo(
         See Also
         --------
         loo_i : Pointwise LOO-CV values
-        loo_subsample : Subsampled LOO-CV computation"""
+        loo_subsample : Subsampled LOO-CV computation
+        reloo : Exact LOO-CV computation for PyMC models
+    """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
