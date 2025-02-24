@@ -16,15 +16,7 @@ from .loo_subsample import loo_subsample
 from .rcparams import _validate_scale
 from .waic import waic
 
-__all__ = [
-    "loo_compare",
-    "_ic_matrix",
-    "_calculate_ics",
-    "_compute_weights",
-    "_stacking_weights",
-    "_bb_pseudo_bma_weights",
-    "_pseudo_bma_weights",
-]
+__all__ = ["loo_compare"]
 
 
 def loo_compare(

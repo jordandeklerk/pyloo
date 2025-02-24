@@ -10,6 +10,8 @@ from .elpd import ELPDData
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
+__all__ = ["waic"]
+
 
 def waic(
     data: InferenceData | Any,

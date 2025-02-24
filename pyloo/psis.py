@@ -7,6 +7,8 @@ import xarray as xr
 
 from .utils import _logsumexp, wrap_xarray_ufunc
 
+__all__ = ["psislw"]
+
 
 def psislw(
     log_weights, reff: float = 1.0

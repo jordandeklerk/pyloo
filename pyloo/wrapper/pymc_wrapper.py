@@ -13,7 +13,7 @@ from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
 
-__all__ = ["PyMCWrapper", "PyMCWrapperError"]
+__all__ = ["PyMCWrapper"]
 
 logger = logging.getLogger(__name__)
 
