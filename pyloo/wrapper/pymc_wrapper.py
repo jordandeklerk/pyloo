@@ -13,6 +13,8 @@ from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
 
+__all__ = ["PyMCWrapper", "PyMCWrapperError"]
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +72,25 @@ class PyMCWrapper:
             if isinstance(data, np.ndarray):
                 self.observed_data[var_name] = data.copy()
                 self.observed_data[var_name].flags.writeable = False
+
+    def check_implemented_methods(self, required_methods: Sequence[str]) -> list[str]:
+        """Check if all required methods are implemented.
+
+        Parameters
+        ----------
+        required_methods : Sequence[str]
+            Names of methods that should be implemented
+
+        Returns
+        -------
+        list[str]
+            Names of methods that are not implemented
+        """
+        return [
+            method
+            for method in required_methods
+            if not hasattr(self, method) or not callable(getattr(self, method))
+        ]
 
     def select_observations(
         self,
