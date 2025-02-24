@@ -121,6 +121,7 @@ For observations where PSIS-LOO approximation fails (indicated by large Pareto k
 .. code-block:: python
 
    import pyloo as pl
+   from pyloo.wrapper.pymc_wrapper import PyMCWrapper
    import pymc as pm
    import numpy as np
 
@@ -135,7 +136,7 @@ For observations where PSIS-LOO approximation fails (indicated by large Pareto k
        idata = pm.sample(1000, tune=1000)
 
    # Wrap the model in the PyMC wrapper
-   wrapper = pl.PyMCWrapper(model, idata)
+   wrapper = PyMCWrapper(model, idata)
    loo_exact = pl.reloo(wrapper, k_thresh=0.7)
 
    # For large datasets, use subsampling
