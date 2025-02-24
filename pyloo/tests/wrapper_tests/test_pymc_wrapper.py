@@ -676,3 +676,91 @@ def test_error_messages(simple_model):
     with pytest.raises(PyMCWrapperError) as exc_info:
         PyMCWrapper(model, idata_missing)
     assert "Missing posterior samples for variables:" in str(exc_info.value)
+
+
+def test_mixture_model_log_likelihood_i(mixture_model):
+    """Test log_likelihood_i method with mixture model."""
+    model, idata = mixture_model
+    wrapper = PyMCWrapper(model, idata)
+
+    log_like_i = wrapper.log_likelihood_i("y", 0, idata)
+
+    assert isinstance(log_like_i, xr.DataArray)
+    assert set(log_like_i.dims) == {"chain", "draw"}
+    assert_finite(log_like_i)
+    assert_bounded(log_like_i, upper=0)
+
+    log_like = wrapper.log_likelihood()
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
+    assert_finite(log_like)
+
+    log_like_0 = log_like.isel(obs_id=0)
+    assert_arrays_allclose(log_like_i, log_like_0, rtol=1e-5)
+
+
+def test_mixture_model_parameter_transformations(mixture_model, caplog):
+    """Test parameter transformations for mixture model."""
+    model, idata = mixture_model
+    wrapper = PyMCWrapper(model, idata)
+
+    with caplog.at_level(logging.WARNING):
+        unconstrained = wrapper.get_unconstrained_parameters()
+
+        assert "Failed to transform" in caplog.text
+
+    expected_params = {"w", "mu1", "mu2", "sigma1", "sigma2"}
+    assert set(unconstrained.keys()) == expected_params
+
+    for param in expected_params:
+        assert unconstrained[param].shape == (
+            len(idata.posterior.chain),
+            len(idata.posterior.draw),
+        )
+
+    with caplog.at_level(logging.WARNING):
+        constrained = wrapper.constrain_parameters(unconstrained)
+
+        assert "No transform found for variable" in caplog.text
+
+    assert set(constrained.keys()) == expected_params
+
+    for param in expected_params:
+        assert_arrays_allclose(
+            constrained[param], idata.posterior[param].values, rtol=1e-5
+        )
+
+    assert_bounded(constrained["w"], lower=0, upper=1)
+    assert_positive(constrained["sigma1"])
+    assert_positive(constrained["sigma2"])
+
+    for param in expected_params:
+        assert_arrays_allclose(unconstrained[param], constrained[param])
+
+
+def test_mixture_model_log_likelihood_i_workflow(mixture_model):
+    """Test the full LOO-CV workflow for mixture model."""
+    model, idata = mixture_model
+    wrapper = PyMCWrapper(model, idata)
+
+    test_idx = 10
+    original_data = wrapper.get_observed_data()
+
+    _, training_data = wrapper.select_observations(np.array([test_idx], dtype=int))
+
+    wrapper.set_data({wrapper.get_observed_name(): training_data})
+    refitted_idata = wrapper.sample_posterior(
+        draws=100, tune=100, chains=2, random_seed=42
+    )
+
+    log_like = wrapper.log_likelihood_i(
+        wrapper.get_observed_name(), test_idx, refitted_idata
+    )
+
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw"}
+    assert log_like.sizes["chain"] == 2
+    assert log_like.sizes["draw"] == 100
+    assert_finite(log_like)
+
+    wrapper.set_data({wrapper.get_observed_name(): original_data})

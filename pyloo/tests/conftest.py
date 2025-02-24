@@ -385,3 +385,47 @@ def student_t_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def mixture_model():
+    """Create a mixture model for testing mixture likelihoods."""
+    rng = np.random.default_rng(42)
+    n_samples = 200
+
+    true_w = 0.7  # mixture weight for first component
+    true_mu1 = -2.0
+    true_mu2 = 3.0
+    true_sigma1 = 0.5
+    true_sigma2 = 1.0
+
+    component = rng.binomial(1, true_w, size=n_samples)
+    y = np.zeros(n_samples)
+    y[component == 1] = rng.normal(true_mu1, true_sigma1, size=np.sum(component == 1))
+    y[component == 0] = rng.normal(true_mu2, true_sigma2, size=np.sum(component == 0))
+
+    with pm.Model(coords={"obs_id": range(n_samples)}) as model:
+        w = pm.Beta("w", alpha=2, beta=2)
+
+        mu1 = pm.Normal("mu1", mu=0, sigma=5)
+        mu2 = pm.Normal("mu2", mu=0, sigma=5)
+
+        sigma1 = pm.HalfNormal("sigma1", sigma=2)
+        sigma2 = pm.HalfNormal("sigma2", sigma=2)
+
+        comp1 = pm.Normal.dist(mu=mu1, sigma=sigma1)
+        comp2 = pm.Normal.dist(mu=mu2, sigma=sigma2)
+
+        pm.Mixture(
+            "y", w=[w, 1 - w], comp_dists=[comp1, comp2], observed=y, dims="obs_id"
+        )
+
+        idata = pm.sample(
+            1000,
+            tune=1000,
+            target_accept=0.9,
+            random_seed=42,
+            idata_kwargs={"log_likelihood": True},
+        )
+
+    return model, idata
