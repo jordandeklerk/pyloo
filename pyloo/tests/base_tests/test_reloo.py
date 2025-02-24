@@ -287,3 +287,90 @@ def test_reloo_multi_observed_model(multi_observed_model):
     assert isinstance(result, ELPDData)
     assert hasattr(result, "elpd_loo")
     assert hasattr(result, "pareto_k")
+
+
+def test_reloo_with_subsampling(simple_model):
+    """Test reloo with subsampling enabled."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    result = reloo(
+        wrapper,
+        k_thresh=0.7,
+        use_subsample=True,
+        subsample_observations=2,
+    )
+
+    assert isinstance(result, ELPDData)
+    assert hasattr(result, "elpd_loo")
+    assert hasattr(result, "pareto_k")
+    assert len(result.loo_i) == len(wrapper.get_observed_data())
+
+
+@pytest.mark.parametrize(
+    "approximation,estimator",
+    [
+        ("plpd", "diff_srs"),
+        ("lpd", "srs"),
+        ("tis", "hh_pps"),
+        ("sis", "diff_srs"),
+    ],
+)
+def test_reloo_subsample_parameters(simple_model, approximation, estimator):
+    """Test reloo with different subsampling parameters."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    result = reloo(
+        wrapper,
+        k_thresh=0.7,
+        use_subsample=True,
+        subsample_observations=2,
+        subsample_approximation=approximation,
+        subsample_estimator=estimator,
+    )
+
+    assert isinstance(result, ELPDData)
+    assert hasattr(result, "elpd_loo")
+
+
+def test_reloo_subsample_specific_indices(simple_model):
+    """Test reloo with specific subsample indices."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    indices = np.array([0, 2])
+    loo_result = loo(idata, pointwise=True)
+    loo_result.pareto_k = np.array([0.8, 0.3, 0.3])
+
+    result = reloo(
+        wrapper,
+        loo_orig=loo_result,
+        k_thresh=0.7,
+        use_subsample=True,
+        subsample_observations=indices,
+    )
+
+    assert isinstance(result, ELPDData)
+    assert result.pareto_k[0] == 0
+    assert len(result.loo_i) == len(wrapper.get_observed_data())
+
+
+@pytest.mark.integration
+def test_reloo_subsample_hierarchical(hierarchical_model):
+    """Test reloo with subsampling on a hierarchical model."""
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    for observations in [4, np.array([0, 2, 4, 6])]:
+        result = reloo(
+            wrapper,
+            k_thresh=0.7,
+            use_subsample=True,
+            subsample_observations=observations,
+        )
+
+        assert isinstance(result, ELPDData)
+        assert hasattr(result, "elpd_loo")
+        assert hasattr(result, "pareto_k")
+        assert len(result.loo_i) == len(wrapper.get_observed_data())

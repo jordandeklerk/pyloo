@@ -7,6 +7,7 @@ import pymc as pm
 
 from .elpd import ELPDData
 from .loo import loo
+from .loo_subsample import loo_subsample
 from .utils import _logsumexp
 from .wrapper.pymc_wrapper import PyMCWrapper
 
@@ -31,6 +32,11 @@ def reloo(
     k_thresh: float = 0.7,
     scale: str | None = None,
     verbose: bool = True,
+    use_subsample: bool = False,
+    subsample_observations: int | np.ndarray | None = 400,
+    subsample_approximation: str = "plpd",
+    subsample_estimator: str = "diff_srs",
+    subsample_draws: int | None = None,
 ) -> ELPDData:
     """Exact refitting for problematic observations in LOO-CV for PyMC models.
 
@@ -46,6 +52,11 @@ def reloo(
     refit to obtain exact LOO-CV results for those few problematic cases. This targeted refitting
     approach typically requires far fewer refits than performing an exact LOO-CV for every observation,
     yielding a more accurate overall measure of model fit with substantially reduced computational cost.
+
+    For large datasets where even standard LOO-CV might be computationally intensive, this function
+    can utilize subsampling methods through the ``use_subsample`` parameter. When enabled, it uses
+    the efficient subsampling approach from ``loo_subsample`` to compute the initial LOO estimates,
+    then performs exact refits only for the problematic observations within the subsample.
 
     Parameters
     ----------
@@ -66,6 +77,27 @@ def reloo(
     verbose : bool, default True
         If True, detailed information about the refitting process is logged, including which observations are
         being refitted.
+    use_subsample : bool, default False
+        If True, uses the subsampling approach from loo_subsample for the initial LOO computation.
+    subsample_observations : int or numpy.ndarray or None, default 400
+        The subsample observations to use when use_subsample is True:
+        - An integer specifying the number of observations to subsample
+        - An array of integers providing specific indices to use
+        - None to use all observations (equivalent to standard LOO)
+    subsample_approximation : str, default "plpd"
+        The type of approximation to use for the loo_i values when use_subsample is True:
+        - "plpd": Point estimate based approximation (default)
+        - "lpd": Log predictive density
+        - "tis": Truncated importance sampling
+        - "sis": Standard importance sampling
+    subsample_estimator : str, default "diff_srs"
+        The estimation method to use when use_subsample is True:
+        - "diff_srs": Difference estimator with simple random sampling (default)
+        - "hh_pps": Hansen-Hurwitz estimator
+        - "srs": Simple random sampling
+    subsample_draws : int, optional
+        The number of posterior draws to use for approximation methods that require integration
+        over the posterior when use_subsample is True.
 
     Returns
     -------
@@ -77,13 +109,14 @@ def reloo(
 
     Notes
     -----
-    We recommend to first run ``loo()`` to check the number of observations with Pareto shape values above
-    the threshold. If many observations exceed the threshold, the computational cost of refitting might become
-    prohibitive, as each refit involves running the full MCMC sampling procedure without the problematic observation.
+    We recommend to first run ``loo()`` or ``loo_subsample()`` to check the number of observations with
+    Pareto shape values above the threshold. If many observations exceed the threshold, the computational
+    cost of refitting might become prohibitive, as each refit involves running the full MCMC sampling
+    procedure without the problematic observation.
 
-    For non-PyMC models, please refer to ArviZ's ``az.reloo`` implementation, which offers a more abstract interface
-    through its sampling wrapper experimental feature. You will need to manually implement the methods required by
-    ``az.reloo`` in your wrapper.
+    For non-PyMC models, please refer to ArviZ's ``az.reloo`` implementation, which offers a more abstract
+    interface through its sampling wrapper experimental feature. You will need to manually implement the
+    methods required by ``az.reloo`` in your wrapper.
 
     Examples
     --------
@@ -108,8 +141,16 @@ def reloo(
             idata = pm.sample(1000, tune=1000)
 
         wrapper = pl.PyMCWrapper(model, idata)
+        # Standard reloo
         loo_exact = pl.reloo(wrapper, k_thresh=0.7)
 
+        # Using subsampling for large datasets
+        loo_exact_subsample = pl.reloo(
+            wrapper,
+            k_thresh=0.7,
+            use_subsample=True,
+            subsample_observations=50  # Use 50 observations
+        )
 
     See Also
     --------
@@ -132,7 +173,18 @@ def reloo(
         )
 
     if loo_orig is None:
-        loo_orig = loo(wrapper.idata, pointwise=True, scale=scale)
+        if use_subsample:
+            loo_orig = loo_subsample(
+                wrapper.idata,
+                observations=subsample_observations,
+                loo_approximation=subsample_approximation,
+                estimator=subsample_estimator,
+                loo_approximation_draws=subsample_draws,
+                pointwise=True,
+                scale=scale,
+            )
+        else:
+            loo_orig = loo(wrapper.idata, pointwise=True, scale=scale)
 
     loo_refitted = loo_orig.copy()
     khats = loo_refitted.pareto_k
@@ -162,13 +214,23 @@ def reloo(
             original_data = wrapper.get_observed_data().copy()
 
             try:
-                _, remaining = wrapper.select_observations(idx)
-                wrapper.set_data({var_name: remaining})
+                if use_subsample:
+                    # For subsampled LOO, we need to map the subsample index back to the original data
+                    if isinstance(subsample_observations, np.ndarray):
+                        # If specific indices were provided, use those
+                        orig_idx = subsample_observations[idx.item()]
+                    else:
+                        # Otherwise, the index is already correct
+                        orig_idx = idx.item()
+                    _, remaining = wrapper.select_observations(orig_idx)
+                else:
+                    _, remaining = wrapper.select_observations(idx)
 
+                wrapper.set_data({var_name: remaining})
                 idata_idx = wrapper.sample_posterior()
 
                 log_like_idx = wrapper.log_likelihood_i(
-                    var_name, idx.item(), idata_idx
+                    var_name, orig_idx if use_subsample else idx.item(), idata_idx
                 ).values.flatten()
 
                 loo_lppd_idx = scale_value * _logsumexp(
