@@ -332,3 +332,56 @@ def shared_variable_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def bernoulli_model():
+    """Create a Bernoulli model for testing different likelihood types."""
+    rng = np.random.default_rng(42)
+    X = rng.normal(0, 1, size=100)
+    true_alpha = 0.5
+    true_beta = 0.3
+
+    p = 1 / (1 + np.exp(-(true_alpha + true_beta * X)))
+    y = rng.binomial(1, p)
+
+    with pm.Model(coords={"obs_id": range(len(X))}) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=1)
+        beta = pm.Normal("beta", mu=0, sigma=1)
+
+        p = pm.math.invlogit(alpha + beta * X)
+        pm.Bernoulli("y", p=p, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            1000, tune=1000, random_seed=42, idata_kwargs={"log_likelihood": True}
+        )
+
+    return model, idata
+
+
+@pytest.fixture(scope="session")
+def student_t_model():
+    """Create a Student's T model for testing different likelihood types."""
+    rng = np.random.default_rng(42)
+    X = rng.normal(0, 1, size=100)
+    true_alpha = 1.0
+    true_beta = 2.0
+    true_sigma = 1.0
+    true_nu = 4.0  # Degrees of freedom
+
+    y = true_alpha + true_beta * X + rng.standard_t(true_nu) * true_sigma
+
+    with pm.Model(coords={"obs_id": range(len(X))}) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=10)
+        beta = pm.Normal("beta", mu=0, sigma=10)
+        sigma = pm.HalfNormal("sigma", sigma=10)
+        nu = pm.Exponential("nu", lam=1 / 10)  # Prior for degrees of freedom
+
+        mu = alpha + beta * X
+        pm.StudentT("y", nu=nu, mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            1000, tune=1000, random_seed=42, idata_kwargs={"log_likelihood": True}
+        )
+
+    return model, idata
