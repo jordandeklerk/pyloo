@@ -64,7 +64,18 @@ class PyMCWrapper:
         self.model = model
         self.idata = idata
         self.var_names = list(var_names) if var_names is not None else None
-        self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
+
+        try:
+            self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
+        except KeyError as e:
+            logger.warning(
+                "KeyError during model cloning: %s. Using original model.", str(e)
+            )
+            self._untransformed_model = model
+        except Exception as e:
+            logger.warning("Failed to clone model: %s. Using original model.", str(e))
+            self._untransformed_model = model
+
         self._validate_model_state()
         self._extract_model_components()
 
@@ -173,35 +184,71 @@ class PyMCWrapper:
         idx: int,
         refitted_idata: InferenceData,
     ) -> xr.DataArray:
-        """Compute pointwise log likelihood for a single held-out observation using a refitted model.
+        r"""Compute pointwise log likelihood for a single held-out observation using a refitted model.
 
-        This method is specifically designed for leave-one-out cross-validation (LOO-CV) where
-        we need to compute the log likelihood of a held-out observation using a model that was
-        refitted without that observation. This is different from the regular log_likelihood method
-        which uses the original model fit.
+        This method computes the log likelihood for a single held-out observation during
+        leave-one-out cross-validation (LOO-CV). It uses a refitted model (i.e. one that has been
+        fitted with the observation at the given index removed) to evaluate the likelihood of the
+        omitted observation. This differs from the standard log likelihood computation, which
+        employs the full model fit.
 
         Parameters
         ----------
         var_name : str
-            Name of the variable to compute log likelihood for
+            Name of the variable for which to compute the log likelihood.
         idx : int
-            Index of the single observation to compute log likelihood for
+            Index of the held-out observation.
         refitted_idata : InferenceData
-            InferenceData object from a model that was refit without the observation at idx
+            InferenceData object from a model that was refitted without the observation at index `idx`.
 
         Returns
         -------
         xr.DataArray
-            Log likelihood values for the single held-out observation with dimensions (chain, draw)
+            Log likelihood values for the held-out observation with dimensions (chain, draw).
 
         Raises
         ------
         PyMCWrapperError
-            If the variable has missing values, if the data is invalid, or if computation fails
+            If the variable is not found, observed data is missing, the variable contains missing values,
+            or if the log likelihood computation fails.
+        IndexError
+            If `idx` is out of bounds for the observed data.
 
         See Also
         --------
-        log_likelihood : Compute pointwise log likelihood for all observations
+        log_likelihood : Compute pointwise log likelihood for all observations.
+
+        Examples
+        --------
+        .. code:: ipython
+
+            In [1]: import pymc as pm
+            ...: import arviz as az
+            ...: from pyloo.wrapper import PyMCWrapper, PyMCWrapperError
+            ...: n = 100; alpha = 2; beta = 2; h = 61
+
+            In [2]: with pm.Model() as model:
+            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
+            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
+            ...:     idata = pm.sample()
+
+            In [3]: # For LOO-CV, refit the model without observation at index 10:
+            ...: wrapper = PyMCWrapper(model, idata)
+            ...: log_like_i = wrapper.log_likelihood_i("y", 10, idata)
+
+            In [4]: log_like_i
+            Out[4]:
+            <xarray.DataArray 'y' (chain: 2, draw: 1000)>
+            array([[ -2.31,  -2.45, ... ],
+                [ -2.30,  -2.42, ... ]])
+
+        Notes
+        -----
+        The method temporarily replaces the observed data for the specified variable with the held-out
+        observation, then computes the log likelihood using PyMC's `compute_log_likelihood`.
+        After the computation, the original observed data is restored. Make sure that your
+        `refitted_idata` contains posterior samples and corresponds to a model that was properly
+        refitted without the held-out observation.
         """
         if self.get_variable(var_name) is None:
             raise PyMCWrapperError(
@@ -295,35 +342,65 @@ class PyMCWrapper:
         progressbar: bool = True,
         **kwargs: Any,
     ) -> InferenceData:
-        """Sample from the model's posterior distribution.
+        r"""Sample from the model's posterior distribution.
 
         Parameters
         ----------
         draws : int
-            Number of posterior samples to draw
+            Number of posterior samples to draw.
         tune : int
-            Number of tuning steps
+            Number of tuning steps.
         chains : int
-            Number of chains to sample
+            Number of chains to sample.
         target_accept : float
-            Target acceptance rate for the sampler
+            Target acceptance rate for the sampler.
         random_seed : int | None
-            Random seed for reproducibility
+            Random seed for reproducibility.
         progressbar : bool
-            Whether to display a progress bar
+            Whether to display a progress bar.
         **kwargs : Any
-            Additional arguments passed to pm.sample()
+            Additional keyword arguments to pass to `pm.sample()`.
 
         Returns
         -------
         InferenceData
-            ArviZ InferenceData object containing the posterior samples and
-            log likelihood values
+            ArviZ InferenceData object containing the posterior samples and log likelihood values.
 
         Raises
         ------
         PyMCWrapperError
-            If sampling parameters are invalid or sampling fails
+            If sampling parameters are invalid or if the sampling process fails.
+
+        Examples
+        --------
+        .. code:: ipython
+
+            In [1]: import pymc as pm
+            ...: import arviz as az
+            ...: from pyloo.wrapper import PyMCWrapper
+            ...: n = 100; alpha = 2; beta = 2; h = 61
+
+            In [2]: with pm.Model() as model:
+            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
+            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
+            ...:     # Sample from the posterior
+            ...:     idata = pm.sample(draws=500, tune=500, chains=2, target_accept=0.9)
+
+            In [3]: wrapper = PyMCWrapper(model, idata)
+            ...: posterior = wrapper.sample_posterior(draws=500, tune=500, chains=2, target_accept=0.9)
+            ...: az.summary(posterior, kind="stats")
+            Out[3]:
+                    mean     sd    hdi_3%  hdi_97%
+            p       0.609  0.047   0.528    0.699
+            ...     ...    ...    ...     ...
+
+        Notes
+        -----
+        The method first checks that your sampling parameters are valid, like making sure you have a
+        positive number of draws and chains. It automatically enables log likelihood computation if you
+        haven't already specified it, since this is necessary for LOO-CV. Also, if any of your model's
+        free random variables are missing transforms, the method adds an identity transform to prevent
+        sampling errors.
         """
         if draws <= 0:
             raise PyMCWrapperError(f"Number of draws must be positive, got {draws}")
@@ -343,6 +420,16 @@ class PyMCWrapper:
             kwargs["idata_kwargs"] = {"log_likelihood": True}
 
         try:
+            # Ensure all free random variables have an associated transform.
+            for var in self.model.free_RVs:
+                if var not in self.model.rvs_to_transforms:
+                    logger.warning(
+                        "Variable %s missing from rvs_to_transforms, adding identity"
+                        " transform.",
+                        var.name,
+                    )
+                    self.model.rvs_to_transforms[var] = None
+
             with self.model:
                 idata = pm.sample(
                     draws=draws,
@@ -354,108 +441,73 @@ class PyMCWrapper:
                     **kwargs,
                 )
             return idata
+
         except Exception as e:
             raise PyMCWrapperError(f"Sampling failed: {str(e)}")
 
-    def sample_posterior_predictive(
-        self,
-        var_names: Sequence[str] | None = None,
-        progressbar: bool = True,
-        **kwargs: Any,
-    ) -> InferenceData:
-        """Generate posterior predictions.
-
-        Parameters
-        ----------
-        var_names : Sequence[str] | None
-            Names of variables to predict.
-            If None, predicts for all observed variables.
-        progressbar : bool
-            Whether to display a progress bar
-        **kwargs : Any
-            Additional arguments passed to pm.sample_posterior_predictive()
-
-        Returns
-        -------
-        InferenceData
-            ArviZ InferenceData object containing the predictions
-
-        Raises
-        ------
-        PyMCWrapperError
-            If variables are invalid or prediction fails
-
-        See Also
-        --------
-        sample_posterior : Sample from the model's posterior distribution
-        """
-        if var_names is None:
-            var_names = list(self.observed_data.keys())
-        else:
-            for var_name in var_names:
-                if self.get_variable(var_name) is None:
-                    raise PyMCWrapperError(
-                        f"Variable '{var_name}' not found in model. Available"
-                        " variables:"
-                        f" {list(self.model.named_vars.keys())}"
-                    )
-
-        if not hasattr(self.idata, "posterior"):
-            raise PyMCWrapperError(
-                "No posterior samples found in InferenceData object. "
-                "The model must be fitted before generating predictions."
-            )
-
-        for var_name in var_names:
-            if var_name in self.observed_data and np.any(
-                self.get_missing_mask(var_name)
-            ):
-                logger.warning(
-                    "Missing values detected in %s. This may affect predictions.",
-                    var_name,
-                )
-
-        try:
-            with self.model:
-                predictions = pm.sample_posterior_predictive(
-                    self.idata,
-                    var_names=var_names,
-                    progressbar=progressbar,
-                    **kwargs,
-                )
-            return predictions
-        except Exception as e:
-            raise PyMCWrapperError(
-                f"Failed to generate posterior predictions: {str(e)}"
-            )
-
     def get_unconstrained_parameters(self) -> dict[str, xr.DataArray]:
-        """Get unconstrained parameters from posterior samples.
+        r"""Convert posterior samples from the constrained to the unconstrained space.
 
-        This method transforms the parameters from the constrained space (where they
-        follow their specified prior distributions) to the unconstrained space where
-        they can be treated as approximately normal for various computations like
-        moment matching in LOO-CV.
+        This method transforms each free parameter's posterior samples from its native, constrained
+        domain—where it adheres to its prior distribution—to an unconstrained space. In this space,
+        the parameters are often approximately normally distributed, which simplifies tasks such as
+        moment matching for leave-one-out cross-validation (LOO-CV).
+
+        Transformation details:
+        - **Positive parameters:** For variables restricted to positive values (e.g., HalfNormal,
+        Gamma), a logarithmic transformation is applied:
+        \[
+        \theta' = \log(\theta)
+        \]
+        - **Unit-interval parameters:** For variables restricted to [0, 1] (e.g., Beta), a logit
+        transformation is used:
+        \[
+        \theta' = \log\left(\frac{\theta}{1-\theta}\right)
+        \]
+        - **Unconstrained parameters:** For variables with an unbounded domain (e.g., Normal),
+        no transformation is applied:
+        \[
+        \theta' = \theta
+        \]
 
         Returns
         -------
         dict[str, xr.DataArray]
-            Dictionary mapping parameter names to their unconstrained values
-            with dimensions (chain, draw) and any parameter-specific dimensions
+            A dictionary mapping parameter names to their posterior samples in the unconstrained space.
+            Each array retains its original dimensions (e.g., chain, draw, and any additional parameter-specific
+            dimensions).
+
+        Examples
+        --------
+        .. code:: ipython
+
+            In [1]: import pymc as pm
+            ...: import arviz as az
+            ...: from pyloo.wrapper import PyMCWrapper
+            ...: n = 100; alpha = 2; beta = 2; h = 61
+
+            In [2]: with pm.Model() as model:  # create the model
+            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
+            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
+            ...:     idata = pm.sample()
+
+            In [3]: wrapper = PyMCWrapper(model, idata)
+            ...: unconstrained_params = wrapper.get_unconstrained_parameters()
+
+            In [4]: unconstrained_params['p']
+            Out[4]:
+            <xarray.DataArray 'p' (chain: 2, draw: 1000)>
+            array([[ -0.23,  0.15, ... ],
+                [ -0.19,  0.21, ... ]])
 
         Notes
         -----
-        This uses PyMC's internal transformation infrastructure to properly
-        handle different parameter types (e.g. positive parameters become log
-        transformed, simplex parameters use stick breaking, etc.)
-
-        If a distribution does not provide a transform attribute, or if the
-        transformation fails, the original parameter values are returned with
-        a warning.
-
-        See Also
-        --------
-        constrain_parameters : Inverse operation to get_unconstrained_parameters
+        When transforming your parameters, the method applies the `backward` method of each parameter's
+        transform as stored in the model's `rvs_to_transforms` dictionary. If a parameter doesn't have
+        a transform available or if the transformation fails for some reason, you'll get back the original
+        constrained samples instead. Don't worry about Jacobian adjustments when transforming between
+        spaces - the change in scale (captured by the Jacobian determinant) is automatically handled
+        by PyMC's transform objects.
         """
         unconstrained_params = {}
 
@@ -465,28 +517,26 @@ class PyMCWrapper:
                 continue
 
             param_samples = self.idata.posterior[var_name]
-            untransformed_var = self._untransformed_model.named_vars[var_name]
-            dist = untransformed_var.owner.op
-            transform = getattr(dist, "transform", None)
+            # Get transform from model's rvs_to_transforms dict
+            transform = self.model.rvs_to_transforms.get(var, None)
 
             try:
                 if transform is None:
-                    raise ValueError("No transform available")
-
-                # Apply backward transformation to get unconstrained space
-                samples_np = param_samples.values
-                unconstrained_np = transform.backward(
-                    samples_np, *var.owner.inputs[1:]
-                ).eval()
-                unconstrained_samples = xr.DataArray(
-                    unconstrained_np,
-                    dims=param_samples.dims,
-                    coords=param_samples.coords,
-                    name=param_samples.name,
-                )
+                    # No transform available, use original values
+                    unconstrained_samples = param_samples.copy()
+                else:
+                    # Apply backward transformation to get unconstrained space
+                    samples_np = param_samples.values
+                    unconstrained_np = transform.backward(samples_np).eval()
+                    unconstrained_samples = xr.DataArray(
+                        unconstrained_np,
+                        dims=param_samples.dims,
+                        coords=param_samples.coords,
+                        name=param_samples.name,
+                    )
             except Exception as e:
                 logger.warning(
-                    "Failed to transform %s: %s",
+                    "Failed to transform %s: %s. Using original values.",
                     var_name,
                     str(e),
                 )
@@ -499,31 +549,76 @@ class PyMCWrapper:
     def constrain_parameters(
         self, unconstrained_params: dict[str, xr.DataArray]
     ) -> dict[str, xr.DataArray]:
-        """Transform parameters from unconstrained to constrained space.
+        r"""Convert parameters from the unconstrained back to the constrained space.
 
-        This method transforms parameters from the unconstrained space back to
-        their original constrained space where they follow their specified
-        prior distributions.
+        This method transforms parameter values from an unconstrained representation back to
+        their original constrained domain as specified by their prior distributions. This ensures
+        that the resulting values respect the model's constraints.
+
+        Transformation details:
+        - **Positive parameters:** For variables originally restricted to positive values, the inverse
+        of the logarithmic transform is applied:
+        \[
+        \theta = \exp(\theta')
+        \]
+        - **Unit-interval parameters:** For variables originally restricted to [0, 1], the inverse
+        of the logit transform is used:
+        \[
+        \theta = \frac{1}{1+\exp(-\theta')}
+        \]
+        - **Unconstrained parameters:** For variables that were unconstrained, no transformation is applied:
+        \[
+        \theta = \theta'
+        \]
 
         Parameters
         ----------
         unconstrained_params : dict[str, xr.DataArray]
-            Dictionary mapping parameter names to their unconstrained values
-            with dimensions (chain, draw) and any parameter-specific dimensions
+            A dictionary mapping parameter names to their values in the unconstrained space,
+            with dimensions (chain, draw) and any additional parameter-specific dimensions.
 
         Returns
         -------
         dict[str, xr.DataArray]
-            Dictionary mapping parameter names to their constrained values
-            with dimensions (chain, draw) and any parameter-specific dimensions
+            A dictionary mapping parameter names to their values transformed back to the constrained
+            space, preserving the original dimensions.
+
+        Examples
+        --------
+        .. code:: ipython
+
+            In [1]: import pymc as pm
+            ...: import arviz as az
+            ...: from pyloo.wrapper import PyMCWrapper
+            ...: n = 100; alpha = 2; beta = 2; h = 61
+
+            In [2]: with pm.Model() as model:  # create the model
+            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
+            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
+            ...:     idata = pm.sample()
+
+            In [3]: wrapper = PyMCWrapper(model, idata)
+            ...: unconstrained_params = wrapper.get_unconstrained_parameters()
+
+            In [4]: # Simulate a modification to the unconstrained parameters (e.g., for moment matching)
+            ...: modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
+
+            In [5]: constrained_params = wrapper.constrain_parameters(modified_unconstrained)
+            ...: constrained_params['p']
+            Out[5]:
+            <xarray.DataArray 'p' (chain: 2, draw: 1000)>
+            array([[ 0.61,  0.60, ... ],
+                [ 0.62,  0.61, ... ]])
 
         Notes
         -----
-        This is the inverse operation of get_unconstrained_parameters()
-
-        See Also
-        --------
-        get_unconstrained_parameters : Inverse operation to constrain_parameters
+        To transform your parameters back to the constrained space, the method applies the `forward`
+        method of each parameter's transform from the model's `rvs_to_transforms` dictionary. If a
+        parameter doesn't have a transform or if something goes wrong during transformation, you'll
+        get the original unconstrained samples unchanged. As with the unconstrained transformation,
+        any scaling changes (reflected by the Jacobian determinant) are automatically handled by
+        PyMC's transform objects. This operation is essentially the inverse of what
+        `get_unconstrained_parameters` does.
         """
         constrained_params = {}
 
@@ -533,11 +628,8 @@ class PyMCWrapper:
                 continue
 
             unconstrained = unconstrained_params[var_name]
-
-            # Get the distribution and its transform from the untransformed model
-            untransformed_var = self._untransformed_model.named_vars[var_name]
-            dist = untransformed_var.owner.op
-            transform = getattr(dist, "transform", None)
+            # Get transform from model's rvs_to_transforms dict
+            transform = self.model.rvs_to_transforms.get(var, None)
 
             if transform is None:
                 logger.warning(
@@ -549,9 +641,7 @@ class PyMCWrapper:
                 try:
                     # Apply forward transformation to get constrained space
                     unconstrained_np = unconstrained.values
-                    constrained_np = transform.forward(
-                        unconstrained_np, *var.owner.inputs[1:]
-                    ).eval()
+                    constrained_np = transform.forward(unconstrained_np).eval()
                     constrained = xr.DataArray(
                         constrained_np,
                         dims=unconstrained.dims,
@@ -560,8 +650,8 @@ class PyMCWrapper:
                     )
                 except Exception as e:
                     logger.warning(
-                        "Failed to transform %s to constrained space: %s. "
-                        "Using original values.",
+                        "Failed to transform %s to constrained space: %s. Using"
+                        " original values.",
                         var_name,
                         str(e),
                     )
