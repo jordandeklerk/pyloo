@@ -606,22 +606,12 @@ class PyMCWrapper:
         the parameters are often approximately normally distributed, which simplifies tasks such as
         moment matching for leave-one-out cross-validation (LOO-CV).
 
-        Transformation details:
-        - **Positive parameters:** For variables restricted to positive values (e.g., HalfNormal,
-        Gamma), a logarithmic transformation is applied:
-        \[
-        \theta' = \log(\theta)
-        \]
-        - **Unit-interval parameters:** For variables restricted to [0, 1] (e.g., Beta), a logit
-        transformation is used:
-        \[
-        \theta' = \log\left(\frac{\theta}{1-\theta}\right)
-        \]
-        - **Unconstrained parameters:** For variables with an unbounded domain (e.g., Normal),
-        no transformation is applied:
-        \[
-        \theta' = \theta
-        \]
+        Transformation details depend on the parameter's domain constraints. For variables restricted
+        to positive values (e.g., HalfNormal, Gamma), a logarithmic transformation is applied
+        as $\theta' = \log(\theta)$. For variables restricted to the unit interval $[0, 1]$ (e.g., Beta),
+        a logit transformation is used, calculated as $\theta' = \log\left(\frac{\theta}{1-\theta}\right)$.
+        For variables with an unbounded domain (e.g., Normal), no transformation is necessary
+        and the identity mapping is applied as $\theta' = \theta$.
 
         Returns
         -------
@@ -722,21 +712,12 @@ class PyMCWrapper:
         their original constrained domain as specified by their prior distributions. This ensures
         that the resulting values respect the model's constraints.
 
-        Transformation details:
-        - **Positive parameters:** For variables originally restricted to positive values, the inverse
-        of the logarithmic transform is applied:
-        \[
-        \theta = \exp(\theta')
-        \]
-        - **Unit-interval parameters:** For variables originally restricted to [0, 1], the inverse
-        of the logit transform is used:
-        \[
-        \theta = \frac{1}{1+\exp(-\theta')}
-        \]
-        - **Unconstrained parameters:** For variables that were unconstrained, no transformation is applied:
-        \[
-        \theta = \theta'
-        \]
+        Transformation details depend on the parameter's original constraints. For variables
+        originally restricted to positive values, the inverse of the logarithmic transform is
+        applied as $\theta = \exp(\theta')$. Variables originally restricted to the unit interval $[0, 1]$
+        use the inverse of the logit transform, calculated as $\theta = \frac{1}{1+\exp(-\theta')}$. For variables
+        that were already unconstrained in their original space, no transformation is necessary
+        and the values remain unchanged ($\theta = \theta'$).
 
         Parameters
         ----------
