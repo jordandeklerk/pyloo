@@ -602,9 +602,7 @@ class PyMCWrapper:
         r"""Convert posterior samples from the constrained to the unconstrained space.
 
         This method transforms each free parameter's posterior samples from its native, constrained
-        domain—where it adheres to its prior distribution—to an unconstrained space. In this space,
-        the parameters are often approximately normally distributed, which simplifies tasks such as
-        moment matching for leave-one-out cross-validation (LOO-CV).
+        domain—where it adheres to its prior distribution—to an unconstrained space.
 
         Transformation details depend on the parameter's domain constraints. For variables restricted
         to positive values (e.g., HalfNormal, Gamma), a logarithmic transformation is applied
