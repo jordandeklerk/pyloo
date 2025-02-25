@@ -178,6 +178,129 @@ class PyMCWrapper:
                 raise
             raise PyMCWrapperError(f"Failed to select observations: {str(e)}")
 
+    def set_data(
+        self,
+        new_data: dict[str, np.ndarray],
+        coords: dict[str, Sequence] | None = None,
+        mask: dict[str, np.ndarray] | None = None,
+        update_coords: bool = True,
+    ) -> None:
+        """Update the observed data in the model.
+
+        Parameters
+        ----------
+        new_data : dict[str, np.ndarray]
+            Dictionary mapping variable names to new observed values
+        coords : dict[str, Sequence] | None
+            Optional coordinates for the new data dimensions
+        mask : dict[str, np.ndarray] | None
+            Optional boolean masks for each variable to handle missing data or
+            to select specific observations. True values indicate valid data points.
+        update_coords : bool
+            If True, automatically update coordinates when data dimensions change.
+            If False, raise an error when new data would break coordinate consistency.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        PyMCWrapperError
+            If the provided data has incompatible dimensions with the model,
+            if the variable name is not found in the model
+        ValueError
+            If coordinates are invalid or missing required dimensions
+        """
+        for var_name, values in new_data.items():
+            var = self.get_variable(var_name)
+            if var is None:
+                raise PyMCWrapperError(
+                    f"Variable '{var_name}' not found in model. Available variables:"
+                    f" {list(self._untransformed_model.named_vars.keys())}"
+                )
+
+            expected_shape = self.get_shape(var_name)
+            if expected_shape is None:
+                raise PyMCWrapperError(
+                    f"Could not determine shape for variable {var_name}"
+                )
+
+            if len(values.shape) != len(expected_shape):
+                raise PyMCWrapperError(
+                    f"New data for {var_name} has {len(values.shape)} dimensions but"
+                    f" model expects {len(expected_shape)} dimensions. Expected shape:"
+                    f" {expected_shape}, got: {values.shape}"
+                )
+
+            # Create a copy of the data to ensure independence
+            values = values.copy()
+
+            if mask is not None and var_name in mask:
+                mask_array = mask[var_name]
+                if mask_array.shape != values.shape:
+                    raise PyMCWrapperError(
+                        f"Mask shape {mask_array.shape} does not match data shape "
+                        f"{values.shape} for variable {var_name}"
+                    )
+                values = np.ma.masked_array(values, mask=~mask_array)
+
+            orig_dims = self.get_dims(var_name)
+            if orig_dims is None:
+                self.observed_data[var_name] = values
+                # Make data immutable
+                if isinstance(values, np.ndarray):
+                    values.flags.writeable = False
+                continue
+
+            working_coords = {} if coords is None else coords.copy()
+            required_dims = {d for d in orig_dims if d is not None}
+            missing_coords = required_dims - set(working_coords.keys())
+
+            if not update_coords and missing_coords:
+                raise ValueError(
+                    f"Missing coordinates for dimensions {missing_coords} of variable"
+                    f" {var_name}"
+                )
+
+            for dim, size in zip(orig_dims, values.shape):
+                if dim is not None:
+                    if dim not in working_coords:
+                        if update_coords:
+                            working_coords[dim] = list(range(size))
+                            warnings.warn(
+                                "Automatically created coordinates for dimension"
+                                f" {dim}",
+                                UserWarning,
+                                stacklevel=2,
+                            )
+                        else:
+                            raise ValueError(
+                                f"Missing coordinates for dimension {dim} of variable"
+                                f" {var_name}"
+                            )
+                    elif len(working_coords[dim]) != size:
+                        if update_coords:
+                            original_len = len(working_coords[dim])
+                            working_coords[dim] = list(range(size))
+                            warnings.warn(
+                                f"Coordinate length changed from {original_len} to"
+                                f" {size}",
+                                UserWarning,
+                                stacklevel=2,
+                            )
+                        else:
+                            raise ValueError(
+                                f"Coordinate length {len(working_coords[dim])} for"
+                                f" dimension {dim} does not match variable shape"
+                                f" {size} for {var_name}"
+                            )
+
+            self.observed_data[var_name] = values
+            # Make data immutable
+            if isinstance(values, np.ndarray):
+                values.flags.writeable = False
+
     def log_likelihood_i(
         self,
         var_name: str,
@@ -224,23 +347,34 @@ class PyMCWrapper:
 
             In [1]: import pymc as pm
             ...: import arviz as az
-            ...: from pyloo.wrapper import PyMCWrapper, PyMCWrapperError
-            ...: n = 100; alpha = 2; beta = 2; h = 61
+            ...: import numpy as np
+            ...: from pyloo.wrapper import PyMCWrapper
 
-            In [2]: with pm.Model() as model:
-            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
-            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
-            ...:     idata = pm.sample()
+            In [2]: # Generate some example data
+            ...: x = np.random.normal(0, 1, size=100)
+            ...: true_alpha = 1.0
+            ...: true_beta = 2.5
+            ...: true_sigma = 1.0
+            ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
-            In [3]: # For LOO-CV, refit the model without observation at index 10:
+            In [3]: with pm.Model() as model:
+            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
+            ...:     beta = pm.Normal("beta", mu=0, sigma=10)
+            ...:     sigma = pm.HalfNormal("sigma", sigma=10)
+            ...:     mu = alpha + beta * x
+            ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+            ...:     idata = pm.sample(1000, chains=2)
+
+            In [4]: # Create wrapper and calculate log likelihood for held-out observation at index 10
             ...: wrapper = PyMCWrapper(model, idata)
+            ...: idata = wrapper.sample_posterior(draws=1000, tune=1000, chains=2, target_accept=0.9)
             ...: log_like_i = wrapper.log_likelihood_i("y", 10, idata)
 
-            In [4]: log_like_i
-            Out[4]:
+            In [5]: log_like_i
+            Out[5]:
             <xarray.DataArray 'y' (chain: 2, draw: 1000)>
-            array([[ -2.31,  -2.45, ... ],
-                [ -2.30,  -2.42, ... ]])
+            array([[-1.42, -1.38, ...],
+                   [-1.45, -1.41, ...]])
 
         Notes
         -----
@@ -377,22 +511,42 @@ class PyMCWrapper:
 
             In [1]: import pymc as pm
             ...: import arviz as az
+            ...: import numpy as np
             ...: from pyloo.wrapper import PyMCWrapper
-            ...: n = 100; alpha = 2; beta = 2; h = 61
 
-            In [2]: with pm.Model() as model:
-            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
-            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
+            In [2]: # Generate some example data
+            ...: np.random.seed(42)
+            ...: N = 100  # Number of observations
+            ...: K = 3    # Number of predictors
+            ...: X = np.random.normal(0, 1, size=(N, K))
+            ...: true_alpha = 1.5
+            ...: true_betas = np.array([0.5, -0.3, 0.8])
+            ...: true_sigma = 0.5
+            ...: y = true_alpha + np.dot(X, true_betas) + np.random.normal(0, true_sigma, size=N)
+
+            In [3]: with pm.Model() as model:
+            ...:     # Priors
+            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
+            ...:     betas = pm.Normal("betas", mu=0, sigma=1, shape=K)
+            ...:     sigma = pm.HalfNormal("sigma", sigma=1)
+            ...:     # Linear model
+            ...:     mu = alpha + pm.math.dot(X, betas)
+            ...:     # Likelihood
+            ...:     y_obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
             ...:     # Sample from the posterior
             ...:     idata = pm.sample(draws=500, tune=500, chains=2, target_accept=0.9)
 
-            In [3]: wrapper = PyMCWrapper(model, idata)
-            ...: posterior = wrapper.sample_posterior(draws=500, tune=500, chains=2, target_accept=0.9)
+            In [4]: wrapper = PyMCWrapper(model, idata)
+            ...: posterior = wrapper.sample_posterior(draws=1000, tune=500, chains=2, target_accept=0.9)
             ...: az.summary(posterior, kind="stats")
-            Out[3]:
-                    mean     sd    hdi_3%  hdi_97%
-            p       0.609  0.047   0.528    0.699
-            ...     ...    ...    ...     ...
+            Out[4]:
+                        mean     sd    hdi_3%  hdi_97%
+            alpha      1.523  0.053   1.425    1.621
+            betas[0]   0.483  0.056   0.379    0.587
+            betas[1]  -0.321  0.054  -0.425   -0.217
+            betas[2]   0.782  0.055   0.678    0.886
+            sigma      0.513  0.037   0.447    0.579
+            ...        ...    ...     ...      ...
 
         Notes
         -----
@@ -420,7 +574,6 @@ class PyMCWrapper:
             kwargs["idata_kwargs"] = {"log_likelihood": True}
 
         try:
-            # Ensure all free random variables have an associated transform.
             for var in self.model.free_RVs:
                 if var not in self.model.rvs_to_transforms:
                     logger.warning(
@@ -476,38 +629,52 @@ class PyMCWrapper:
             A dictionary mapping parameter names to their posterior samples in the unconstrained space.
             Each array retains its original dimensions (e.g., chain, draw, and any additional parameter-specific
             dimensions).
-
         Examples
         --------
         .. code:: ipython
 
             In [1]: import pymc as pm
             ...: import arviz as az
+            ...: import numpy as np
             ...: from pyloo.wrapper import PyMCWrapper
-            ...: n = 100; alpha = 2; beta = 2; h = 61
 
-            In [2]: with pm.Model() as model:  # create the model
-            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
-            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
-            ...:     idata = pm.sample()
+            In [2]: # Generate some example data
+            ...: x = np.random.normal(0, 1, size=100)
+            ...: true_alpha = 1.0
+            ...: true_beta = 2.5
+            ...: true_sigma = 1.0
+            ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
-            In [3]: wrapper = PyMCWrapper(model, idata)
+            In [3]: with pm.Model() as model:
+            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
+            ...:     beta = pm.Normal("beta", mu=0, sigma=10)
+            ...:     sigma = pm.HalfNormal("sigma", sigma=10)
+            ...:     mu = alpha + beta * x
+            ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+            ...:     idata = pm.sample(1000, chains=2)
+
+            In [4]: wrapper = PyMCWrapper(model, idata)
             ...: unconstrained_params = wrapper.get_unconstrained_parameters()
 
-            In [4]: unconstrained_params['p']
-            Out[4]:
-            <xarray.DataArray 'p' (chain: 2, draw: 1000)>
-            array([[ -0.23,  0.15, ... ],
-                [ -0.19,  0.21, ... ]])
+            In [5]: # Check the unconstrained sigma parameter (should be roughly log-transformed)
+            ...: print("Original sigma (first 5 values):")
+            ...: print(idata.posterior["sigma"].values[0, :5])
+            ...: print("\nUnconstrained sigma (first 5 values):")
+            ...: print(unconstrained_params["sigma"].values[0, :5])
+            Out[5]:
+            Original sigma (first 5 values):
+            [0.98245, 1.02137, 0.95721, 1.03562, 0.99874]
+
+            Unconstrained sigma (first 5 values):
+            [-0.01768, 0.02115, -0.04376, 0.03498, -0.00126]
 
         Notes
         -----
         When transforming your parameters, the method applies the `backward` method of each parameter's
         transform as stored in the model's `rvs_to_transforms` dictionary. If a parameter doesn't have
         a transform available or if the transformation fails for some reason, you'll get back the original
-        constrained samples instead. Don't worry about Jacobian adjustments when transforming between
-        spaces - the change in scale (captured by the Jacobian determinant) is automatically handled
-        by PyMC's transform objects.
+        constrained samples instead. Jacobian adjustments when transforming between
+        spaces are automatically handled by PyMC's transform objects.
         """
         unconstrained_params = {}
 
@@ -589,26 +756,36 @@ class PyMCWrapper:
 
             In [1]: import pymc as pm
             ...: import arviz as az
+            ...: import numpy as np
             ...: from pyloo.wrapper import PyMCWrapper
-            ...: n = 100; alpha = 2; beta = 2; h = 61
 
-            In [2]: with pm.Model() as model:  # create the model
-            ...:     p = pm.Beta("p", alpha=alpha, beta=beta)
-            ...:     y = pm.Binomial("y", n=n, p=p, observed=h)
-            ...:     idata = pm.sample()
+            In [2]: # Generate some example data
+            ...: x = np.random.normal(0, 1, size=100)
+            ...: true_alpha = 1.0
+            ...: true_beta = 2.5
+            ...: true_sigma = 1.0
+            ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
-            In [3]: wrapper = PyMCWrapper(model, idata)
+            In [3]: with pm.Model() as model:
+            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
+            ...:     beta = pm.Normal("beta", mu=0, sigma=10)
+            ...:     sigma = pm.HalfNormal("sigma", sigma=10)
+            ...:     mu = alpha + beta * x
+            ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+            ...:     idata = pm.sample(1000, chains=2)
+
+            In [4]: wrapper = PyMCWrapper(model, idata)
             ...: unconstrained_params = wrapper.get_unconstrained_parameters()
 
-            In [4]: # Simulate a modification to the unconstrained parameters (e.g., for moment matching)
+            In [5]: # Simulate a modification to the unconstrained parameters (e.g., for moment matching)
             ...: modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
 
-            In [5]: constrained_params = wrapper.constrain_parameters(modified_unconstrained)
-            ...: constrained_params['p']
-            Out[5]:
-            <xarray.DataArray 'p' (chain: 2, draw: 1000)>
-            array([[ 0.61,  0.60, ... ],
-                [ 0.62,  0.61, ... ]])
+            In [6]: constrained_params = wrapper.constrain_parameters(modified_unconstrained)
+            ...: constrained_params['sigma']  # Note how sigma remains positive after transformation
+            Out[6]:
+            <xarray.DataArray 'sigma' (chain: 2, draw: 1000)>
+            array([[ 1.12,  1.09, ... ],
+                   [ 1.15,  1.11, ... ]])
 
         Notes
         -----
@@ -628,7 +805,6 @@ class PyMCWrapper:
                 continue
 
             unconstrained = unconstrained_params[var_name]
-            # Get transform from model's rvs_to_transforms dict
             transform = self.model.rvs_to_transforms.get(var, None)
 
             if transform is None:
@@ -785,129 +961,6 @@ class PyMCWrapper:
             log_likes[var_name] = log_like
 
         return log_likes
-
-    def set_data(
-        self,
-        new_data: dict[str, np.ndarray],
-        coords: dict[str, Sequence] | None = None,
-        mask: dict[str, np.ndarray] | None = None,
-        update_coords: bool = True,
-    ) -> None:
-        """Update the observed data in the model.
-
-        Parameters
-        ----------
-        new_data : dict[str, np.ndarray]
-            Dictionary mapping variable names to new observed values
-        coords : dict[str, Sequence] | None
-            Optional coordinates for the new data dimensions
-        mask : dict[str, np.ndarray] | None
-            Optional boolean masks for each variable to handle missing data or
-            to select specific observations. True values indicate valid data points.
-        update_coords : bool
-            If True, automatically update coordinates when data dimensions change.
-            If False, raise an error when new data would break coordinate consistency.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        PyMCWrapperError
-            If the provided data has incompatible dimensions with the model,
-            if the variable name is not found in the model
-        ValueError
-            If coordinates are invalid or missing required dimensions
-        """
-        for var_name, values in new_data.items():
-            var = self.get_variable(var_name)
-            if var is None:
-                raise PyMCWrapperError(
-                    f"Variable '{var_name}' not found in model. Available variables:"
-                    f" {list(self._untransformed_model.named_vars.keys())}"
-                )
-
-            expected_shape = self.get_shape(var_name)
-            if expected_shape is None:
-                raise PyMCWrapperError(
-                    f"Could not determine shape for variable {var_name}"
-                )
-
-            if len(values.shape) != len(expected_shape):
-                raise PyMCWrapperError(
-                    f"New data for {var_name} has {len(values.shape)} dimensions but"
-                    f" model expects {len(expected_shape)} dimensions. Expected shape:"
-                    f" {expected_shape}, got: {values.shape}"
-                )
-
-            # Create a copy of the data to ensure independence
-            values = values.copy()
-
-            if mask is not None and var_name in mask:
-                mask_array = mask[var_name]
-                if mask_array.shape != values.shape:
-                    raise PyMCWrapperError(
-                        f"Mask shape {mask_array.shape} does not match data shape "
-                        f"{values.shape} for variable {var_name}"
-                    )
-                values = np.ma.masked_array(values, mask=~mask_array)
-
-            orig_dims = self.get_dims(var_name)
-            if orig_dims is None:
-                self.observed_data[var_name] = values
-                # Make data immutable
-                if isinstance(values, np.ndarray):
-                    values.flags.writeable = False
-                continue
-
-            working_coords = {} if coords is None else coords.copy()
-            required_dims = {d for d in orig_dims if d is not None}
-            missing_coords = required_dims - set(working_coords.keys())
-
-            if not update_coords and missing_coords:
-                raise ValueError(
-                    f"Missing coordinates for dimensions {missing_coords} of variable"
-                    f" {var_name}"
-                )
-
-            for dim, size in zip(orig_dims, values.shape):
-                if dim is not None:
-                    if dim not in working_coords:
-                        if update_coords:
-                            working_coords[dim] = list(range(size))
-                            warnings.warn(
-                                "Automatically created coordinates for dimension"
-                                f" {dim}",
-                                UserWarning,
-                                stacklevel=2,
-                            )
-                        else:
-                            raise ValueError(
-                                f"Missing coordinates for dimension {dim} of variable"
-                                f" {var_name}"
-                            )
-                    elif len(working_coords[dim]) != size:
-                        if update_coords:
-                            original_len = len(working_coords[dim])
-                            working_coords[dim] = list(range(size))
-                            warnings.warn(
-                                f"Coordinate length changed from {original_len} to"
-                                f" {size}",
-                                UserWarning,
-                                stacklevel=2,
-                            )
-                        else:
-                            raise ValueError(
-                                f"Coordinate length {len(working_coords[dim])} for"
-                                f" dimension {dim} does not match variable shape"
-                                f" {size} for {var_name}"
-                            )
-
-            self.observed_data[var_name] = values
-            # Make data immutable
-            if isinstance(values, np.ndarray):
-                values.flags.writeable = False
 
     def get_missing_mask(
         self,
