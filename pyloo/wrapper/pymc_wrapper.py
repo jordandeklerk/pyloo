@@ -340,45 +340,39 @@ class PyMCWrapper:
         --------
         First, let's import the necessary libraries and create a synthetic dataset for a simple linear regression model:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [1]: import pymc as pm
-            ...: import arviz as az
-            ...: import numpy as np
-            ...: from pyloo.wrapper import PyMCWrapper
+            import pymc as pm
+            import arviz as az
+            import numpy as np
+            from pyloo.wrapper import PyMCWrapper
 
-            In [2]: # Generate some example data
-            ...: x = np.random.normal(0, 1, size=100)
-            ...: true_alpha = 1.0
-            ...: true_beta = 2.5
-            ...: true_sigma = 1.0
-            ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
+            # Generate some example data
+            x = np.random.normal(0, 1, size=100)
+            true_alpha = 1.0
+            true_beta = 2.5
+            true_sigma = 1.0
+            y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
         Now, let's define a PyMC model for the linear regression and sample from the posterior:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [3]: with pm.Model() as model:
-            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
-            ...:     beta = pm.Normal("beta", mu=0, sigma=10)
-            ...:     sigma = pm.HalfNormal("sigma", sigma=10)
-            ...:     mu = alpha + beta * x
-            ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-            ...:     idata = pm.sample(1000, chains=2)
+            with pm.Model() as model:
+                alpha = pm.Normal("alpha", mu=0, sigma=10)
+                beta = pm.Normal("beta", mu=0, sigma=10)
+                sigma = pm.HalfNormal("sigma", sigma=10)
+                mu = alpha + beta * x
+                obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+                idata = pm.sample(1000, chains=2)
 
         Finally, we can create a PyMCWrapper instance and compute the log-likelihood for a single held-out observation:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [4]: wrapper = PyMCWrapper(model, idata)
-            ...: idata = wrapper.sample_posterior(draws=1000, tune=1000, chains=2, target_accept=0.9)
-            ...: log_like_i = wrapper.log_likelihood_i(10, idata)
-
-            In [5]: log_like_i
-            Out[5]:
-            <xarray.DataArray 'y' (chain: 2, draw: 1000)>
-            array([[-1.42, -1.38, ...],
-                   [-1.45, -1.41, ...]])
+            wrapper = PyMCWrapper(model, idata)
+            idata = wrapper.sample_posterior(draws=1000, tune=1000, chains=2, target_accept=0.9)
+            log_like_i = wrapper.log_likelihood_i(10, idata)
         """
         if var_name is None:
             var_name = self.get_observed_name()
@@ -574,49 +568,37 @@ class PyMCWrapper:
         --------
         Let's first import the necessary packages and create a simple linear regression dataset:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [1]: import pymc as pm
-            ...: import arviz as az
-            ...: import numpy as np
-            ...: from pyloo.wrapper import PyMCWrapper
+            import pymc as pm
+            import arviz as az
+            import numpy as np
+            from pyloo.wrapper import PyMCWrapper
 
-            In [2]: x = np.random.normal(0, 1, size=100)
-            ...: true_alpha = 1.0
-            ...: true_beta = 2.5
-            ...: true_sigma = 1.0
-            ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
+            x = np.random.normal(0, 1, size=100)
+            true_alpha = 1.0
+            true_beta = 2.5
+            true_sigma = 1.0
+            y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
         Now, let's create a simple Bayesian linear regression model with PyMC and sample from its posterior:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [3]: with pm.Model() as model:
-            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
-            ...:     beta = pm.Normal("beta", mu=0, sigma=10)
-            ...:     sigma = pm.HalfNormal("sigma", sigma=10)
-            ...:     mu = alpha + beta * x
-            ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-            ...:     idata = pm.sample(1000, chains=2)
+            with pm.Model() as model:
+                alpha = pm.Normal("alpha", mu=0, sigma=10)
+                beta = pm.Normal("beta", mu=0, sigma=10)
+                sigma = pm.HalfNormal("sigma", sigma=10)
+                mu = alpha + beta * x
+                obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+                idata = pm.sample(1000, chains=2)
 
-        Finally, we can use the PyMCWrapper to transform our parameters to the unconstrained space.
-        Notice how sigma (a positive parameter) gets transformed to the real line:
+        Finally, we can use the PyMCWrapper to transform our parameters to the unconstrained space:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [4]: wrapper = PyMCWrapper(model, idata)
-            ...: unconstrained_params = wrapper.get_unconstrained_parameters()
-
-            In [5]: print("Original sigma (first 5 values):")
-            ...: print(idata.posterior["sigma"].values[0, :5])
-            ...: print("\nUnconstrained sigma (first 5 values):")
-            ...: print(unconstrained_params["sigma"].values[0, :5])
-            Out[5]:
-            Original sigma (first 5 values):
-            [0.98245, 1.02137, 0.95721, 1.03562, 0.99874]
-
-            Unconstrained sigma (first 5 values):
-            [-0.01768, 0.02115, -0.04376, 0.03498, -0.00126]
+            wrapper = PyMCWrapper(model, idata)
+            unconstrained_params = wrapper.get_unconstrained_parameters()
 
         Notes
         -----
@@ -695,51 +677,44 @@ class PyMCWrapper:
         --------
         Let's begin by importing necessary packages and creating a linear regression dataset:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [1]: import pymc as pm
-            ...: import arviz as az
-            ...: import numpy as np
-            ...: from pyloo.wrapper import PyMCWrapper
+            import pymc as pm
+            import arviz as az
+            import numpy as np
+            from pyloo.wrapper import PyMCWrapper
 
-            In [2]: x = np.random.normal(0, 1, size=100)
-            ...: true_alpha = 1.0
-            ...: true_beta = 2.5
-            ...: true_sigma = 1.0
-            ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
+            x = np.random.normal(0, 1, size=100)
+            true_alpha = 1.0
+            true_beta = 2.5
+            true_sigma = 1.0
+            y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
         Next, we'll create a simple linear regression model and sample from its posterior:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [3]: with pm.Model() as model:
-            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
-            ...:     beta = pm.Normal("beta", mu=0, sigma=10)
-            ...:     sigma = pm.HalfNormal("sigma", sigma=10)
-            ...:     mu = alpha + beta * x
-            ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-            ...:     idata = pm.sample(1000, chains=2)
+            with pm.Model() as model:
+                alpha = pm.Normal("alpha", mu=0, sigma=10)
+                beta = pm.Normal("beta", mu=0, sigma=10)
+                sigma = pm.HalfNormal("sigma", sigma=10)
+                mu = alpha + beta * x
+                obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+                idata = pm.sample(1000, chains=2)
 
         Let's create a PyMCWrapper instance and get our parameters in the unconstrained space:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [4]: wrapper = PyMCWrapper(model, idata)
-            ...: unconstrained_params = wrapper.get_unconstrained_parameters()
+            wrapper = PyMCWrapper(model, idata)
+            unconstrained_params = wrapper.get_unconstrained_parameters()
 
-        Now we can modify the unconstrained parameters and then transform them back to the constrained space.
-        Notice how sigma remains positive even after we shift all parameters by 0.1:
+        Now we can modify the unconstrained parameters and then transform them back to the constrained space:
 
-        .. code:: ipython
+        .. code-block:: python
 
-            In [5]: modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
-
-            In [6]: constrained_params = wrapper.constrain_parameters(modified_unconstrained)
-            ...: constrained_params['sigma']  # Note how sigma remains positive after transformation
-            Out[6]:
-            <xarray.DataArray 'sigma' (chain: 2, draw: 1000)>
-            array([[ 1.12,  1.09, ... ],
-                   [ 1.15,  1.11, ... ]])
+            modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
+            constrained_params = wrapper.constrain_parameters(modified_unconstrained)
 
         Notes
         -----

@@ -97,14 +97,14 @@ def loo_compare(
     --------
     Compare models using PSIS-LOO:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import arviz as az
-           ...: import pyloo as pl
-           ...: data1 = az.load_arviz_data("centered_eight")
-           ...: data2 = az.load_arviz_data("non_centered_eight")
-           ...: compare_dict = {"centered": data1, "non_centered": data2}
-           ...: pl.loo_compare(compare_dict)
+        import arviz as az
+        import pyloo as pl
+        data1 = az.load_arviz_data("centered_eight")
+        data2 = az.load_arviz_data("non_centered_eight")
+        compare_dict = {"centered": data1, "non_centered": data2}
+        pl.loo_compare(compare_dict)
 
     See Also
     --------

@@ -66,19 +66,19 @@ def waic(
     --------
     Calculate WAIC of a model:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import arviz as az
-           ...: import pyloo as pl
-           ...: data = az.load_arviz_data("centered_eight")
-           ...: pl.waic(data)
+        import arviz as az
+        import pyloo as pl
+        data = az.load_arviz_data("centered_eight")
+        pl.waic(data)
 
     Calculate WAIC of a model and return the pointwise values:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [2]: data_waic = pl.waic(data, pointwise=True)
-           ...: data_waic.waic_i
+        data_waic = pl.waic(data, pointwise=True)
+        data_waic.waic_i
 
     References
     ----------

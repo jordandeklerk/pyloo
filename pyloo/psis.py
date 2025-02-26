@@ -54,14 +54,14 @@ def psislw(
     --------
     Get Pareto smoothed importance sampling (PSIS) log weights:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import pyloo as loo
-           ...: data = az.load_arviz_data("non_centered_eight")
-           ...: log_likelihood = data.log_likelihood["obs"].stack(
-           ...:     __sample__=["chain", "draw"]
-           ...: )
-           ...: loo.psislw(-log_likelihood, reff=0.8)
+        import pyloo as loo
+        data = az.load_arviz_data("non_centered_eight")
+        log_likelihood = data.log_likelihood["obs"].stack(
+            __sample__=["chain", "draw"]
+        )
+        loo.psislw(-log_likelihood, reff=0.8)
 
     """
     log_weights = deepcopy(log_weights)
