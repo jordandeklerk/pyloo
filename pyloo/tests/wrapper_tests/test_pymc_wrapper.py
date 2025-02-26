@@ -219,6 +219,89 @@ def test_log_likelihood_i(simple_model):
     assert_bounded(log_like_i, upper=0)
 
 
+def test_log_likelihood_i_multiple_indices(simple_model):
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    indices = np.array([0, 10, 20])
+    log_like_i = wrapper.log_likelihood_i(indices, idata)
+
+    assert isinstance(log_like_i, xr.DataArray)
+    assert "chain" in log_like_i.dims
+    assert "draw" in log_like_i.dims
+
+    obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+    assert len(obs_dims) > 0
+
+    obs_dim = obs_dims[0]
+    assert log_like_i.sizes[obs_dim] == len(indices)
+
+    if obs_dim in log_like_i.coords:
+        assert np.array_equal(log_like_i.coords[obs_dim].values, indices)
+
+    assert "observation_indices" in log_like_i.attrs
+    assert log_like_i.attrs["observation_indices"] == indices.tolist()
+
+    assert_finite(log_like_i)
+    assert_bounded(log_like_i, upper=0)
+
+    slice_idx = slice(0, 5)
+    log_like_i = wrapper.log_likelihood_i(slice_idx, idata)
+
+    assert isinstance(log_like_i, xr.DataArray)
+    assert "chain" in log_like_i.dims
+    assert "draw" in log_like_i.dims
+
+    obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+    assert len(obs_dims) > 0
+
+    obs_dim = obs_dims[0]
+    assert log_like_i.sizes[obs_dim] == 5
+
+    expected_indices = np.arange(0, 5)
+    if obs_dim in log_like_i.coords:
+        assert np.array_equal(log_like_i.coords[obs_dim].values, expected_indices)
+
+    assert_finite(log_like_i)
+    assert_bounded(log_like_i, upper=0)
+
+    mask = np.zeros(100, dtype=bool)
+    mask[[0, 10, 20]] = True
+    log_like_i = wrapper.log_likelihood_i(mask, idata)
+
+    assert isinstance(log_like_i, xr.DataArray)
+    assert "chain" in log_like_i.dims
+    assert "draw" in log_like_i.dims
+
+    obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+    assert len(obs_dims) > 0
+
+    obs_dim = obs_dims[0]
+    assert log_like_i.sizes[obs_dim] == 3
+
+    expected_indices = np.array([0, 10, 20])
+    if obs_dim in log_like_i.coords:
+        assert np.array_equal(log_like_i.coords[obs_dim].values, expected_indices)
+
+    assert_finite(log_like_i)
+    assert_bounded(log_like_i, upper=0)
+
+    log_like_i = wrapper.log_likelihood_i(0, idata)
+
+    assert isinstance(log_like_i, xr.DataArray)
+    assert "chain" in log_like_i.dims
+    assert "draw" in log_like_i.dims
+
+    obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+    assert len(obs_dims) == 0
+
+    assert "observation_index" in log_like_i.attrs
+    assert log_like_i.attrs["observation_index"] == 0
+
+    assert_finite(log_like_i)
+    assert_bounded(log_like_i, upper=0)
+
+
 def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_model):
     """Test the full LOO-CV workflow including exact computation for problematic observations."""
     model, idata = simple_model
