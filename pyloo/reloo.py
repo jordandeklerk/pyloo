@@ -230,7 +230,7 @@ def reloo(
                 idata_idx = wrapper.sample_posterior()
 
                 log_like_idx = wrapper.log_likelihood_i(
-                    var_name, orig_idx if use_subsample else idx.item(), idata_idx
+                    orig_idx if use_subsample else idx.item(), idata_idx
                 ).values.flatten()
 
                 loo_lppd_idx = scale_value * _logsumexp(

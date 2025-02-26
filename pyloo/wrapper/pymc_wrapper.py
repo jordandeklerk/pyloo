@@ -245,7 +245,7 @@ class PyMCWrapper:
                     )
                 values = np.ma.masked_array(values, mask=~mask_array)
 
-            orig_dims = self.get_dims(var_name)
+            orig_dims = self.get_dims()
             if orig_dims is None:
                 self.observed_data[var_name] = values
                 # Make data immutable
@@ -303,17 +303,16 @@ class PyMCWrapper:
 
     def log_likelihood_i(
         self,
-        var_name: str,
         idx: int,
-        refitted_idata: InferenceData,
+        idata: InferenceData,
+        var_name: str | None = None,
     ) -> xr.DataArray:
-        r"""Compute pointwise log likelihood for a single held-out observation using a refitted model.
+        r"""Compute pointwise log likelihood for a single observation using a fitted model.
 
-        This method computes the log likelihood for a single held-out observation during
-        leave-one-out cross-validation (LOO-CV). It uses a refitted model (i.e. one that has been
-        fitted with the observation at the given index removed) to evaluate the likelihood of the
-        omitted observation. This differs from the standard log likelihood computation, which
-        employs the full model fit.
+        This method computes the log likelihood for a single observation intended to be used
+        in leave-one-out cross-validation (LOO-CV). It uses a fitted model (i.e. one that has been
+        refitted without the observation at the given index) to evaluate the likelihood of the
+        observation.
 
         Parameters
         ----------
@@ -321,7 +320,7 @@ class PyMCWrapper:
             Name of the variable for which to compute the log likelihood.
         idx : int
             Index of the held-out observation.
-        refitted_idata : InferenceData
+        idata : InferenceData
             InferenceData object from a model that was refitted without the observation at index `idx`.
 
         Returns
@@ -337,12 +336,10 @@ class PyMCWrapper:
         IndexError
             If `idx` is out of bounds for the observed data.
 
-        See Also
-        --------
-        log_likelihood : Compute pointwise log likelihood for all observations.
-
         Examples
         --------
+        First, let's import the necessary libraries and create a synthetic dataset for a simple linear regression model:
+
         .. code:: ipython
 
             In [1]: import pymc as pm
@@ -357,6 +354,10 @@ class PyMCWrapper:
             ...: true_sigma = 1.0
             ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
+        Now, let's define a PyMC model for the linear regression and sample from the posterior:
+
+        .. code:: ipython
+
             In [3]: with pm.Model() as model:
             ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
             ...:     beta = pm.Normal("beta", mu=0, sigma=10)
@@ -365,25 +366,23 @@ class PyMCWrapper:
             ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
             ...:     idata = pm.sample(1000, chains=2)
 
-            In [4]: # Create wrapper and calculate log likelihood for held-out observation at index 10
-            ...: wrapper = PyMCWrapper(model, idata)
+        Finally, we can create a PyMCWrapper instance and compute the log-likelihood for a single held-out observation:
+
+        .. code:: ipython
+
+            In [4]: wrapper = PyMCWrapper(model, idata)
             ...: idata = wrapper.sample_posterior(draws=1000, tune=1000, chains=2, target_accept=0.9)
-            ...: log_like_i = wrapper.log_likelihood_i("y", 10, idata)
+            ...: log_like_i = wrapper.log_likelihood_i(10, idata)
 
             In [5]: log_like_i
             Out[5]:
             <xarray.DataArray 'y' (chain: 2, draw: 1000)>
             array([[-1.42, -1.38, ...],
                    [-1.45, -1.41, ...]])
-
-        Notes
-        -----
-        The method temporarily replaces the observed data for the specified variable with the held-out
-        observation, then computes the log likelihood using PyMC's `compute_log_likelihood`.
-        After the computation, the original observed data is restored. Make sure that your
-        `refitted_idata` contains posterior samples and corresponds to a model that was properly
-        refitted without the held-out observation.
         """
+        if var_name is None:
+            var_name = self.get_observed_name()
+
         if self.get_variable(var_name) is None:
             raise PyMCWrapperError(
                 f"Variable '{var_name}' not found in model. Available variables:"
@@ -399,7 +398,7 @@ class PyMCWrapper:
         if np.any(self.get_missing_mask(var_name)):
             raise PyMCWrapperError(f"Missing values found in {var_name}")
 
-        if not hasattr(refitted_idata, "posterior"):
+        if not hasattr(idata, "posterior"):
             raise PyMCWrapperError(
                 "refitted_idata must contain posterior samples. "
                 "Check that the model was properly refit."
@@ -414,14 +413,6 @@ class PyMCWrapper:
                 f"Index {idx} is out of bounds for axis 0 with size {data_shape[0]}"
             )
 
-        dims = self.get_dims(var_name)
-        if dims is None:
-            logger.warning(
-                f"Could not determine dimensions for variable {var_name}. "
-                "This may affect coordinate handling.",
-                stacklevel=2,
-            )
-
         try:
             holdout_data, _ = self.select_observations(
                 np.array([idx], dtype=int), var_name=var_name
@@ -429,14 +420,13 @@ class PyMCWrapper:
             original_data = self.observed_data[var_name].copy()
 
             orig_coords = None
-            if dims is not None:
+            if hasattr(self, "observed_dims") and var_name in self.observed_dims:
                 orig_coords = self._get_coords(var_name)
 
-            # Set holdout data without coordinate validation
             self.observed_data[var_name] = holdout_data
 
             log_like = pm.compute_log_likelihood(
-                refitted_idata,
+                idata,
                 var_names=[var_name],
                 model=self._untransformed_model,
                 extend_inferencedata=False,
@@ -453,6 +443,12 @@ class PyMCWrapper:
 
             for dim in obs_dims:
                 log_like_i = log_like_i.isel({dim: 0})
+
+            for dim in obs_dims:
+                if dim in log_like_i.coords:
+                    log_like_i.coords[dim] = idx
+
+            log_like_i.attrs["observation_index"] = idx
 
             return log_like_i
 
@@ -504,49 +500,6 @@ class PyMCWrapper:
         ------
         PyMCWrapperError
             If sampling parameters are invalid or if the sampling process fails.
-
-        Examples
-        --------
-        .. code:: ipython
-
-            In [1]: import pymc as pm
-            ...: import arviz as az
-            ...: import numpy as np
-            ...: from pyloo.wrapper import PyMCWrapper
-
-            In [2]: # Generate some example data
-            ...: np.random.seed(42)
-            ...: N = 100  # Number of observations
-            ...: K = 3    # Number of predictors
-            ...: X = np.random.normal(0, 1, size=(N, K))
-            ...: true_alpha = 1.5
-            ...: true_betas = np.array([0.5, -0.3, 0.8])
-            ...: true_sigma = 0.5
-            ...: y = true_alpha + np.dot(X, true_betas) + np.random.normal(0, true_sigma, size=N)
-
-            In [3]: with pm.Model() as model:
-            ...:     # Priors
-            ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
-            ...:     betas = pm.Normal("betas", mu=0, sigma=1, shape=K)
-            ...:     sigma = pm.HalfNormal("sigma", sigma=1)
-            ...:     # Linear model
-            ...:     mu = alpha + pm.math.dot(X, betas)
-            ...:     # Likelihood
-            ...:     y_obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-            ...:     # Sample from the posterior
-            ...:     idata = pm.sample(draws=500, tune=500, chains=2, target_accept=0.9)
-
-            In [4]: wrapper = PyMCWrapper(model, idata)
-            ...: posterior = wrapper.sample_posterior(draws=1000, tune=500, chains=2, target_accept=0.9)
-            ...: az.summary(posterior, kind="stats")
-            Out[4]:
-                        mean     sd    hdi_3%  hdi_97%
-            alpha      1.523  0.053   1.425    1.621
-            betas[0]   0.483  0.056   0.379    0.587
-            betas[1]  -0.321  0.054  -0.425   -0.217
-            betas[2]   0.782  0.055   0.678    0.886
-            sigma      0.513  0.037   0.447    0.579
-            ...        ...    ...     ...      ...
 
         Notes
         -----
@@ -619,6 +572,8 @@ class PyMCWrapper:
             dimensions).
         Examples
         --------
+        Let's first import the necessary packages and create a simple linear regression dataset:
+
         .. code:: ipython
 
             In [1]: import pymc as pm
@@ -626,12 +581,15 @@ class PyMCWrapper:
             ...: import numpy as np
             ...: from pyloo.wrapper import PyMCWrapper
 
-            In [2]: # Generate some example data
-            ...: x = np.random.normal(0, 1, size=100)
+            In [2]: x = np.random.normal(0, 1, size=100)
             ...: true_alpha = 1.0
             ...: true_beta = 2.5
             ...: true_sigma = 1.0
             ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
+
+        Now, let's create a simple Bayesian linear regression model with PyMC and sample from its posterior:
+
+        .. code:: ipython
 
             In [3]: with pm.Model() as model:
             ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
@@ -641,11 +599,15 @@ class PyMCWrapper:
             ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
             ...:     idata = pm.sample(1000, chains=2)
 
+        Finally, we can use the PyMCWrapper to transform our parameters to the unconstrained space.
+        Notice how sigma (a positive parameter) gets transformed to the real line:
+
+        .. code:: ipython
+
             In [4]: wrapper = PyMCWrapper(model, idata)
             ...: unconstrained_params = wrapper.get_unconstrained_parameters()
 
-            In [5]: # Check the unconstrained sigma parameter (should be roughly log-transformed)
-            ...: print("Original sigma (first 5 values):")
+            In [5]: print("Original sigma (first 5 values):")
             ...: print(idata.posterior["sigma"].values[0, :5])
             ...: print("\nUnconstrained sigma (first 5 values):")
             ...: print(unconstrained_params["sigma"].values[0, :5])
@@ -731,6 +693,8 @@ class PyMCWrapper:
 
         Examples
         --------
+        Let's begin by importing necessary packages and creating a linear regression dataset:
+
         .. code:: ipython
 
             In [1]: import pymc as pm
@@ -738,12 +702,15 @@ class PyMCWrapper:
             ...: import numpy as np
             ...: from pyloo.wrapper import PyMCWrapper
 
-            In [2]: # Generate some example data
-            ...: x = np.random.normal(0, 1, size=100)
+            In [2]: x = np.random.normal(0, 1, size=100)
             ...: true_alpha = 1.0
             ...: true_beta = 2.5
             ...: true_sigma = 1.0
             ...: y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
+
+        Next, we'll create a simple linear regression model and sample from its posterior:
+
+        .. code:: ipython
 
             In [3]: with pm.Model() as model:
             ...:     alpha = pm.Normal("alpha", mu=0, sigma=10)
@@ -753,11 +720,19 @@ class PyMCWrapper:
             ...:     obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
             ...:     idata = pm.sample(1000, chains=2)
 
+        Let's create a PyMCWrapper instance and get our parameters in the unconstrained space:
+
+        .. code:: ipython
+
             In [4]: wrapper = PyMCWrapper(model, idata)
             ...: unconstrained_params = wrapper.get_unconstrained_parameters()
 
-            In [5]: # Simulate a modification to the unconstrained parameters (e.g., for moment matching)
-            ...: modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
+        Now we can modify the unconstrained parameters and then transform them back to the constrained space.
+        Notice how sigma remains positive even after we shift all parameters by 0.1:
+
+        .. code:: ipython
+
+            In [5]: modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
 
             In [6]: constrained_params = wrapper.constrain_parameters(modified_unconstrained)
             ...: constrained_params['sigma']  # Note how sigma remains positive after transformation
@@ -816,130 +791,22 @@ class PyMCWrapper:
 
         return constrained_params
 
-    def log_likelihood(
-        self,
-        var_name: str | None = None,
-        indices: np.ndarray | slice | None = None,
-        axis: int | None = None,
-    ) -> xr.DataArray:
-        """Compute pointwise log likelihoods using the original model fit.
-
-        Main method for accessing pre-computed log likelihood values from the
-        original model fit. It provides flexible indexing to access log likelihoods for
-        specific observations. Unlike log_likelihood__i, this uses the original model fit
-        and doesn't require refitting.
-
-        Parameters
-        ----------
-        var_name : str | None
-            Name of the variable to compute log likelihoods for.
-            If None, uses the first observed variable.
-        indices : np.ndarray | slice | None
-            Indices for selecting specific observations.
-            If None, returns log likelihoods for all observations.
-        axis : int | None
-            Axis along which to select observations.
-            If None, assumes the first axis.
+    def get_draws(self) -> np.ndarray:
+        """Get all draws from the posterior.
 
         Returns
         -------
-        xr.DataArray
-            Log likelihood values with dimensions (chain, draw) and any observation
-            dimensions from the original data.
-
-        See Also
-        --------
-        log_likelihood_i : Compute pointwise log likelihood for a single held-out observation
-        compute_pointwise_log_likelihood : Internal method for log likelihood computation
+        np.ndarray
+            All draws from the posterior
         """
-        if var_name is None:
-            var_name = self.get_observed_name()
-
-        if (
-            not hasattr(self.idata, "log_likelihood")
-            or var_name not in self.idata.log_likelihood
-        ):
+        if not hasattr(self.idata, "posterior"):
             raise PyMCWrapperError(
-                f"No log likelihood values found for variable {var_name}. "
-                "Check that log_likelihood=True was set during model fitting."
+                "InferenceData object must contain posterior samples. "
+                "The model does not appear to be fitted."
             )
 
-        log_like = self.idata.log_likelihood[var_name]
-
-        rename_dict = {}
-        for dim in log_like.dims:
-            if dim not in ("chain", "draw"):
-                prefix = f"{var_name}_dim_"
-                if dim.startswith(prefix):
-                    new_name = dim[len(prefix) :]
-                    new_name = dim[len(prefix) :]
-                    rename_dict[dim] = f"dim_{new_name}"
-
-        if rename_dict:
-            log_like = log_like.rename(rename_dict)
-
-        if indices is None and axis is None:
-            return log_like
-
-        indices_dict = {var_name: indices} if indices is not None else None
-        axis_dict = {var_name: axis} if axis is not None else None
-
-        return self._compute_log_likelihood([var_name], indices_dict, axis_dict)[
-            var_name
-        ]
-
-    def _compute_log_likelihood(
-        self,
-        var_names: Sequence[str],
-        indices: dict[str, np.ndarray | slice] | None = None,
-        axis: dict[str, int] | None = None,
-    ) -> dict[str, xr.DataArray]:
-        """Internal method to compute pointwise log likelihoods for multiple variables.
-
-        This is a lower-level helper method that handles the computation of log likelihoods
-        for multiple variables simultaneously. It's used internally by log_likelihood() to
-        handle the actual computations.
-
-        Parameters
-        ----------
-        var_names : Sequence[str]
-            Names of variables to compute log likelihoods for
-        indices : dict[str, np.ndarray | slice] | None
-            Dictionary mapping variable names to indices for selecting specific
-            observations. If None, uses all observations.
-        axis : dict[str, int] | None
-            Dictionary mapping variable names to axes along which to select
-            observations. If None for a variable, assumes the first axis.
-
-        Returns
-        -------
-        dict[str, xr.DataArray]
-            Dictionary mapping variable names to their pointwise log likelihoods
-            as xarray DataArrays with dimensions (chain, draw) and any observation
-            dimensions from the original data
-        """
-        if indices is None:
-            indices = {}
-        if axis is None:
-            axis = {}
-
-        log_likes = {}
-        for var_name in var_names:
-            log_like = self.log_likelihood(var_name=var_name)
-
-            if var_name in indices:
-                idx = indices[var_name]
-                ax = axis.get(var_name, 0)
-                dim_name = [d for d in log_like.dims if d not in ("chain", "draw")][ax]
-
-                if isinstance(idx, slice):
-                    log_like = log_like.isel({dim_name: idx})
-                else:
-                    log_like = log_like.isel({dim_name: idx})
-
-            log_likes[var_name] = log_like
-
-        return log_likes
+        draws = self.idata.posterior
+        return draws
 
     def get_missing_mask(
         self,
@@ -1035,7 +902,7 @@ class PyMCWrapper:
         """
         return self._untransformed_model.named_vars.get(var_name)
 
-    def get_dims(self, var_name: str) -> tuple[str, ...] | None:
+    def get_dims(self) -> tuple[str, ...] | None:
         """Get the dimension names for a variable.
 
         Parameters
@@ -1048,7 +915,12 @@ class PyMCWrapper:
         tuple[str, ...] | None
             Tuple of dimension names or None if variable not found
         """
-        return self._untransformed_model.named_vars_to_dims.get(var_name)
+        if hasattr(self.idata, "observed_data"):
+            dims = self.idata.observed_data[self.get_observed_name()].dims
+            if dims:
+                return tuple(dims)
+
+        return None
 
     def get_shape(self, var_name: str) -> tuple[int, ...] | None:
         """Get the shape of a variable.
@@ -1158,10 +1030,13 @@ class PyMCWrapper:
     def _extract_model_components(self) -> None:
         """Extract and organize the model's components."""
         self.observed_data = {}
+        self.observed_dims = {}
+
         if hasattr(self.idata, "observed_data"):
             for var_name, data_array in self.idata.observed_data.items():
                 if self.var_names is None or var_name in self.var_names:
                     self.observed_data[var_name] = data_array.values.copy()
+                    self.observed_dims[var_name] = data_array.dims
 
         self.constant_data = {}
         for data_var in self._untransformed_model.data_vars:
@@ -1176,7 +1051,7 @@ class PyMCWrapper:
 
     def _get_coords(self, var_name: str) -> dict[str, Sequence[int]] | None:
         """Get the coordinates for a variable."""
-        dims = self.get_dims(var_name)
+        dims = self.get_dims()
         if dims is None:
             return None
 
@@ -1196,7 +1071,7 @@ class PyMCWrapper:
         coords: dict[str, Sequence],
     ) -> None:
         """Validate coordinate values against variable dimensions."""
-        dims = self.get_dims(var_name)
+        dims = self.get_dims()
         if dims is None:
             return
 

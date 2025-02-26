@@ -36,54 +36,6 @@ def test_wrapper_initialization(simple_model):
         PyMCWrapper(model, idata_no_posterior)
 
 
-def test_log_likelihood(simple_model):
-    """Test log likelihood computation."""
-    model, idata = simple_model
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-
-    n_chains = len(idata.posterior.chain)
-    n_draws = len(idata.posterior.draw)
-    assert log_like.sizes["chain"] == n_chains
-    assert log_like.sizes["draw"] == n_draws
-    assert log_like.sizes["obs_id"] == 100
-
-    log_like = wrapper.log_likelihood(var_name="y")
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-
-    log_like_subset = wrapper.log_likelihood(indices=slice(0, 50))
-    assert log_like_subset.sizes["obs_id"] == 50
-
-
-def test_hierarchical_log_likelihood(hierarchical_model):
-    """Test log likelihood computation for hierarchical model."""
-    model, idata = hierarchical_model
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "group", "obs_id"}
-
-    n_chains = len(idata.posterior.chain)
-    n_draws = len(idata.posterior.draw)
-    assert log_like.sizes["chain"] == n_chains
-    assert log_like.sizes["draw"] == n_draws
-    assert log_like.sizes["group"] == 8
-    assert log_like.sizes["obs_id"] == 20
-
-    log_like = wrapper.log_likelihood(var_name="Y")
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "group", "obs_id"}
-
-    log_like_subset = wrapper.log_likelihood(indices=slice(0, 4), axis=0)
-    assert log_like_subset.sizes["group"] == 4
-    assert log_like_subset.sizes["obs_id"] == 20
-
-
 def test_coordinate_handling_and_data_immutability(hierarchical_model):
     """Test coordinate validation, handling, and data immutability."""
     model, idata = hierarchical_model
@@ -158,31 +110,6 @@ def test_set_data_return_value(simple_model):
     new_data = np.random.normal(0, 1, size=100)
     result = wrapper.set_data({"y": new_data})
     assert result is None
-
-
-def test_hierarchical_model_no_coords_log_likelihood(hierarchical_model_no_coords):
-    """Test log likelihood computation for hierarchical model without coordinates."""
-    model, idata = hierarchical_model_no_coords
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "dim_0", "dim_1"}
-
-    n_chains = len(idata.posterior.chain)
-    n_draws = len(idata.posterior.draw)
-    assert log_like.sizes["chain"] == n_chains
-    assert log_like.sizes["draw"] == n_draws
-    assert log_like.sizes["dim_0"] == 8
-    assert log_like.sizes["dim_1"] == 20
-
-    log_like = wrapper.log_likelihood(var_name="Y")
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "dim_0", "dim_1"}
-
-    log_like_subset = wrapper.log_likelihood(indices=slice(0, 4), axis=0)
-    assert log_like_subset.sizes["dim_0"] == 4
-    assert log_like_subset.sizes["dim_1"] == 20
 
 
 def test_select_observations(simple_model):
@@ -279,7 +206,7 @@ def test_log_likelihood_i(simple_model):
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like_i = wrapper.log_likelihood_i("y", 0, idata)
+    log_like_i = wrapper.log_likelihood_i(0, idata)
     assert isinstance(log_like_i, xr.DataArray)
     assert set(log_like_i.dims) == {"chain", "draw"}
 
@@ -312,9 +239,7 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
         draws=1000, tune=1000, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood_i(
-        wrapper.get_observed_name(), problematic_idx, refitted_idata
-    )
+    log_like = wrapper.log_likelihood_i(problematic_idx, refitted_idata)
 
     assert isinstance(log_like, xr.DataArray)
     assert "chain" in log_like.dims
@@ -337,7 +262,7 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
         draws=1000, tune=1000, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood_i("y", 0, refitted_idata)
+    log_like = wrapper.log_likelihood_i(0, refitted_idata)
     assert isinstance(log_like, xr.DataArray)
     assert set(log_like.dims) == {"chain", "draw"}
     assert_finite(log_like)
@@ -347,8 +272,8 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     model, idata = multi_observed_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like_y1 = wrapper.log_likelihood_i("y1", 0, idata)
-    log_like_y2 = wrapper.log_likelihood_i("y2", 0, idata)
+    log_like_y1 = wrapper.log_likelihood_i(0, idata, "y1")
+    log_like_y2 = wrapper.log_likelihood_i(0, idata, "y2")
 
     assert isinstance(log_like_y1, xr.DataArray)
     assert isinstance(log_like_y2, xr.DataArray)
@@ -360,10 +285,10 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     with pytest.raises(
         PyMCWrapperError, match="Variable 'invalid_var' not found in model"
     ):
-        wrapper.log_likelihood_i("invalid_var", 0, idata)
+        wrapper.log_likelihood_i(0, idata, "invalid_var")
 
     with pytest.raises(IndexError):
-        wrapper.log_likelihood_i("y1", 1000, idata)
+        wrapper.log_likelihood_i(200, idata, "y1")
 
 
 def test_sample_posterior_options(simple_model):
@@ -389,27 +314,6 @@ def test_sample_posterior_options(simple_model):
 
     with pytest.raises(PyMCWrapperError, match="Number of chains must be positive"):
         wrapper.sample_posterior(chains=0)
-
-
-def test_different_likelihood_models(poisson_model):
-    """Test wrapper functionality with different likelihood models."""
-    model, idata = poisson_model
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-    assert_finite(log_like)
-
-    selected, remaining = wrapper.select_observations(slice(0, 50))
-    assert selected.shape[0] == 50
-    assert remaining.shape[0] == 50
-    assert np.all(selected >= 0)
-    assert np.all(remaining >= 0)
-
-    new_data = np.random.poisson(5, size=100)
-    wrapper.set_data({"y": new_data})
-    assert_arrays_equal(wrapper.observed_data["y"], new_data)
 
 
 def test_edge_cases_data_handling(simple_model):
@@ -445,16 +349,8 @@ def test_multi_observed_handling(multi_observed_model):
 
     assert set(wrapper.observed_data.keys()) == {"y1", "y2"}
 
-    log_like_y1 = wrapper.log_likelihood(var_name="y1")
-    log_like_y2 = wrapper.log_likelihood(var_name="y2")
-
-    assert isinstance(log_like_y1, xr.DataArray)
-    assert isinstance(log_like_y2, xr.DataArray)
-    assert set(log_like_y1.dims) == {"chain", "draw", "obs_id"}
-    assert set(log_like_y2.dims) == {"chain", "draw", "obs_id"}
-
-    selected_y1, remaining_y1 = wrapper.select_observations(slice(0, 50), var_name="y1")
-    selected_y2, remaining_y2 = wrapper.select_observations(slice(0, 50), var_name="y2")
+    selected_y1, _ = wrapper.select_observations(slice(0, 50), var_name="y1")
+    selected_y2, _ = wrapper.select_observations(slice(0, 50), var_name="y2")
 
     assert selected_y1.shape[0] == 50
     assert selected_y2.shape[0] == 50
@@ -475,10 +371,6 @@ def test_shared_variable_handling(shared_variable_model):
 
     assert "shared_effect" in wrapper.free_vars
     assert "group_effects" in wrapper.free_vars
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
 
     selected, remaining = wrapper.select_observations(slice(0, 75))
     assert selected.shape[0] == 75
@@ -811,20 +703,12 @@ def test_mixture_model_log_likelihood_i(mixture_model):
     model, idata = mixture_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like_i = wrapper.log_likelihood_i("y", 0, idata)
+    log_like_i = wrapper.log_likelihood_i(0, idata)
 
     assert isinstance(log_like_i, xr.DataArray)
     assert set(log_like_i.dims) == {"chain", "draw"}
     assert_finite(log_like_i)
     assert_bounded(log_like_i, upper=0)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-    assert_finite(log_like)
-
-    log_like_0 = log_like.isel(obs_id=0)
-    assert_arrays_allclose(log_like_i, log_like_0, rtol=1e-5)
 
 
 def test_mixture_model_parameter_transformations(mixture_model, caplog):
@@ -878,9 +762,7 @@ def test_mixture_model_log_likelihood_i_workflow(mixture_model):
         draws=100, tune=100, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood_i(
-        wrapper.get_observed_name(), test_idx, refitted_idata
-    )
+    log_like = wrapper.log_likelihood_i(test_idx, refitted_idata)
 
     assert isinstance(log_like, xr.DataArray)
     assert set(log_like.dims) == {"chain", "draw"}
