@@ -83,20 +83,20 @@ def loo_i(
     --------
     Calculate LOO for a single observation to assess its influence on the model:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import pyloo as pl
-           ...: import arviz as az
-           ...: data = az.load_arviz_data("centered_eight")
-           ...: loo_single = pl.loo_i(0, data)
-           ...: print(f"p_loo: {loo_single.p_loo:.2f}, warning: {loo_single.warning}")
+        import pyloo as pl
+        import arviz as az
+        data = az.load_arviz_data("centered_eight")
+        loo_single = pl.loo_i(0, data)
+        print(f"p_loo: {loo_single.p_loo:.2f}, warning: {loo_single.warning}")
 
     Calculate LOO for a single observation and return the pointwise values:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [2]: data_loo = pl.loo_i(0, data, pointwise=True)
-           ...: data_loo.loo_i
+        data_loo = pl.loo_i(0, data, pointwise=True)
+        data_loo.loo_i
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)

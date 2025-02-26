@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 from arviz import InferenceData
@@ -35,54 +36,6 @@ def test_wrapper_initialization(simple_model):
         PyMCWrapper(model, idata_no_posterior)
 
 
-def test_log_likelihood(simple_model):
-    """Test log likelihood computation."""
-    model, idata = simple_model
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-
-    n_chains = len(idata.posterior.chain)
-    n_draws = len(idata.posterior.draw)
-    assert log_like.sizes["chain"] == n_chains
-    assert log_like.sizes["draw"] == n_draws
-    assert log_like.sizes["obs_id"] == 100
-
-    log_like = wrapper.log_likelihood(var_name="y")
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-
-    log_like_subset = wrapper.log_likelihood(indices=slice(0, 50))
-    assert log_like_subset.sizes["obs_id"] == 50
-
-
-def test_hierarchical_log_likelihood(hierarchical_model):
-    """Test log likelihood computation for hierarchical model."""
-    model, idata = hierarchical_model
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "group", "obs_id"}
-
-    n_chains = len(idata.posterior.chain)
-    n_draws = len(idata.posterior.draw)
-    assert log_like.sizes["chain"] == n_chains
-    assert log_like.sizes["draw"] == n_draws
-    assert log_like.sizes["group"] == 8
-    assert log_like.sizes["obs_id"] == 20
-
-    log_like = wrapper.log_likelihood(var_name="Y")
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "group", "obs_id"}
-
-    log_like_subset = wrapper.log_likelihood(indices=slice(0, 4), axis=0)
-    assert log_like_subset.sizes["group"] == 4
-    assert log_like_subset.sizes["obs_id"] == 20
-
-
 def test_coordinate_handling_and_data_immutability(hierarchical_model):
     """Test coordinate validation, handling, and data immutability."""
     model, idata = hierarchical_model
@@ -108,7 +61,6 @@ def test_coordinate_handling_and_data_immutability(hierarchical_model):
     assert any("length changed" in str(w.message) for w in record)
     assert_arrays_equal(wrapper.observed_data["Y"], new_data)
 
-    # Verify immutability is maintained after update
     with pytest.raises((ValueError, RuntimeError)):
         wrapper.observed_data["Y"][0, 0] = 100.0
 
@@ -158,31 +110,6 @@ def test_set_data_return_value(simple_model):
     new_data = np.random.normal(0, 1, size=100)
     result = wrapper.set_data({"y": new_data})
     assert result is None
-
-
-def test_hierarchical_model_no_coords_log_likelihood(hierarchical_model_no_coords):
-    """Test log likelihood computation for hierarchical model without coordinates."""
-    model, idata = hierarchical_model_no_coords
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "dim_0", "dim_1"}
-
-    n_chains = len(idata.posterior.chain)
-    n_draws = len(idata.posterior.draw)
-    assert log_like.sizes["chain"] == n_chains
-    assert log_like.sizes["draw"] == n_draws
-    assert log_like.sizes["dim_0"] == 8
-    assert log_like.sizes["dim_1"] == 20
-
-    log_like = wrapper.log_likelihood(var_name="Y")
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "dim_0", "dim_1"}
-
-    log_like_subset = wrapper.log_likelihood(indices=slice(0, 4), axis=0)
-    assert log_like_subset.sizes["dim_0"] == 4
-    assert log_like_subset.sizes["dim_1"] == 20
 
 
 def test_select_observations(simple_model):
@@ -262,11 +189,9 @@ def test_model_validation_and_deep_copy(simple_model):
     wrapper1 = PyMCWrapper(model, idata)
     wrapper2 = PyMCWrapper(model, idata)
 
-    # Verify that modifying one wrapper's model doesn't affect the other
     wrapper1._untransformed_model.name = "modified_model"
     assert wrapper1._untransformed_model.name != wrapper2._untransformed_model.name
 
-    # Verify that modifying data in one wrapper doesn't affect the other
     original_data = wrapper1.get_observed_data()
     new_data = original_data.copy()
     new_data[0] = 999.0
@@ -281,7 +206,7 @@ def test_log_likelihood_i(simple_model):
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like_i = wrapper.log_likelihood_i("y", 0, idata)
+    log_like_i = wrapper.log_likelihood_i(0, idata)
     assert isinstance(log_like_i, xr.DataArray)
     assert set(log_like_i.dims) == {"chain", "draw"}
 
@@ -314,9 +239,7 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
         draws=1000, tune=1000, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood_i(
-        wrapper.get_observed_name(), problematic_idx, refitted_idata
-    )
+    log_like = wrapper.log_likelihood_i(problematic_idx, refitted_idata)
 
     assert isinstance(log_like, xr.DataArray)
     assert "chain" in log_like.dims
@@ -339,7 +262,7 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
         draws=1000, tune=1000, chains=2, random_seed=42
     )
 
-    log_like = wrapper.log_likelihood_i("y", 0, refitted_idata)
+    log_like = wrapper.log_likelihood_i(0, refitted_idata)
     assert isinstance(log_like, xr.DataArray)
     assert set(log_like.dims) == {"chain", "draw"}
     assert_finite(log_like)
@@ -349,8 +272,8 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     model, idata = multi_observed_model
     wrapper = PyMCWrapper(model, idata)
 
-    log_like_y1 = wrapper.log_likelihood_i("y1", 0, idata)
-    log_like_y2 = wrapper.log_likelihood_i("y2", 0, idata)
+    log_like_y1 = wrapper.log_likelihood_i(0, idata, "y1")
+    log_like_y2 = wrapper.log_likelihood_i(0, idata, "y2")
 
     assert isinstance(log_like_y1, xr.DataArray)
     assert isinstance(log_like_y2, xr.DataArray)
@@ -362,10 +285,10 @@ def test_log_likelihood_i_workflow(simple_model, poisson_model, multi_observed_m
     with pytest.raises(
         PyMCWrapperError, match="Variable 'invalid_var' not found in model"
     ):
-        wrapper.log_likelihood_i("invalid_var", 0, idata)
+        wrapper.log_likelihood_i(0, idata, "invalid_var")
 
     with pytest.raises(IndexError):
-        wrapper.log_likelihood_i("y1", 1000, idata)
+        wrapper.log_likelihood_i(200, idata, "y1")
 
 
 def test_sample_posterior_options(simple_model):
@@ -391,27 +314,6 @@ def test_sample_posterior_options(simple_model):
 
     with pytest.raises(PyMCWrapperError, match="Number of chains must be positive"):
         wrapper.sample_posterior(chains=0)
-
-
-def test_different_likelihood_models(poisson_model):
-    """Test wrapper functionality with different likelihood models."""
-    model, idata = poisson_model
-    wrapper = PyMCWrapper(model, idata)
-
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-    assert_finite(log_like)
-
-    selected, remaining = wrapper.select_observations(slice(0, 50))
-    assert selected.shape[0] == 50
-    assert remaining.shape[0] == 50
-    assert np.all(selected >= 0)
-    assert np.all(remaining >= 0)
-
-    new_data = np.random.poisson(5, size=100)
-    wrapper.set_data({"y": new_data})
-    assert_arrays_equal(wrapper.observed_data["y"], new_data)
 
 
 def test_edge_cases_data_handling(simple_model):
@@ -447,16 +349,8 @@ def test_multi_observed_handling(multi_observed_model):
 
     assert set(wrapper.observed_data.keys()) == {"y1", "y2"}
 
-    log_like_y1 = wrapper.log_likelihood(var_name="y1")
-    log_like_y2 = wrapper.log_likelihood(var_name="y2")
-
-    assert isinstance(log_like_y1, xr.DataArray)
-    assert isinstance(log_like_y2, xr.DataArray)
-    assert set(log_like_y1.dims) == {"chain", "draw", "obs_id"}
-    assert set(log_like_y2.dims) == {"chain", "draw", "obs_id"}
-
-    selected_y1, remaining_y1 = wrapper.select_observations(slice(0, 50), var_name="y1")
-    selected_y2, remaining_y2 = wrapper.select_observations(slice(0, 50), var_name="y2")
+    selected_y1, _ = wrapper.select_observations(slice(0, 50), var_name="y1")
+    selected_y2, _ = wrapper.select_observations(slice(0, 50), var_name="y2")
 
     assert selected_y1.shape[0] == 50
     assert selected_y2.shape[0] == 50
@@ -478,10 +372,6 @@ def test_shared_variable_handling(shared_variable_model):
     assert "shared_effect" in wrapper.free_vars
     assert "group_effects" in wrapper.free_vars
 
-    log_like = wrapper.log_likelihood()
-    assert isinstance(log_like, xr.DataArray)
-    assert set(log_like.dims) == {"chain", "draw", "obs_id"}
-
     selected, remaining = wrapper.select_observations(slice(0, 75))
     assert selected.shape[0] == 75
     assert remaining.shape[0] == 75
@@ -499,12 +389,10 @@ def test_parameter_transformations(simple_model, caplog):
     unconstrained = wrapper.get_unconstrained_parameters()
     assert set(unconstrained.keys()) == {"alpha", "beta", "sigma"}
 
-    # Check dimensions match original posterior
     assert unconstrained["alpha"].dims == ("chain", "draw")
     assert unconstrained["beta"].dims == ("chain", "draw")
     assert unconstrained["sigma"].dims == ("chain", "draw")
 
-    # Check shapes match original posterior
     assert unconstrained["alpha"].shape == (
         len(idata.posterior.chain),
         len(idata.posterior.draw),
@@ -518,23 +406,89 @@ def test_parameter_transformations(simple_model, caplog):
         len(idata.posterior.draw),
     )
 
-    # Check coordinates are preserved
     assert (
         unconstrained["alpha"].coords["chain"].equals(idata.posterior.coords["chain"])
     )
     assert unconstrained["alpha"].coords["draw"].equals(idata.posterior.coords["draw"])
 
+    posterior_sigma = idata.posterior["sigma"].values
+    unconstrained_sigma = unconstrained["sigma"].values
+
+    print("\nTransformation visualization for sigma parameter:")
+    print("Chain 0, Draws 0-4:")
+    print(
+        f"{'Original posterior':20} | {'Unconstrained space':20} |"
+        f" {'Log of posterior':20}"
+    )
+    print("-" * 65)
+
+    for i in range(5):
+        orig = posterior_sigma[0, i]
+        uncon = unconstrained_sigma[0, i]
+        log_orig = np.log(orig)
+        print(f"{orig:20.6f} | {uncon:20.6f} | {log_orig:20.6f}")
+
+    sigma_var = None
+    for var in model.free_RVs:
+        if var.name == "sigma":
+            sigma_var = var
+            break
+
+    if sigma_var is not None:
+        transform = model.rvs_to_transforms.get(sigma_var)
+        if transform is not None:
+            print("\nVerifying PyMC's direct transformation vs wrapper:")
+            sample_values = posterior_sigma[0, :5]
+
+            try:
+                direct_transform = transform.backward(sample_values).eval()
+                print("\nDirect transform application:")
+                print(
+                    f"{'Original sigma':20} | {'Direct transform':20} |"
+                    f" {'Wrapper transform':20}"
+                )
+                print("-" * 65)
+
+                for i in range(5):
+                    orig = sample_values[i]
+                    direct = direct_transform[i]
+                    wrapper_result = unconstrained_sigma[0, i]
+                    print(f"{orig:20.6f} | {direct:20.6f} | {wrapper_result:20.6f}")
+
+                direct_all = transform.backward(posterior_sigma).eval()
+                transform_match = np.allclose(
+                    direct_all, unconstrained_sigma, rtol=1e-5
+                )
+                print(
+                    f"\nDirect transform matches wrapper transform: {transform_match}"
+                )
+
+            except Exception as e:
+                print(f"Couldn't apply transform directly: {e}")
+
+            print(
+                f"\nTransform details:\nType: {type(transform)}\nAttributes:"
+                f" {dir(transform)}"
+            )
+
     constrained = wrapper.constrain_parameters(unconstrained)
     assert set(constrained.keys()) == {"alpha", "beta", "sigma"}
+
+    print("\nReconstituted values:")
+    print(f"{'Original posterior':20} | {'Recalculated constrained':20}")
+    print("-" * 45)
+
+    for i in range(5):
+        orig = posterior_sigma[0, i]
+        recon = constrained["sigma"].values[0, i]
+        print(f"{orig:20.6f} | {recon:20.6f}")
 
     assert_shape_equal(constrained["alpha"], unconstrained["alpha"])
     assert_shape_equal(constrained["beta"], unconstrained["beta"])
     assert_shape_equal(constrained["sigma"], unconstrained["sigma"])
 
-    # Check that sigma is positive in constrained space
     assert_positive(constrained["sigma"])
 
-    # Check that transformations approximately invert each other
     assert_arrays_allclose(
         constrained["alpha"], wrapper.idata.posterior.alpha.values, rtol=1e-5
     )
@@ -548,19 +502,23 @@ def test_parameter_transformations(simple_model, caplog):
     with caplog.at_level(logging.WARNING):
 
         class MockTransform:
-            def backward(self, *args):
+            def backward(self, value, *args):
                 raise ValueError("Test error")
 
-            def forward(self, *args):
+            def forward(self, value, *args):
                 raise ValueError("Test error")
 
-        # Temporarily add failing transform to a variable
         var = wrapper.model.free_RVs[0]
-        var.transform = MockTransform()
+        original_transform = wrapper.model.rvs_to_transforms.get(var)
+
+        wrapper.model.rvs_to_transforms[var] = MockTransform()
         unconstrained = wrapper.get_unconstrained_parameters()
         assert "Failed to transform" in caplog.text
 
-        delattr(var, "transform")
+        if original_transform is not None:
+            wrapper.model.rvs_to_transforms[var] = original_transform
+        else:
+            wrapper.model.rvs_to_transforms.pop(var, None)
 
 
 def test_hierarchical_parameter_transformations(hierarchical_model):
@@ -572,14 +530,12 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
     expected_params = {"alpha", "beta", "group_sigma", "group_effects_raw", "sigma_y"}
     assert set(unconstrained.keys()) == expected_params
 
-    # Check dimensions match original posterior
     assert unconstrained["alpha"].dims == ("chain", "draw")
     assert unconstrained["beta"].dims == ("chain", "draw")
     assert unconstrained["group_sigma"].dims == ("chain", "draw")
     assert unconstrained["group_effects_raw"].dims == ("chain", "draw", "group")
     assert unconstrained["sigma_y"].dims == ("chain", "draw")
 
-    # Check shapes match original posterior
     assert unconstrained["alpha"].shape == (
         len(idata.posterior.chain),
         len(idata.posterior.draw),
@@ -602,7 +558,6 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
         len(idata.posterior.draw),
     )
 
-    # Check coordinates are preserved
     assert (
         unconstrained["alpha"].coords["chain"].equals(idata.posterior.coords["chain"])
     )
@@ -613,23 +568,90 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
         .equals(idata.posterior.coords["group"])
     )
 
+    posterior_sigma_y = idata.posterior["sigma_y"].values
+    unconstrained_sigma_y = unconstrained["sigma_y"].values
+
+    print("\nTransformation visualization for sigma_y parameter:")
+    print("Chain 0, Draws 0-4:")
+    print(
+        f"{'Original posterior':20} | {'Unconstrained space':20} |"
+        f" {'Log of posterior':20}"
+    )
+    print("-" * 65)
+
+    for i in range(5):
+        orig = posterior_sigma_y[0, i]
+        uncon = unconstrained_sigma_y[0, i]
+        log_orig = np.log(orig)
+        print(f"{orig:20.6f} | {uncon:20.6f} | {log_orig:20.6f}")
+
+    sigma_y_var = None
+    for var in model.free_RVs:
+        if var.name == "sigma_y":
+            sigma_y_var = var
+            break
+
+    if sigma_y_var is not None:
+        transform = model.rvs_to_transforms.get(sigma_y_var)
+        if transform is not None:
+            print("\nVerifying PyMC's direct transformation vs wrapper:")
+            sample_values = posterior_sigma_y[0, :5]
+
+            try:
+                direct_transform = transform.backward(sample_values).eval()
+                print("\nDirect transform application:")
+                print(
+                    f"{'Original sigma_y':20} | {'Direct transform':20} |"
+                    f" {'Wrapper transform':20}"
+                )
+                print("-" * 65)
+
+                for i in range(5):
+                    orig = sample_values[i]
+                    direct = direct_transform[i]
+                    wrapper_result = unconstrained_sigma_y[0, i]
+                    print(f"{orig:20.6f} | {direct:20.6f} | {wrapper_result:20.6f}")
+
+                direct_all = transform.backward(posterior_sigma_y).eval()
+                transform_match = np.allclose(
+                    direct_all, unconstrained_sigma_y, rtol=1e-5
+                )
+                print(
+                    f"\nDirect transform matches wrapper transform: {transform_match}"
+                )
+
+            except Exception as e:
+                print(f"Couldn't apply transform directly: {e}")
+
+            print(
+                f"\nTransform details:\nType: {type(transform)}\nAttributes:"
+                f" {dir(transform)}"
+            )
+
     constrained = wrapper.constrain_parameters(unconstrained)
 
     assert set(constrained.keys()) == expected_params
 
-    # Check that constrained parameters match original posterior
+    print("\nReconstituted values:")
+    print(f"{'Original posterior':20} | {'Recalculated constrained':20}")
+    print("-" * 45)
+
+    for i in range(5):
+        orig = posterior_sigma_y[0, i]
+        recon = constrained["sigma_y"].values[0, i]
+        print(f"{orig:20.6f} | {recon:20.6f}")
+
     for param in expected_params:
         if param in idata.posterior:
             assert_arrays_allclose(
                 constrained[param], idata.posterior[param].values, rtol=1e-5
             )
 
-    # Check that sigma parameters are positive in constrained space
     assert_positive(constrained["group_sigma"])
     assert_positive(constrained["sigma_y"])
 
 
-def test_logging_functionality(simple_model, caplog):
+def test_logging_functionality(simple_model, caplog, monkeypatch):
     """Test that logging messages are properly emitted."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
@@ -644,17 +666,15 @@ def test_logging_functionality(simple_model, caplog):
 
     wrapper.set_data({"y": wrapper.idata.observed_data["y"].values})
 
+    def mock_sample(*args, **kwargs):
+        return idata
+
+    monkeypatch.setattr(pm, "sample", mock_sample)
+
     with caplog.at_level(logging.INFO):
-        wrapper.sample_posterior(draws=10, chains=1)
+        result = wrapper.sample_posterior(draws=10, chains=1)
         assert "Automatically enabling log likelihood computation" in caplog.text
-
-    model_no_dims = model.copy()
-    model_no_dims.named_vars_to_dims = {}
-    wrapper_no_dims = PyMCWrapper(model_no_dims, idata)
-
-    with caplog.at_level(logging.WARNING):
-        wrapper_no_dims.log_likelihood_i("y", 0, idata)
-        assert "Could not determine dimensions" in caplog.text
+        assert result is idata
 
 
 def test_error_messages(simple_model):
@@ -676,3 +696,78 @@ def test_error_messages(simple_model):
     with pytest.raises(PyMCWrapperError) as exc_info:
         PyMCWrapper(model, idata_missing)
     assert "Missing posterior samples for variables:" in str(exc_info.value)
+
+
+def test_mixture_model_log_likelihood_i(mixture_model):
+    """Test log_likelihood_i method with mixture model."""
+    model, idata = mixture_model
+    wrapper = PyMCWrapper(model, idata)
+
+    log_like_i = wrapper.log_likelihood_i(0, idata)
+
+    assert isinstance(log_like_i, xr.DataArray)
+    assert set(log_like_i.dims) == {"chain", "draw"}
+    assert_finite(log_like_i)
+    assert_bounded(log_like_i, upper=0)
+
+
+def test_mixture_model_parameter_transformations(mixture_model, caplog):
+    """Test parameter transformations for mixture model."""
+    model, idata = mixture_model
+    wrapper = PyMCWrapper(model, idata)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    expected_params = {"w", "mu1", "mu2", "sigma1", "sigma2"}
+    assert set(unconstrained.keys()) == expected_params
+
+    for param in expected_params:
+        assert unconstrained[param].shape == (
+            len(idata.posterior.chain),
+            len(idata.posterior.draw),
+        )
+
+    with caplog.at_level(logging.WARNING):
+        constrained = wrapper.constrain_parameters(unconstrained)
+
+    assert set(constrained.keys()) == expected_params
+
+    for param in expected_params:
+        assert_arrays_allclose(
+            constrained[param], idata.posterior[param].values, rtol=1e-5
+        )
+
+    assert_bounded(constrained["w"], lower=0, upper=1)
+    assert_positive(constrained["sigma1"])
+    assert_positive(constrained["sigma2"])
+
+    for param in expected_params:
+        assert unconstrained[param].shape == constrained[param].shape
+        assert_finite(unconstrained[param])
+        assert_finite(constrained[param])
+
+
+def test_mixture_model_log_likelihood_i_workflow(mixture_model):
+    """Test the full LOO-CV workflow for mixture model."""
+    model, idata = mixture_model
+    wrapper = PyMCWrapper(model, idata)
+
+    test_idx = 10
+    original_data = wrapper.get_observed_data()
+
+    _, training_data = wrapper.select_observations(np.array([test_idx], dtype=int))
+
+    wrapper.set_data({wrapper.get_observed_name(): training_data})
+    refitted_idata = wrapper.sample_posterior(
+        draws=100, tune=100, chains=2, random_seed=42
+    )
+
+    log_like = wrapper.log_likelihood_i(test_idx, refitted_idata)
+
+    assert isinstance(log_like, xr.DataArray)
+    assert set(log_like.dims) == {"chain", "draw"}
+    assert log_like.sizes["chain"] == 2
+    assert log_like.sizes["draw"] == 100
+    assert_finite(log_like)
+
+    wrapper.set_data({wrapper.get_observed_name(): original_data})

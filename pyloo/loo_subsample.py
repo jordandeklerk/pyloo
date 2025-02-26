@@ -109,24 +109,39 @@ def loo_subsample(
 
     Examples
     --------
-    Compute approximate LOO-CV using subsampling:
+    First, let's compute approximate LOO-CV using subsampling. We'll load a sample dataset,
+    specify the number of observations to subsample, and use the point estimate based approximation:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import arviz as az
-           ...: from pyloo import loo_subsample
-           ...: data = az.load_arviz_data("centered_eight")
-           ...:
-           ...: result = loo_subsample(
-           ...:     data,
-           ...:     observations=4,  # subsample 4 out of 8 observations
-           ...:     loo_approximation="plpd",  # use point estimate based approximation
-           ...: )
-           ...: # Update with more observations
-           ...: updated = update_subsample(result, observations=6)  # increase to 6 observations
-           ...: # Can also update with specific indices
-           ...: indices = np.array([0, 2, 4, 6])  # select specific observations
-           ...: updated_specific = update_subsample(result, observations=indices)
+        import arviz as az
+        from pyloo import loo_subsample
+
+        data = az.load_arviz_data("centered_eight")
+
+        # Subsample 4 out of 8 observations using point estimate based approximation
+        result = loo_subsample(
+            data,
+            observations=4,
+            loo_approximation="plpd",
+        )
+
+    Once we have initial results, we can update them with more observations:
+
+    .. code-block:: python
+
+        from pyloo import update_subsample
+
+        updated = update_subsample(result, observations=6)
+
+    We can also update with specific observation indices:
+
+    .. code-block:: python
+
+        import numpy as np
+
+        indices = np.array([0, 2, 4, 6])
+        updated_specific = update_subsample(result, observations=indices)
 
     See Also
     --------
@@ -478,18 +493,22 @@ def update_subsample(
 
     Examples
     --------
-    Update subsampling to use more observations:
+    Let's see how to update our subsampling results with more observations. First, we'll
+    compute the initial LOO-CV with a small subsample, then update it to use more observations:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import arviz as az
-           ...: from pyloo import loo_subsample, update_subsample
-           ...: # Load example dataset
-           ...: data = az.load_arviz_data("centered_eight")
-           ...: # Compute initial LOO-CV with subsampling
-           ...: result = loo_subsample(data, observations=100)
-           ...: # Update with more observations
-           ...: updated = update_subsample(result, observations=200)
+        import arviz as az
+        from pyloo import loo_subsample, update_subsample
+
+        # Load example dataset
+        data = az.load_arviz_data("centered_eight")
+
+        # Compute initial LOO-CV with subsampling of 100 observations
+        result = loo_subsample(data, observations=100)
+
+        # Update with more observations (200 instead of 100)
+        updated = update_subsample(result, observations=200)
     """
     if not isinstance(loo_data, ELPDData):
         raise TypeError("loo_data must be an ELPDData object from loo_subsample()")

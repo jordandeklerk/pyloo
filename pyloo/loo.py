@@ -84,21 +84,30 @@ def loo(
 
         Examples
         --------
-        Calculate LOO of a model:
+        Calculate the Leave-One-Out Cross-Validation (LOO-CV) for a model by providing InferenceData:
 
-        .. ipython::
+        .. code-block:: python
 
-            In [1]: import pyloo as pl
-               ...: import arviz as az
-               ...: data = az.load_arviz_data("centered_eight")
-               ...: pl.loo(data)
+            import pyloo as pl
+            import arviz as az
 
-        Calculate LOO of a model and return the pointwise values:
+            data = az.load_arviz_data("centered_eight")
+            loo_results = pl.loo(data)
+            print(loo_results)
 
-        .. ipython::
+        Calculate LOO with pointwise values to examine individual observation contributions:
 
-            In [2]: data_loo = pl.loo(data, pointwise=True)
-               ...: data_loo.loo_i
+        .. code-block:: python
+
+            import pyloo as pl
+            import arviz as az
+
+            data = az.load_arviz_data("centered_eight")
+            data_loo = pl.loo(data, pointwise=True)
+            print(data_loo.loo_i)
+
+            if hasattr(data_loo, "pareto_k"):
+                print(data_loo.pareto_k)
 
         See Also
         --------

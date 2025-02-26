@@ -120,9 +120,9 @@ def reloo(
 
     Examples
     --------
-    Calculate exact LOO for problematic observations:
+    Create a simple normal model and calculate exact LOO for problematic observations
 
-    .. ipython::
+    .. code-block:: python
 
         import pyloo as pl
         import pymc as pm
@@ -141,15 +141,17 @@ def reloo(
             idata = pm.sample(1000, tune=1000)
 
         wrapper = pl.PyMCWrapper(model, idata)
-        # Standard reloo
         loo_exact = pl.reloo(wrapper, k_thresh=0.7)
 
-        # Using subsampling for large datasets
+    Use subsampling for efficient computation with large datasets
+
+    .. code-block:: python
+
         loo_exact_subsample = pl.reloo(
             wrapper,
             k_thresh=0.7,
             use_subsample=True,
-            subsample_observations=50  # Use 50 observations
+            subsample_observations=50
         )
 
     See Also
@@ -230,7 +232,7 @@ def reloo(
                 idata_idx = wrapper.sample_posterior()
 
                 log_like_idx = wrapper.log_likelihood_i(
-                    var_name, orig_idx if use_subsample else idx.item(), idata_idx
+                    orig_idx if use_subsample else idx.item(), idata_idx
                 ).values.flatten()
 
                 loo_lppd_idx = scale_value * _logsumexp(
