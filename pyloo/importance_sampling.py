@@ -71,19 +71,23 @@ def compute_importance_weights(
     --------
     Get importance sampling weights using different methods:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import pyloo as pl
-           ...: data = az.load_arviz_data("non_centered_eight")
-           ...: log_likelihood = data.log_likelihood["obs"].stack(
-           ...:     __sample__=["chain", "draw"]
-           ...: )
-           ...: # Using PSIS (default)
-           ...: lw_psis, k = pl.compute_importance_weights(-log_likelihood)
-           ...: # Using SIS
-           ...: lw_sis, ess = pl.compute_importance_weights(-log_likelihood, method="sis")
-           ...: # Using TIS
-           ...: lw_tis, ess = pl.compute_importance_weights(-log_likelihood, method="tis")
+        import pyloo as pl
+
+        data = az.load_arviz_data("non_centered_eight")
+        log_likelihood = data.log_likelihood["obs"].stack(
+            __sample__=["chain", "draw"]
+        )
+
+        # Using PSIS (default)
+        lw_psis, k = pl.compute_importance_weights(-log_likelihood)
+
+        # Using SIS
+        lw_sis, ess = pl.compute_importance_weights(-log_likelihood, method="sis")
+
+        # Using TIS
+        lw_tis, ess = pl.compute_importance_weights(-log_likelihood, method="tis")
     """
     if isinstance(method, str):
         try:

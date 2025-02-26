@@ -70,16 +70,18 @@ def e_loo(
     --------
     Compute weighted mean using importance sampling:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import numpy as np
-           ...: from pyloo import compute_importance_weights, e_loo
-           ...: # Generate fake data
-           ...: x = np.random.normal(size=(1000, 100))
-           ...: log_ratios = np.random.normal(size=(1000, 100))
-           ...: weights, k = compute_importance_weights(log_ratios)
-           ...: result = e_loo(x, weights, pareto_k=k)
-           ...: print(f"Mean value: {result.value.mean():.3f}")
+        import numpy as np
+        from pyloo import compute_importance_weights, e_loo
+
+        x = np.random.normal(size=(1000, 100))
+
+        log_ratios = np.random.normal(size=(1000, 100))
+        weights, k = compute_importance_weights(log_ratios)
+        result = e_loo(x, weights, pareto_k=k)
+
+        print(f"Mean value: {result.value.mean():.3f}")
     """
     x = np.asarray(x)
     if x.ndim == 1:

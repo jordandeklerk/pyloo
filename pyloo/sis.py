@@ -41,14 +41,16 @@ def sislw(log_weights):
     --------
     Get Standard importance sampling (SIS) log weights:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import pyloo as pl
-           ...: data = az.load_arviz_data("non_centered_eight")
-           ...: log_likelihood = data.log_likelihood["obs"].stack(
-           ...:     __sample__=["chain", "draw"]
-           ...: )
-           ...: pl.sislw(-log_likelihood)
+        import pyloo as pl
+
+        data = az.load_arviz_data("non_centered_eight")
+
+        log_likelihood = data.log_likelihood["obs"].stack(
+            __sample__=["chain", "draw"]
+        )
+        pl.sislw(-log_likelihood)
     """
     log_weights = deepcopy(log_weights)
     if hasattr(log_weights, "__sample__"):

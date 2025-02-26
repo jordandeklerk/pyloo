@@ -65,14 +65,16 @@ def rel_eff(
     --------
     Calculate relative efficiency for MCMC samples:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import numpy as np
-           ...: from pyloo import rel_eff
-           ...: # Generate fake MCMC samples
-           ...: samples = np.random.normal(size=(1000, 4, 10))  # 1000 iterations, 4 chains, 10 parameters
-           ...: r_eff = rel_eff(samples)
-           ...: print(f"Mean relative efficiency: {r_eff.mean():.3f}")
+        import numpy as np
+        from pyloo import rel_eff
+
+        # Generate fake MCMC samples
+        samples = np.random.normal(size=(1000, 4, 10))  # 1000 iterations, 4 chains, 10 parameters
+        r_eff = rel_eff(samples)
+
+        print(f"Mean relative efficiency: {r_eff.mean():.3f}")
 
     See Also
     --------
@@ -142,15 +144,15 @@ def psis_eff_size(
     --------
     Calculate PSIS effective sample size:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import numpy as np
-           ...: from pyloo import psis_eff_size
-           ...: # Generate fake importance weights
-           ...: weights = np.random.gamma(1, 1, size=(1000, 100))
-           ...: weights /= weights.sum(axis=0)  # normalize
-           ...: n_eff = psis_eff_size(weights)
-           ...: print(f"Mean effective sample size: {n_eff.mean():.1f}")
+        import numpy as np
+        from pyloo import psis_eff_size
+        # Generate fake importance weights
+        weights = np.random.gamma(1, 1, size=(1000, 100))
+        weights /= weights.sum(axis=0)  # normalize
+        n_eff = psis_eff_size(weights)
+        print(f"Mean effective sample size: {n_eff.mean():.1f}")
 
     See Also
     --------
@@ -217,14 +219,14 @@ def mcmc_eff_size(
     --------
     Calculate effective sample size for MCMC draws:
 
-    .. ipython::
+    .. code-block:: python
 
-        In [1]: import numpy as np
-           ...: from pyloo import mcmc_eff_size
-           ...: # Generate fake MCMC samples
-           ...: samples = np.random.normal(size=(1000, 4))  # 1000 iterations, 4 chains
-           ...: ess = mcmc_eff_size(samples)
-           ...: print(f"Effective sample size: {ess:.1f}")
+        import numpy as np
+        from pyloo import mcmc_eff_size
+        # Generate fake MCMC samples
+        samples = np.random.normal(size=(1000, 4))  # 1000 iterations, 4 chains
+        ess = mcmc_eff_size(samples)
+        print(f"Effective sample size: {ess:.1f}")
 
     See Also
     --------
