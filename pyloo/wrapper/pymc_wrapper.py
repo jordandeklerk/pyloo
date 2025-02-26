@@ -398,8 +398,8 @@ class PyMCWrapper:
 
         if self.get_variable(var_name) is None:
             raise PyMCWrapperError(
-                f"Variable '{var_name}' not found in model. Available variables:"
-                f" {list(self._untransformed_model.named_vars.keys())}"
+                f"Variable '{var_name}' not found in model. Available variables: "
+                f"{list(self._untransformed_model.named_vars.keys())}"
             )
 
         if var_name not in self.observed_data:
@@ -422,9 +422,56 @@ class PyMCWrapper:
             raise PyMCWrapperError(f"Could not determine shape for variable {var_name}")
 
         n_obs = data_shape[0]
+        original_data = None
+        orig_coords = None
 
+        indices, single_idx = self._process_and_validate_indices(idx, n_obs)
+
+        try:
+            original_data = self.observed_data[var_name].copy()
+            holdout_data, _ = self.select_observations(indices, var_name=var_name)
+
+            if hasattr(self, "observed_dims") and var_name in self.observed_dims:
+                orig_coords = self._get_coords(var_name)
+
+            self.observed_data[var_name] = holdout_data
+
+            log_like = pm.compute_log_likelihood(
+                idata,
+                var_names=[var_name],
+                model=self._untransformed_model,
+                extend_inferencedata=False,
+            )
+
+            if var_name not in log_like:
+                raise PyMCWrapperError(
+                    f"Failed to compute log likelihood for variable {var_name}. "
+                    "Check that the model specification matches the data."
+                )
+
+            log_like_i = log_like[var_name]
+            log_like_i = self._format_log_likelihood_result(
+                log_like_i, indices, single_idx, idx, holdout_data, n_obs, var_name
+            )
+
+            return log_like_i
+
+        except Exception as e:
+            if isinstance(e, (IndexError, PyMCWrapperError)):
+                raise
+            raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
+        finally:
+            if original_data is not None:
+                if orig_coords is not None:
+                    self.set_data({var_name: original_data}, coords=orig_coords)
+                else:
+                    self.set_data({var_name: original_data})
+
+    def _process_and_validate_indices(
+        self, idx: int | np.ndarray | slice, n_obs: int
+    ) -> tuple[np.ndarray, bool]:
+        """Process and validate indices for log likelihood computation."""
         if isinstance(idx, int):
-            # Single index - strict checking
             if idx < 0 or idx >= n_obs:
                 raise IndexError(
                     f"Index {idx} is out of bounds for axis 0 with size {n_obs}"
@@ -432,7 +479,6 @@ class PyMCWrapper:
             indices = np.array([idx], dtype=int)
             single_idx = True
         elif isinstance(idx, slice):
-            # Convert slice to array of indices
             start, stop, step = idx.indices(n_obs)
 
             if stop > n_obs:
@@ -455,11 +501,9 @@ class PyMCWrapper:
                 indices = np.where(idx)[0]
                 single_idx = False
             else:
-                # Array of indices - validate and clip if needed
                 if len(idx) == 0:
                     raise IndexError("Empty index array provided")
 
-                # Check for out of bounds indices
                 invalid_indices = (idx < 0) | (idx >= n_obs)
                 if np.any(invalid_indices):
                     out_of_bounds = idx[invalid_indices]
@@ -482,101 +526,76 @@ class PyMCWrapper:
         else:
             raise PyMCWrapperError(f"Unsupported index type: {type(idx)}")
 
-        try:
-            # Get the original data and select the holdout observations
-            original_data = self.observed_data[var_name].copy()
-            holdout_data, _ = self.select_observations(indices, var_name=var_name)
+        return indices, single_idx
 
-            orig_coords = None
-            if hasattr(self, "observed_dims") and var_name in self.observed_dims:
-                orig_coords = self._get_coords(var_name)
+    def _format_log_likelihood_result(
+        self,
+        log_like_i: xr.DataArray,
+        indices: np.ndarray,
+        single_idx: bool,
+        original_idx: int | np.ndarray | slice,
+        holdout_data: np.ndarray,
+        n_obs: int,
+        var_name: str,
+    ) -> xr.DataArray:
+        """Format log likelihood results based on index type."""
+        if single_idx and isinstance(original_idx, int):
+            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
 
-            # Set the holdout data as current observed data
-            self.observed_data[var_name] = holdout_data
+            for dim in obs_dims:
+                log_like_i = log_like_i.isel({dim: 0})
 
-            # Compute log likelihood
-            log_like = pm.compute_log_likelihood(
-                idata,
-                var_names=[var_name],
-                model=self._untransformed_model,
-                extend_inferencedata=False,
-            )
+            if obs_dims and obs_dims[0] in log_like_i.coords:
+                log_like_i.coords[obs_dims[0]] = original_idx
 
-            if var_name not in log_like:
-                raise PyMCWrapperError(
-                    f"Failed to compute log likelihood for variable {var_name}. "
-                    "Check that the model specification matches the data."
-                )
-
-            log_like_i = log_like[var_name]
-
-            if single_idx and isinstance(idx, int):
-                obs_dims = [
-                    dim for dim in log_like_i.dims if dim not in ("chain", "draw")
-                ]
-
-                for dim in obs_dims:
-                    log_like_i = log_like_i.isel({dim: 0})
-
-                if dim in log_like_i.coords:
-                    log_like_i.coords[dim] = idx
-
-                log_like_i.attrs["observation_index"] = idx
-            else:
-                chains = log_like_i.sizes.get("chain", 1)
-                draws = log_like_i.sizes.get("draw", 1)
-                result_shape = (chains, draws, len(indices))
-                result_data = np.zeros(result_shape)
-
-                for i, idx_val in enumerate(indices):
-                    obs_dims = [
-                        dim for dim in log_like_i.dims if dim not in ("chain", "draw")
-                    ]
-                    if obs_dims:
-                        try:
-                            if log_like_i.sizes[obs_dims[0]] == len(holdout_data):
-                                result_data[:, :, i] = log_like_i.isel(
-                                    {obs_dims[0]: i}
-                                ).values
-                            elif log_like_i.sizes[obs_dims[0]] == n_obs:
-                                result_data[:, :, i] = log_like_i.isel(
-                                    {obs_dims[0]: idx_val}
-                                ).values
-                            else:
-                                result_data[:, :, i] = log_like_i.isel(
-                                    {obs_dims[0]: 0}
-                                ).values
-                        except Exception:
-                            result_data[:, :, i] = log_like_i.isel(
-                                {obs_dims[0]: 0}
-                            ).values
-                    else:
-                        result_data[:, :, i] = log_like_i.values
-
-                log_like_i = xr.DataArray(
-                    result_data,
-                    dims=("chain", "draw", "obs_idx"),
-                    coords={
-                        "chain": log_like_i.coords.get("chain", np.arange(chains)),
-                        "draw": log_like_i.coords.get("draw", np.arange(draws)),
-                        "obs_idx": indices,
-                    },
-                    name=var_name,
-                )
-
-                log_like_i.attrs["observation_indices"] = indices.tolist()
-
+            log_like_i.attrs["observation_index"] = original_idx
             return log_like_i
 
-        except Exception as e:
-            if isinstance(e, (IndexError, PyMCWrapperError)):
-                raise
-            raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
-        finally:
-            if orig_coords is not None:
-                self.set_data({var_name: original_data}, coords=orig_coords)
-            else:
-                self.set_data({var_name: original_data})
+        chains = log_like_i.sizes.get("chain", 1)
+        draws = log_like_i.sizes.get("draw", 1)
+        result_data = np.zeros((chains, draws, len(indices)))
+
+        obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+
+        if not obs_dims:
+            for i in range(len(indices)):
+                result_data[:, :, i] = log_like_i.values
+
+        else:
+            obs_dim = obs_dims[0]
+            obs_size = log_like_i.sizes[obs_dim]
+
+            for i, idx_val in enumerate(indices):
+                try:
+                    if obs_size == len(holdout_data):
+                        index_to_use = min(i, obs_size - 1)
+                        result_data[:, :, i] = log_like_i.isel(
+                            {obs_dim: index_to_use}
+                        ).values
+
+                    elif obs_size == n_obs:
+                        index_to_use = min(idx_val, obs_size - 1)
+                        result_data[:, :, i] = log_like_i.isel(
+                            {obs_dim: index_to_use}
+                        ).values
+
+                    else:
+                        result_data[:, :, i] = log_like_i.isel({obs_dim: 0}).values
+
+                except Exception:
+                    result_data[:, :, i] = log_like_i.isel({obs_dim: 0}).values
+
+        return xr.DataArray(
+            result_data,
+            dims=("chain", "draw", "obs_idx"),
+            coords={
+                "chain": log_like_i.coords.get("chain", np.arange(chains)),
+                "draw": log_like_i.coords.get("draw", np.arange(draws)),
+                "obs_idx": indices,
+            },
+            attrs={"observation_indices": indices.tolist()},
+            name=var_name,
+        )
 
     def sample_posterior(
         self,
