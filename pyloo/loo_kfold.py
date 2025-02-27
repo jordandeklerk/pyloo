@@ -248,7 +248,6 @@ def kfold(
     elpd_data = ELPDData(data=data_list, index=index_list)
     elpd_data.method = "kfold"
     elpd_data.K = K
-
     return elpd_data
 
 
@@ -285,7 +284,6 @@ def kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:
         end = start + fold_sizes[i]
         folds[fold_indices[start:end]] = i + 1
         start = end
-
     return folds
 
 
@@ -346,7 +344,6 @@ def kfold_split_stratified(
     assert np.all(
         (folds >= 1) & (folds <= K)
     ), f"Generated fold values outside range 1-{K}"
-
     return folds
 
 
@@ -391,7 +388,6 @@ def _validate_kfold_inputs(
             raise ValueError("Fold indices must be >= 1")
 
         K = len(unique_folds)
-
     return scale, K, folds
 
 
@@ -412,7 +408,6 @@ def _compute_lpds_full(log_lik_full: xr.DataArray) -> np.ndarray:
         ufunc_kwargs=ufunc_kwargs,
         **kwargs,
     )
-
     return lpds_full_xr.values
 
 
@@ -467,7 +462,6 @@ def _process_fold(
 
     except Exception as e:
         _log.warning(f"Error processing fold {k}: {e}")
-
     return fits, elpds
 
 
@@ -478,50 +472,33 @@ def _compute_fold_elpds(
     k_dims = list(ll_k.dims)
     k_obs_dims = [dim for dim in k_dims if dim not in ("chain", "draw")]
 
-    if len(k_obs_dims) > 0:
-        k_obs_dim = k_obs_dims[0]
+    try:
+        if "chain" in ll_k.dims and "draw" in ll_k.dims:
+            ll_k_stacked = ll_k.stack(__sample__=("chain", "draw"))
+        else:
+            ll_k_stacked = ll_k
 
-        try:
-            if "chain" in ll_k.dims and "draw" in ll_k.dims:
-                ll_k_stacked = ll_k.stack(__sample__=("chain", "draw"))
-            else:
-                ll_k_stacked = ll_k
+        ufunc_kwargs = {"n_dims": 1, "ravel": False}
+        kwargs = {"input_core_dims": [["__sample__"]]}
 
-            ufunc_kwargs = {"n_dims": 1, "ravel": False}
-            kwargs = {"input_core_dims": [["__sample__"]]}
+        elpds_k_xr = wrap_xarray_ufunc(
+            _logsumexp,
+            ll_k_stacked,
+            func_kwargs={"b_inv": ll_k_stacked.sizes.get("__sample__", 1)},
+            ufunc_kwargs=ufunc_kwargs,
+            **kwargs,
+        )
 
-            elpds_k_xr = wrap_xarray_ufunc(
-                _logsumexp,
-                ll_k_stacked,
-                func_kwargs={"b_inv": ll_k_stacked.sizes.get("__sample__", 1)},
-                ufunc_kwargs=ufunc_kwargs,
-                **kwargs,
-            )
-
+        # Handle cases with or without observation dimensions
+        if len(k_obs_dims) > 0:
+            # Multiple observations case
+            k_obs_dim = k_obs_dims[0]
             for i, idx in enumerate(val_indices):
                 elpds[idx] = elpds_k_xr.isel({k_obs_dim: i}).values.item()
-        except Exception as e:
-            _log.warning(f"Error processing fold validation points: {e}")
-    else:
-        try:
-            if "chain" in ll_k.dims and "draw" in ll_k.dims:
-                ll_k_stacked = ll_k.stack(__sample__=("chain", "draw"))
-            else:
-                ll_k_stacked = ll_k
+        else:
+            # Single observation case
+            elpds[val_indices[0]] = elpds_k_xr.values.item()
 
-            ufunc_kwargs = {"n_dims": 1, "ravel": False}
-            kwargs = {"input_core_dims": [["__sample__"]]}
-
-            elpd_k = wrap_xarray_ufunc(
-                _logsumexp,
-                ll_k_stacked,
-                func_kwargs={"b_inv": ll_k_stacked.sizes.get("__sample__", 1)},
-                ufunc_kwargs=ufunc_kwargs,
-                **kwargs,
-            ).values.item()
-
-            elpds[val_indices[0]] = elpd_k
-        except Exception as e:
-            _log.warning(f"Error processing fold with no observation dimensions: {e}")
-
+    except Exception as e:
+        _log.warning(f"Error computing ELPD values for fold: {e}")
     return elpds
