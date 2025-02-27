@@ -774,58 +774,6 @@ class PyMCWrapper:
             constrained_params[var_name] = constrained
         return constrained_params
 
-    def _apply_ufunc(
-        self,
-        func: Callable[..., Any],
-        var_name: str | None = None,
-        input_core_dims: list[list[str]] | None = None,
-        output_core_dims: list[list[str]] | None = None,
-        func_kwargs: dict | None = None,
-        **kwargs: Any,
-    ) -> xr.DataArray:
-        """This is a utility method that applies a function to posterior samples using
-        ``wrap_xarray_ufunc``."""
-        if not hasattr(self.idata, "posterior"):
-            raise PyMCWrapperError(
-                "InferenceData object must contain posterior samples. "
-                "The model does not appear to be fitted."
-            )
-
-        if input_core_dims is None:
-            input_core_dims = [["chain", "draw"]]
-        if output_core_dims is None:
-            output_core_dims = [["chain", "draw"]]
-
-        if var_name is not None:
-            if var_name not in self.idata.posterior:
-                raise PyMCWrapperError(
-                    f"Variable '{var_name}' not found in posterior. Available"
-                    f" variables: {list(self.idata.posterior.data_vars.keys())}"
-                )
-            data = self.idata.posterior[var_name]
-        else:
-            input_vars = kwargs.pop("input_vars", None)
-            if input_vars is not None:
-                for var in input_vars:
-                    if var not in self.idata.posterior:
-                        raise PyMCWrapperError(
-                            f"Variable '{var}' not found in posterior. Available"
-                            f" variables: {list(self.idata.posterior.data_vars.keys())}"
-                        )
-                    data = [self.idata.posterior[var] for var in input_vars]
-            else:
-                data = self.idata.posterior
-
-        result = wrap_xarray_ufunc(
-            func,
-            data if isinstance(data, list) else [data],
-            input_core_dims=input_core_dims,
-            output_core_dims=output_core_dims,
-            func_kwargs=func_kwargs,
-            **kwargs,
-        )
-        return result
-
     def get_draws(self) -> np.ndarray:
         """Get all draws from the posterior.
 
@@ -980,6 +928,58 @@ class PyMCWrapper:
             var = self._untransformed_model.named_vars[var_name]
             return tuple(d.eval() if hasattr(d, "eval") else d for d in var.shape)
         return None
+
+    def _apply_ufunc(
+        self,
+        func: Callable[..., Any],
+        var_name: str | None = None,
+        input_core_dims: list[list[str]] | None = None,
+        output_core_dims: list[list[str]] | None = None,
+        func_kwargs: dict | None = None,
+        **kwargs: Any,
+    ) -> xr.DataArray:
+        """This is a utility method that applies a function to posterior samples using
+        ``wrap_xarray_ufunc``."""
+        if not hasattr(self.idata, "posterior"):
+            raise PyMCWrapperError(
+                "InferenceData object must contain posterior samples. "
+                "The model does not appear to be fitted."
+            )
+
+        if input_core_dims is None:
+            input_core_dims = [["chain", "draw"]]
+        if output_core_dims is None:
+            output_core_dims = [["chain", "draw"]]
+
+        if var_name is not None:
+            if var_name not in self.idata.posterior:
+                raise PyMCWrapperError(
+                    f"Variable '{var_name}' not found in posterior. Available"
+                    f" variables: {list(self.idata.posterior.data_vars.keys())}"
+                )
+            data = self.idata.posterior[var_name]
+        else:
+            input_vars = kwargs.pop("input_vars", None)
+            if input_vars is not None:
+                for var in input_vars:
+                    if var not in self.idata.posterior:
+                        raise PyMCWrapperError(
+                            f"Variable '{var}' not found in posterior. Available"
+                            f" variables: {list(self.idata.posterior.data_vars.keys())}"
+                        )
+                    data = [self.idata.posterior[var] for var in input_vars]
+            else:
+                data = self.idata.posterior
+
+        result = wrap_xarray_ufunc(
+            func,
+            data if isinstance(data, list) else [data],
+            input_core_dims=input_core_dims,
+            output_core_dims=output_core_dims,
+            func_kwargs=func_kwargs,
+            **kwargs,
+        )
+        return result
 
     def _process_and_validate_indices(
         self, idx: int | np.ndarray | slice, n_obs: int
