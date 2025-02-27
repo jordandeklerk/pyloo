@@ -30,9 +30,7 @@ def kfold(
     r"""Perform K-fold cross-validation for Bayesian models.
 
     This function implements K-fold cross-validation for PyMC models, which is a robust
-    method for assessing model performance and generalizability. Unlike leave-one-out
-    cross-validation (LOO-CV), K-fold CV divides your data into K subsets (folds) and
-    iteratively uses each fold as a validation set while training on the remaining data.
+    method for assessing model performance and generalizability.
 
     K-fold CV is particularly useful when you have a moderate amount of data or when
     individual observations have strong influence on the model. It provides a more
@@ -73,7 +71,9 @@ def kfold(
 
     Examples
     --------
-    Let's start by creating a simple linear regression model with PyMC:
+    Let's walk through a complete example of using K-fold cross-validation with a simple linear regression model.
+
+    First, we'll import the necessary libraries and create some synthetic data:
 
     .. code-block:: python
 
@@ -81,7 +81,7 @@ def kfold(
         import numpy as np
         from pyloo import PyMCWrapper, kfold
 
-        # Generate synthetic data
+        # Generate synthetic data for a linear regression
         np.random.seed(42)
         x = np.random.normal(0, 1, size=100)
         true_alpha = 1.0
@@ -89,14 +89,31 @@ def kfold(
         true_sigma = 1.0
         y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
-        # Create and fit a PyMC model
+    Now that we have our data, let's create a PyMC model that represents our linear regression problem.
+    We'll use weakly informative priors for all parameters:
+
+    .. code-block:: python
+
         with pm.Model() as model:
+            # Define priors for unknown model parameters
             alpha = pm.Normal("alpha", mu=0, sigma=10)
             beta = pm.Normal("beta", mu=0, sigma=10)
             sigma = pm.HalfNormal("sigma", sigma=10)
+
+            # Define linear model
             mu = alpha + beta * x
+
+            # Define likelihood
             obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-            idata = pm.sample(1000, chains=2)
+
+            # Sample from the posterior
+            idata = pm.sample(1000, chains=4, return_inferencedata=True, idata_kwargs={"log_likelihood": True})
+
+    With our model fitted, we can now perform K-fold cross-validation to assess its predictive performance.
+    First, we'll create a PyMCWrapper object, which provides a standardized interface for working with
+    PyMC models in cross-validation:
+
+    .. code-block:: python
 
         # Create a PyMCWrapper and perform 5-fold cross-validation
         wrapper = PyMCWrapper(model, idata)
@@ -104,6 +121,10 @@ def kfold(
 
         # Print the results
         print(kfold_result)
+
+    The result contains various statistics about the model's predictive performance, including
+    the expected log pointwise predictive density (ELPD) and its standard error. These metrics
+    help you assess how well your model generalizes to unseen data.
     """
     wrapper = data
     original_idata = wrapper.idata
@@ -115,7 +136,13 @@ def kfold(
     n_obs = len(observed_data)
 
     scale, K, folds = _validate_kfold_inputs(data, K, folds, scale, n_obs)
-    scale_factor = _get_scale_factor(scale)
+
+    if scale == "deviance":
+        scale_factor = -2
+    elif scale == "negative_log":
+        scale_factor = -1
+    else:
+        scale_factor = 1
 
     log_lik_full = get_log_likelihood(original_idata, var_name=var_name)
 
@@ -144,9 +171,52 @@ def kfold(
                 fits = []
             fits.extend(fold_fits)
 
-    return _create_result_dict(
-        elpds, lpds_full, scale_factor, n_obs, log_lik_full, scale, fits, K
+    elpds = scale_factor * elpds
+    p_kfold = lpds_full - elpds / scale_factor
+
+    elpd_kfold = np.sum(elpds)
+    se = np.sqrt(n_obs * np.var(elpds))
+    p_kfold_sum = np.sum(p_kfold)
+    p_kfold_se = np.sqrt(n_obs * np.var(p_kfold))
+
+    kfoldic = -2 * elpds / scale_factor
+    pointwise = np.column_stack((elpds, p_kfold, kfoldic))
+
+    pointwise_df = xr.DataArray(
+        pointwise,
+        dims=("observation", "metric"),
+        coords={
+            "observation": np.arange(n_obs),
+            "metric": ["elpd_kfold", "p_kfold", "kfoldic"],
+        },
     )
+
+    result = {
+        "elpd_kfold": elpd_kfold,
+        "se": se,
+        "p_kfold": p_kfold_sum,
+        "se_p_kfold": p_kfold_se,
+        "n_samples": log_lik_full.sizes.get("chain", 1) * log_lik_full.sizes.get(
+            "draw", 1
+        ),
+        "n_data_points": n_obs,
+        "warning": False,
+        "kfold_i": pointwise_df.sel(metric="elpd_kfold"),
+        "scale": scale,
+        "looic": -2 * elpd_kfold / scale_factor,
+        "looic_se": 2 * se,
+    }
+
+    if fits is not None:
+        result["fits"] = fits
+
+    data_list = [result[key] for key in result.keys()]
+    index_list = list(result.keys())
+    elpd_data = ELPDData(data=data_list, index=index_list)
+    elpd_data.method = "kfold"
+    elpd_data.K = K
+
+    return elpd_data
 
 
 def kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:
@@ -265,7 +335,12 @@ def _validate_kfold_inputs(
         raise ValueError("Scale must be 'log', 'negative_log', or 'deviance'")
 
     if folds is None:
-        folds = _create_default_folds(n_obs, K)
+        folds = np.zeros(n_obs, dtype=int)
+        fold_size = n_obs // K
+        for k in range(K):
+            start = k * fold_size
+            end = (k + 1) * fold_size if k < K - 1 else n_obs
+            folds[start:end] = k + 1
     else:
         folds = np.asarray(folds)
         if len(folds) != n_obs:
@@ -285,27 +360,6 @@ def _validate_kfold_inputs(
         K = len(unique_folds)
 
     return scale, K, folds
-
-
-def _create_default_folds(n_obs: int, K: int) -> np.ndarray:
-    """Create default fold assignments."""
-    folds = np.zeros(n_obs, dtype=int)
-    fold_size = n_obs // K
-    for k in range(K):
-        start = k * fold_size
-        end = (k + 1) * fold_size if k < K - 1 else n_obs
-        folds[start:end] = k + 1
-    return folds
-
-
-def _get_scale_factor(scale: str) -> int:
-    """Get scale factor based on scale type."""
-    if scale == "deviance":
-        return -2
-    elif scale == "negative_log":
-        return -1
-    else:
-        return 1
 
 
 def _compute_lpds_full(log_lik_full: xr.DataArray) -> np.ndarray:
@@ -438,63 +492,3 @@ def _compute_fold_elpds(
             _log.warning(f"Error processing fold with no observation dimensions: {e}")
 
     return elpds
-
-
-def _create_result_dict(
-    elpds: np.ndarray,
-    lpds_full: np.ndarray,
-    scale_factor: int,
-    n_obs: int,
-    log_lik_full: xr.DataArray,
-    scale: str,
-    fits: list | None,
-    K: int,
-) -> ELPDData:
-    """Create result dictionary and ELPDData object."""
-    elpds = scale_factor * elpds
-
-    p_kfold = lpds_full - elpds / scale_factor
-
-    elpd_kfold = np.sum(elpds)
-    se = np.sqrt(n_obs * np.var(elpds))
-    p_kfold_sum = np.sum(p_kfold)
-    p_kfold_se = np.sqrt(n_obs * np.var(p_kfold))
-
-    kfoldic = -2 * elpds / scale_factor
-    pointwise = np.column_stack((elpds, p_kfold, kfoldic))
-
-    pointwise_df = xr.DataArray(
-        pointwise,
-        dims=("observation", "metric"),
-        coords={
-            "observation": np.arange(n_obs),
-            "metric": ["elpd_kfold", "p_kfold", "kfoldic"],
-        },
-    )
-
-    result = {
-        "elpd_kfold": elpd_kfold,
-        "se": se,
-        "p_kfold": p_kfold_sum,
-        "se_p_kfold": p_kfold_se,
-        "n_samples": log_lik_full.sizes.get("chain", 1) * log_lik_full.sizes.get(
-            "draw", 1
-        ),
-        "n_data_points": n_obs,
-        "warning": False,
-        "kfold_i": pointwise_df.sel(metric="elpd_kfold"),
-        "scale": scale,
-        "looic": -2 * elpd_kfold / scale_factor,
-        "looic_se": 2 * se,
-    }
-
-    if fits is not None:
-        result["fits"] = fits
-
-    data_list = [result[key] for key in result.keys()]
-    index_list = list(result.keys())
-    elpd_data = ELPDData(data=data_list, index=index_list)
-    elpd_data.method = "kfold"
-    elpd_data.K = K
-
-    return elpd_data
