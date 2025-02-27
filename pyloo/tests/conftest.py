@@ -360,6 +360,47 @@ def bernoulli_model():
 
 
 @pytest.fixture(scope="session")
+def large_regression_model():
+    """Create a large linear regression model with many observations for K-fold testing."""
+    rng = np.random.default_rng(42)
+    n_obs = 1000  # Large number of observations
+    n_predictors = 3  # Multiple predictors
+
+    # Generate predictors
+    X = rng.normal(0, 1, size=(n_obs, n_predictors))
+
+    # True parameter values
+    true_alpha = 1.5
+    true_betas = np.array([0.8, -0.5, 1.2])
+    true_sigma = 0.7
+
+    # Generate response variable
+    y = true_alpha + X @ true_betas + rng.normal(0, true_sigma, size=n_obs)
+
+    with pm.Model(
+        coords={"obs_id": range(n_obs), "predictor": range(n_predictors)}
+    ) as model:
+        # Priors
+        alpha = pm.Normal("alpha", mu=0, sigma=5)
+        betas = pm.Normal("betas", mu=0, sigma=2, dims="predictor")
+        sigma = pm.HalfNormal("sigma", sigma=3)
+
+        # Linear predictor
+        mu = alpha + pm.math.dot(X, betas)
+
+        # Likelihood
+        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        # Sample from posterior with reduced iterations for test efficiency
+        # while still ensuring adequate posterior exploration
+        idata = pm.sample(
+            draws=1000, tune=500, random_seed=42, idata_kwargs={"log_likelihood": True}
+        )
+
+    return model, idata
+
+
+@pytest.fixture(scope="session")
 def student_t_model():
     """Create a Student's T model for testing different likelihood types."""
     rng = np.random.default_rng(42)

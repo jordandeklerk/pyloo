@@ -404,9 +404,8 @@ def test_edge_cases_data_handling(simple_model):
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
-    selected, remaining = wrapper.select_observations(np.array([], dtype=int))
-    assert selected.shape[0] == 0
-    assert remaining.shape[0] == 100
+    with pytest.raises(IndexError, match="Empty index array provided"):
+        wrapper.select_observations(np.array([], dtype=int))
 
     selected, remaining = wrapper.select_observations(np.arange(100, dtype=int))
     assert selected.shape[0] == 100
@@ -418,10 +417,10 @@ def test_edge_cases_data_handling(simple_model):
     assert selected.shape[0] == 50
     assert remaining.shape[0] == 50
 
-    with pytest.raises(IndexError, match="Index .* is out of bounds"):
+    with pytest.raises(IndexError, match="All indices are out of bounds for axis"):
         wrapper.select_observations(np.array([100], dtype=int))
 
-    with pytest.raises(IndexError, match="Negative indices"):
+    with pytest.raises(IndexError, match="All indices are out of bounds for axis"):
         wrapper.select_observations(np.array([-1], dtype=int))
 
 

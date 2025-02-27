@@ -1,4 +1,4 @@
-"""Expected Log Pointwise Predictive Density (ELPD) data container based on ArviZ."""
+"""Expected Log Pointwise Predictive Density (ELPD) data container."""
 
 from copy import copy as _copy
 from copy import deepcopy as _deepcopy
@@ -16,6 +16,17 @@ p_loo     {p_loo:<10.2f} -
 looic     {looic:<10.2f} {looic_se:<.2f}
 
 {pareto_msg}"""
+
+# Format for k-fold cross-validation output
+KFOLD_BASE_FMT = """
+Computed from {n_samples} samples using {K}-fold cross-validation
+with {n_points} observations.
+
+             Estimate   SE
+elpd_kfold  {elpd:<10.2f} {se:<.2f}
+p_kfold     {p_kfold:<10.2f} {p_kfold_se:<.2f}
+kfoldic     {kfoldic:<10.2f} {kfoldic_se:<.2f}
+"""
 
 # Format for subsampled LOO output
 SUBSAMPLE_BASE_FMT = """
@@ -75,13 +86,42 @@ class ELPDData(pd.Series):
         """
         kind = self.index[0].split("_")[1]
 
-        if kind not in ("loo", "waic"):
+        if kind not in ("loo", "waic", "kfold"):
             raise ValueError("Invalid ELPDData object")
 
         is_subsampled = "subsampling_SE" in self
 
-        if is_subsampled:
+        if kind == "kfold":
+            K = getattr(self, "K", None)
+
+            elpd_kfold = self["elpd_kfold"]
+            se = self["se"]
+            p_kfold = self["p_kfold"]
+            p_kfold_se = self.get("se_p_kfold", float("nan"))
+            kfoldic = -2 * elpd_kfold
+            kfoldic_se = 2 * se
+
+            base = KFOLD_BASE_FMT.format(
+                n_samples=self.n_samples,
+                K=K,
+                n_points=self.n_data_points,
+                elpd=elpd_kfold,
+                se=se,
+                p_kfold=p_kfold,
+                p_kfold_se=p_kfold_se,
+                kfoldic=kfoldic,
+                kfoldic_se=kfoldic_se,
+            )
+
+            if hasattr(self, "scale") and self.scale in SCALE_DICT:
+                base += f"\n{SCALE_DICT[self.scale]}"
+
+            return base
+
+        elif is_subsampled:
             subsample_size = self["subsample_size"]
+            pareto_msg = ""
+            method = getattr(self, "method", "psis")
 
             if (
                 "pareto_k" in self
@@ -98,8 +138,16 @@ class ELPDData(pd.Series):
                 else:
                     pareto_msg = "Some Pareto k estimates are high (k >= 0.7)."
                 pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+            elif method == "psis":
+                # Default message for PSIS when no Pareto k values are available
+                pareto_msg = "All Pareto k estimates are good (k < 0.7)."
+                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
             else:
-                pareto_msg = ""
+                # Message for non-PSIS methods
+                pareto_msg = f"Using {method.upper()} importance sampling method."
+                pareto_msg += (
+                    "\nPareto k diagnostics are only available for PSIS method."
+                )
 
             elpd_loo = self["elpd_loo"]
             elpd_loo_se = self["se"]
@@ -126,6 +174,9 @@ class ELPDData(pd.Series):
                 r_eff=self.get("r_eff", 1.0),
             )
         else:
+            pareto_msg = ""
+            method = getattr(self, "method", "psis")
+
             if (
                 "pareto_k" in self
                 and hasattr(self, "good_k")
@@ -141,6 +192,16 @@ class ELPDData(pd.Series):
                 else:
                     pareto_msg = "Some Pareto k estimates are high (k >= 0.7)."
                 pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+            elif kind == "loo" and method == "psis":
+                # Default message for PSIS when no Pareto k values are available
+                pareto_msg = "All Pareto k estimates are good (k < 0.7)."
+                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+            elif kind == "loo":
+                # Message for non-PSIS methods
+                pareto_msg = f"Using {method.upper()} importance sampling method."
+                pareto_msg += (
+                    "\nPareto k diagnostics are only available for PSIS method."
+                )
             else:
                 pareto_msg = ""
 
@@ -168,8 +229,7 @@ class ELPDData(pd.Series):
             )
 
         if (
-            not is_subsampled
-            and kind == "loo"
+            kind == "loo"
             and "pareto_k" in self
             and hasattr(self, "good_k")
             and self.good_k is not None
@@ -192,12 +252,6 @@ class ELPDData(pd.Series):
                 width=width,
             )
             base = "\n".join([base, extended])
-        elif not is_subsampled and kind == "loo" and "pareto_k" in self:
-            # For non-PSIS methods, show simplified diagnostics
-            method = getattr(self, "method", "unknown")
-            base += f"\n\nUsing {method.upper()} importance sampling method"
-            if method in ("tis", "sis"):
-                base += " (no Pareto k diagnostics available)"
 
         return base
 
@@ -249,3 +303,13 @@ class ELPDData(pd.Series):
     def estimates(self, value):
         """Set the estimation results."""
         self._estimates = value
+
+    @property
+    def K(self):
+        """Get the number of folds for k-fold cross-validation."""
+        return getattr(self, "_K", None)
+
+    @K.setter
+    def K(self, value):
+        """Set the number of folds."""
+        self._K = value

@@ -471,7 +471,7 @@ class PyMCWrapper:
         self, idx: int | np.ndarray | slice, n_obs: int
     ) -> tuple[np.ndarray, bool]:
         """Process and validate indices for log likelihood computation."""
-        if isinstance(idx, int):
+        if isinstance(idx, (int, np.integer)):
             if idx < 0 or idx >= n_obs:
                 raise IndexError(
                     f"Index {idx} is out of bounds for axis 0 with size {n_obs}"
@@ -522,7 +522,7 @@ class PyMCWrapper:
                 else:
                     indices = idx.astype(int)
 
-                single_idx = len(indices) == 1 and isinstance(idx, int)
+                single_idx = len(indices) == 1 and isinstance(idx[0], (int, np.integer))
         else:
             raise PyMCWrapperError(f"Unsupported index type: {type(idx)}")
 
@@ -1085,20 +1085,29 @@ class PyMCWrapper:
 
         # Integer array input
         indices = np.asarray(indices, dtype=np.int64)
-        if indices.size > 0:
-            if np.any(indices < 0):
-                raise IndexError(
-                    "Negative indices are not allowed. Found indices:"
-                    f" {indices[indices < 0]}"
-                )
-            if np.any(indices >= length):
-                raise IndexError(
-                    f"Index {max(indices)} is out of bounds for axis {axis}"
-                    f" with size {length}"
-                )
+
+        if indices.size == 0:
+            raise IndexError("Empty index array provided")
 
         mask = np.zeros(length, dtype=bool)
-        np.put(mask, indices, True)
+        valid_mask = (indices >= 0) & (indices < length)
+
+        if not np.any(valid_mask):
+            raise IndexError(
+                f"All indices are out of bounds for axis {axis} with size {length}"
+            )
+
+        if not np.all(valid_mask):
+            invalid_indices = indices[~valid_mask]
+            warnings.warn(
+                f"Some indices {invalid_indices} are out of bounds for axis {axis}"
+                f" with size {length}. These indices will be ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        valid_indices = indices[valid_mask]
+        mask[valid_indices] = True
         return mask
 
     def _validate_model_state(self) -> None:
