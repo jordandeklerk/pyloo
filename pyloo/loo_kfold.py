@@ -27,10 +27,7 @@ def kfold(
     progressbar: bool = True,
     **kwargs: Any,
 ) -> ELPDData:
-    r"""Perform K-fold cross-validation for Bayesian models.
-
-    This function implements K-fold cross-validation for PyMC models, which is a robust
-    method for assessing model performance and generalizability.
+    r"""Perform K-fold cross-validation for PyMC models.
 
     K-fold CV is particularly useful when you have a moderate amount of data or when
     individual observations have strong influence on the model. It provides a more
