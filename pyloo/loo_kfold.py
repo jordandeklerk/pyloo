@@ -73,15 +73,12 @@ def kfold(
     --------
     Let's walk through a complete example of using K-fold cross-validation with a simple linear regression model.
 
-    First, we'll import the necessary libraries and create some synthetic data:
-
     .. code-block:: python
 
         import pymc as pm
         import numpy as np
         from pyloo import PyMCWrapper, kfold
 
-        # Generate synthetic data for a linear regression
         np.random.seed(42)
         x = np.random.normal(0, 1, size=100)
         true_alpha = 1.0
@@ -89,24 +86,19 @@ def kfold(
         true_sigma = 1.0
         y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
-    Now that we have our data, let's create a PyMC model that represents our linear regression problem.
+    Let's create a PyMC model that represents our linear regression problem.
     We'll use weakly informative priors for all parameters:
 
     .. code-block:: python
 
         with pm.Model() as model:
-            # Define priors for unknown model parameters
             alpha = pm.Normal("alpha", mu=0, sigma=10)
             beta = pm.Normal("beta", mu=0, sigma=10)
             sigma = pm.HalfNormal("sigma", sigma=10)
 
-            # Define linear model
             mu = alpha + beta * x
-
-            # Define likelihood
             obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
 
-            # Sample from the posterior
             idata = pm.sample(1000, chains=4, return_inferencedata=True, idata_kwargs={"log_likelihood": True})
 
     With our model fitted, we can now perform K-fold cross-validation to assess its predictive performance.
@@ -115,16 +107,57 @@ def kfold(
 
     .. code-block:: python
 
-        # Create a PyMCWrapper and perform 5-fold cross-validation
         wrapper = PyMCWrapper(model, idata)
         kfold_result = kfold(wrapper, K=5)
-
-        # Print the results
-        print(kfold_result)
 
     The result contains various statistics about the model's predictive performance, including
     the expected log pointwise predictive density (ELPD) and its standard error. These metrics
     help you assess how well your model generalizes to unseen data.
+
+    For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide
+    more reliable performance estimates:
+
+    .. code-block:: python
+
+        import pymc as pm
+        import numpy as np
+        from pyloo import PyMCWrapper, kfold, kfold_split_stratified
+
+        np.random.seed(42)
+        n_samples = 200
+
+        # Create imbalanced binary outcome (30% class 1, 70% class 0)
+        y = np.random.binomial(1, 0.3, size=n_samples)
+
+        # Create a feature that's correlated with the outcome
+        x1 = np.random.normal(y, 1.0)
+        # Add another independent feature
+        x2 = np.random.normal(0, 1.0, size=n_samples)
+
+        X = np.column_stack((x1, x2))
+
+        # Create a PyMC model for logistic regression
+        with pm.Model() as model:
+            alpha = pm.Normal("alpha", mu=0, sigma=2)
+            beta = pm.Normal("beta", mu=0, sigma=2, shape=2)
+
+            logit_p = alpha + pm.math.dot(X, beta)
+            obs = pm.Bernoulli("y", logit_p=logit_p, observed=y)
+
+            idata = pm.sample(1000, chains=2, return_inferencedata=True, idata_kwargs={"log_likelihood": True})
+
+        wrapper = PyMCWrapper(model, idata)
+
+        # Create stratified folds based on the outcome variable
+        # This ensures each fold has a similar proportion of class 0 and class 1
+        K = 5
+        stratified_folds = kfold_split_stratified(K=K, x=y, seed=123)
+
+        kfold_result = kfold(wrapper, K=K, folds=stratified_folds)
+
+    Using stratified folds ensures that each fold maintains approximately the same class distribution
+    as the original dataset, which is especially important for imbalanced datasets or when the outcome
+    variable has a strong relationship with certain features.
     """
     wrapper = data
     original_idata = wrapper.idata

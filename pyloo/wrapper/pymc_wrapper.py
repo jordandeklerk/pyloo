@@ -3,7 +3,7 @@
 import copy
 import logging
 import warnings
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 import pymc as pm
@@ -12,6 +12,8 @@ import xarray as xr
 from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
+
+from ..utils import wrap_xarray_ufunc
 
 __all__ = ["PyMCWrapper"]
 
@@ -233,7 +235,6 @@ class PyMCWrapper:
                     f" {expected_shape}, got: {values.shape}"
                 )
 
-            # Create a copy of the data to ensure independence
             values = values.copy()
 
             if mask is not None and var_name in mask:
@@ -297,7 +298,6 @@ class PyMCWrapper:
                             )
 
             self.observed_data[var_name] = values
-            # Make data immutable
             if isinstance(values, np.ndarray):
                 values.flags.writeable = False
 
@@ -383,10 +383,10 @@ class PyMCWrapper:
             wrapper = PyMCWrapper(model, idata)
             idata = wrapper.sample_posterior(draws=1000, tune=1000, chains=2, target_accept=0.9)
 
-            # For a single observation
+            # Single observation
             log_like_i = wrapper.log_likelihood_i(10, idata)
 
-            # For multiple observations
+            # Multiple observations
             indices = np.array([10, 20, 30])
             log_like_multiple = wrapper.log_likelihood_i(indices, idata)
 
@@ -466,136 +466,6 @@ class PyMCWrapper:
                     self.set_data({var_name: original_data}, coords=orig_coords)
                 else:
                     self.set_data({var_name: original_data})
-
-    def _process_and_validate_indices(
-        self, idx: int | np.ndarray | slice, n_obs: int
-    ) -> tuple[np.ndarray, bool]:
-        """Process and validate indices for log likelihood computation."""
-        if isinstance(idx, (int, np.integer)):
-            if idx < 0 or idx >= n_obs:
-                raise IndexError(
-                    f"Index {idx} is out of bounds for axis 0 with size {n_obs}"
-                )
-            indices = np.array([idx], dtype=int)
-            single_idx = True
-        elif isinstance(idx, slice):
-            start, stop, step = idx.indices(n_obs)
-
-            if stop > n_obs:
-                warnings.warn(
-                    f"Slice end index {idx.stop} is out of bounds for axis 0 with size"
-                    f" {n_obs}. Only indices up to {n_obs - 1} will be used.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-
-            indices = np.arange(start, min(stop, n_obs), step, dtype=int)
-            single_idx = False
-        elif isinstance(idx, np.ndarray):
-            if idx.dtype == bool:
-                if len(idx) != n_obs:
-                    raise IndexError(
-                        f"Boolean mask length {len(idx)} does not match "
-                        f"data shape {n_obs} along axis 0"
-                    )
-                indices = np.where(idx)[0]
-                single_idx = False
-            else:
-                if len(idx) == 0:
-                    raise IndexError("Empty index array provided")
-
-                invalid_indices = (idx < 0) | (idx >= n_obs)
-                if np.any(invalid_indices):
-                    out_of_bounds = idx[invalid_indices]
-                    warnings.warn(
-                        f"Some indices {out_of_bounds} are out of bounds for axis 0"
-                        f" with size {n_obs}. These indices will be ignored.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                    indices = idx[~invalid_indices].astype(int)
-                    if len(indices) == 0:
-                        raise IndexError(
-                            f"All indices {idx} are out of bounds for axis 0 with size"
-                            f" {n_obs}"
-                        )
-                else:
-                    indices = idx.astype(int)
-
-                single_idx = len(indices) == 1 and isinstance(idx[0], (int, np.integer))
-        else:
-            raise PyMCWrapperError(f"Unsupported index type: {type(idx)}")
-
-        return indices, single_idx
-
-    def _format_log_likelihood_result(
-        self,
-        log_like_i: xr.DataArray,
-        indices: np.ndarray,
-        single_idx: bool,
-        original_idx: int | np.ndarray | slice,
-        holdout_data: np.ndarray,
-        n_obs: int,
-        var_name: str,
-    ) -> xr.DataArray:
-        """Format log likelihood results based on index type."""
-        if single_idx and isinstance(original_idx, int):
-            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
-
-            for dim in obs_dims:
-                log_like_i = log_like_i.isel({dim: 0})
-
-            if obs_dims and obs_dims[0] in log_like_i.coords:
-                log_like_i.coords[obs_dims[0]] = original_idx
-
-            log_like_i.attrs["observation_index"] = original_idx
-            return log_like_i
-
-        chains = log_like_i.sizes.get("chain", 1)
-        draws = log_like_i.sizes.get("draw", 1)
-        result_data = np.zeros((chains, draws, len(indices)))
-
-        obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
-
-        if not obs_dims:
-            for i in range(len(indices)):
-                result_data[:, :, i] = log_like_i.values
-
-        else:
-            obs_dim = obs_dims[0]
-            obs_size = log_like_i.sizes[obs_dim]
-
-            for i, idx_val in enumerate(indices):
-                try:
-                    if obs_size == len(holdout_data):
-                        index_to_use = min(i, obs_size - 1)
-                        result_data[:, :, i] = log_like_i.isel(
-                            {obs_dim: index_to_use}
-                        ).values
-
-                    elif obs_size == n_obs:
-                        index_to_use = min(idx_val, obs_size - 1)
-                        result_data[:, :, i] = log_like_i.isel(
-                            {obs_dim: index_to_use}
-                        ).values
-
-                    else:
-                        result_data[:, :, i] = log_like_i.isel({obs_dim: 0}).values
-
-                except Exception:
-                    result_data[:, :, i] = log_like_i.isel({obs_dim: 0}).values
-
-        return xr.DataArray(
-            result_data,
-            dims=("chain", "draw", "obs_idx"),
-            coords={
-                "chain": log_like_i.coords.get("chain", np.arange(chains)),
-                "draw": log_like_i.coords.get("draw", np.arange(draws)),
-                "obs_idx": indices,
-            },
-            attrs={"observation_indices": indices.tolist()},
-            name=var_name,
-        )
 
     def sample_posterior(
         self,
@@ -695,8 +565,8 @@ class PyMCWrapper:
         Transformation details depend on the parameter's domain constraints. For variables restricted
         to positive values (e.g., HalfNormal, Gamma), a logarithmic transformation is applied
         as $\theta' = \log(\theta)$. For variables restricted to the unit interval $[0, 1]$ (e.g., Beta),
-        a logit transformation is used, calculated as $\theta' = \log\left(\frac{\theta}{1-\theta}\right)$.
-        For variables with an unbounded domain (e.g., Normal), no transformation is necessary
+        a logit transformation is used, calculated as $\theta' = \log\left(\frac{\theta}{1-\theta}\right)$. For variables
+        with an unbounded domain (e.g., Normal), no transformation is necessary
         and the identity mapping is applied as $\theta' = \theta$.
 
         Returns
@@ -756,23 +626,16 @@ class PyMCWrapper:
             if var_name not in self.idata.posterior:
                 continue
 
-            param_samples = self.idata.posterior[var_name]
-            # Get transform from model's rvs_to_transforms dict
             transform = self.model.rvs_to_transforms.get(var, None)
 
             try:
                 if transform is None:
-                    # No transform available, use original values
-                    unconstrained_samples = param_samples.copy()
+                    unconstrained_samples = self.idata.posterior[var_name].copy()
                 else:
-                    # Apply backward transformation to get unconstrained space
-                    samples_np = param_samples.values
-                    unconstrained_np = transform.backward(samples_np).eval()
-                    unconstrained_samples = xr.DataArray(
-                        unconstrained_np,
-                        dims=param_samples.dims,
-                        coords=param_samples.coords,
-                        name=param_samples.name,
+                    unconstrained_samples = self._apply_ufunc(
+                        self._apply_backward_transform,
+                        var_name=var_name,
+                        func_kwargs={"transform": transform},
                     )
             except Exception as e:
                 logger.warning(
@@ -780,10 +643,9 @@ class PyMCWrapper:
                     var_name,
                     str(e),
                 )
-                unconstrained_samples = param_samples.copy()
+                unconstrained_samples = self.idata.posterior[var_name].copy()
 
             unconstrained_params[var_name] = unconstrained_samples
-
         return unconstrained_params
 
     def constrain_parameters(
@@ -885,14 +747,20 @@ class PyMCWrapper:
                 constrained = unconstrained.copy()
             else:
                 try:
-                    # Apply forward transformation to get constrained space
-                    unconstrained_np = unconstrained.values
-                    constrained_np = transform.forward(unconstrained_np).eval()
-                    constrained = xr.DataArray(
-                        constrained_np,
-                        dims=unconstrained.dims,
-                        coords=unconstrained.coords,
-                        name=unconstrained.name,
+                    param_dims = [
+                        dim
+                        for dim in unconstrained.dims
+                        if dim not in ("chain", "draw")
+                    ]
+                    input_core_dims = [["chain", "draw"] + param_dims]
+                    output_core_dims = [["chain", "draw"] + param_dims]
+
+                    constrained = wrap_xarray_ufunc(
+                        self._apply_forward_transform,
+                        unconstrained,
+                        input_core_dims=input_core_dims,
+                        output_core_dims=output_core_dims,
+                        func_kwargs={"transform": transform},
                     )
                 except Exception as e:
                     logger.warning(
@@ -904,8 +772,59 @@ class PyMCWrapper:
                     constrained = unconstrained.copy()
 
             constrained_params[var_name] = constrained
-
         return constrained_params
+
+    def _apply_ufunc(
+        self,
+        func: Callable[..., Any],
+        var_name: str | None = None,
+        input_core_dims: list[list[str]] | None = None,
+        output_core_dims: list[list[str]] | None = None,
+        func_kwargs: dict | None = None,
+        **kwargs: Any,
+    ) -> xr.DataArray:
+        """This is a utility method that applies a function to posterior samples using
+        ``wrap_xarray_ufunc``."""
+        if not hasattr(self.idata, "posterior"):
+            raise PyMCWrapperError(
+                "InferenceData object must contain posterior samples. "
+                "The model does not appear to be fitted."
+            )
+
+        if input_core_dims is None:
+            input_core_dims = [["chain", "draw"]]
+        if output_core_dims is None:
+            output_core_dims = [["chain", "draw"]]
+
+        if var_name is not None:
+            if var_name not in self.idata.posterior:
+                raise PyMCWrapperError(
+                    f"Variable '{var_name}' not found in posterior. Available"
+                    f" variables: {list(self.idata.posterior.data_vars.keys())}"
+                )
+            data = self.idata.posterior[var_name]
+        else:
+            input_vars = kwargs.pop("input_vars", None)
+            if input_vars is not None:
+                for var in input_vars:
+                    if var not in self.idata.posterior:
+                        raise PyMCWrapperError(
+                            f"Variable '{var}' not found in posterior. Available"
+                            f" variables: {list(self.idata.posterior.data_vars.keys())}"
+                        )
+                    data = [self.idata.posterior[var] for var in input_vars]
+            else:
+                data = self.idata.posterior
+
+        result = wrap_xarray_ufunc(
+            func,
+            data if isinstance(data, list) else [data],
+            input_core_dims=input_core_dims,
+            output_core_dims=output_core_dims,
+            func_kwargs=func_kwargs,
+            **kwargs,
+        )
+        return result
 
     def get_draws(self) -> np.ndarray:
         """Get all draws from the posterior.
@@ -1035,7 +954,6 @@ class PyMCWrapper:
             dims = self.idata.observed_data[self.get_observed_name()].dims
             if dims:
                 return tuple(dims)
-
         return None
 
     def get_shape(self, var_name: str) -> tuple[int, ...] | None:
@@ -1062,6 +980,139 @@ class PyMCWrapper:
             var = self._untransformed_model.named_vars[var_name]
             return tuple(d.eval() if hasattr(d, "eval") else d for d in var.shape)
         return None
+
+    def _process_and_validate_indices(
+        self, idx: int | np.ndarray | slice, n_obs: int
+    ) -> tuple[np.ndarray, bool]:
+        """Process and validate indices for log likelihood computation."""
+        if isinstance(idx, (int, np.integer)):
+            if idx < 0 or idx >= n_obs:
+                raise IndexError(
+                    f"Index {idx} is out of bounds for axis 0 with size {n_obs}"
+                )
+            indices = np.array([idx], dtype=int)
+            single_idx = True
+        elif isinstance(idx, slice):
+            start, stop, step = idx.indices(n_obs)
+
+            if stop > n_obs:
+                warnings.warn(
+                    f"Slice end index {idx.stop} is out of bounds for axis 0 with size"
+                    f" {n_obs}. Only indices up to {n_obs - 1} will be used.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+            indices = np.arange(start, min(stop, n_obs), step, dtype=int)
+            single_idx = False
+        elif isinstance(idx, np.ndarray):
+            if idx.dtype == bool:
+                if len(idx) != n_obs:
+                    raise IndexError(
+                        f"Boolean mask length {len(idx)} does not match "
+                        f"data shape {n_obs} along axis 0"
+                    )
+                indices = np.where(idx)[0]
+                single_idx = False
+            else:
+                if len(idx) == 0:
+                    raise IndexError("Empty index array provided")
+
+                invalid_indices = (idx < 0) | (idx >= n_obs)
+                if np.any(invalid_indices):
+                    out_of_bounds = idx[invalid_indices]
+                    warnings.warn(
+                        f"Some indices {out_of_bounds} are out of bounds for axis 0"
+                        f" with size {n_obs}. These indices will be ignored.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    indices = idx[~invalid_indices].astype(int)
+                    if len(indices) == 0:
+                        raise IndexError(
+                            f"All indices {idx} are out of bounds for axis 0 with size"
+                            f" {n_obs}"
+                        )
+                else:
+                    indices = idx.astype(int)
+
+                single_idx = len(indices) == 1 and isinstance(idx[0], (int, np.integer))
+        else:
+            raise PyMCWrapperError(f"Unsupported index type: {type(idx)}")
+        return indices, single_idx
+
+    def _format_log_likelihood_result(
+        self,
+        log_like_i: xr.DataArray,
+        indices: np.ndarray,
+        single_idx: bool,
+        original_idx: int | np.ndarray | slice,
+        holdout_data: np.ndarray,
+        n_obs: int,
+        var_name: str,
+    ) -> xr.DataArray:
+        """Format log likelihood results based on index type."""
+        if single_idx and isinstance(original_idx, int):
+            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+
+            for dim in obs_dims:
+                log_like_i = log_like_i.isel({dim: 0})
+
+            if obs_dims and obs_dims[0] in log_like_i.coords:
+                log_like_i.coords[obs_dims[0]] = original_idx
+
+            log_like_i.attrs["observation_index"] = original_idx
+            return log_like_i
+
+        chains = log_like_i.sizes.get("chain", 1)
+        draws = log_like_i.sizes.get("draw", 1)
+
+        obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+
+        if not obs_dims:
+            values = np.zeros((chains, draws, len(indices)))
+
+            for i in range(len(indices)):
+                values[:, :, i] = log_like_i.values
+
+            result = xr.DataArray(
+                values,
+                dims=["chain", "draw", "obs_idx"],
+                coords={
+                    "chain": log_like_i.coords.get("chain", np.arange(chains)),
+                    "draw": log_like_i.coords.get("draw", np.arange(draws)),
+                    "obs_idx": indices,
+                },
+                name=var_name,
+            )
+        else:
+            obs_dim = obs_dims[0]
+            obs_size = log_like_i.sizes[obs_dim]
+            values = np.zeros((chains, draws, len(indices)))
+
+            for i, idx_val in enumerate(indices):
+                if obs_size == len(holdout_data):
+                    index_to_use = min(i, obs_size - 1)
+                elif obs_size == n_obs:
+                    index_to_use = min(idx_val, obs_size - 1)
+                else:
+                    index_to_use = 0
+
+                values[:, :, i] = log_like_i.isel({obs_dim: index_to_use}).values
+
+            result = xr.DataArray(
+                values,
+                dims=["chain", "draw", "obs_idx"],
+                coords={
+                    "chain": log_like_i.coords.get("chain", np.arange(chains)),
+                    "draw": log_like_i.coords.get("draw", np.arange(draws)),
+                    "obs_idx": indices,
+                },
+                name=var_name,
+            )
+
+        result.attrs["observation_indices"] = indices.tolist()
+        return result
 
     def _create_selection_mask(
         self, indices: np.ndarray | slice, length: int, axis: int
@@ -1217,3 +1268,11 @@ class PyMCWrapper:
                     f"Coordinate length {len(coords[dim])} for dimension {dim} "
                     f"does not match variable shape {size} for {var_name}"
                 )
+
+    def _apply_backward_transform(self, x, transform):
+        """Apply backward transformation to convert from constrained to unconstrained space."""
+        return transform.backward(x).eval()
+
+    def _apply_forward_transform(self, x, transform):
+        """Apply forward transformation to convert from unconstrained to constrained space."""
+        return transform.forward(x).eval()
