@@ -3,7 +3,7 @@
 from .elpd import ELPDData
 from .importance_sampling import ISMethod, compute_importance_weights
 from .loo import loo
-from .loo_kfold import kfold, kfold_split_random, kfold_split_stratified
+from .loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
 from .psis import psislw
 from .reloo import reloo
 from .sis import sislw
@@ -15,8 +15,8 @@ __all__ = [
     "ELPDData",
     "ISMethod",
     "kfold",
-    "kfold_split_random",
-    "kfold_split_stratified",
+    "_kfold_split_random",
+    "_kfold_split_stratified",
     "loo",
     "PyMCWrapper",
     "psislw",

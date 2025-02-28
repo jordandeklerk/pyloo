@@ -20,11 +20,11 @@ looic     {looic:<10.2f} {looic_se:<.2f}
 # Format for k-fold cross-validation output
 KFOLD_BASE_FMT = """
 Computed from {n_samples} samples using {K}-fold cross-validation
-with {n_points} observations.
+with {n_points} observations.{stratify_msg}
 
              Estimate   SE
 elpd_kfold  {elpd:<10.2f} {se:<.2f}
-p_kfold     {p_kfold:<10.2f} {p_kfold_se:<.2f}
+p_kfold     {p_kfold:<10.2f} -
 kfoldic     {kfoldic:<10.2f} {kfoldic_se:<.2f}
 """
 
@@ -101,6 +101,10 @@ class ELPDData(pd.Series):
             kfoldic = -2 * elpd_kfold
             kfoldic_se = 2 * se
 
+            stratify_msg = ""
+            if self.stratified:
+                stratify_msg = " Using stratified k-fold cross-validation"
+
             base = KFOLD_BASE_FMT.format(
                 n_samples=self.n_samples,
                 K=K,
@@ -111,6 +115,7 @@ class ELPDData(pd.Series):
                 p_kfold_se=p_kfold_se,
                 kfoldic=kfoldic,
                 kfoldic_se=kfoldic_se,
+                stratify_msg=stratify_msg,
             )
 
             if hasattr(self, "scale") and self.scale in SCALE_DICT:
@@ -313,3 +318,13 @@ class ELPDData(pd.Series):
     def K(self, value):
         """Set the number of folds."""
         self._K = value
+
+    @property
+    def stratified(self):
+        """Get whether stratified k-fold cross-validation was used."""
+        return getattr(self, "_stratified", False)
+
+    @stratified.setter
+    def stratified(self, value):
+        """Set whether stratified k-fold cross-validation was used."""
+        self._stratified = value

@@ -424,31 +424,91 @@ def loo_subsample(
         np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
     )
 
-    base_data = {
-        "elpd_loo": estimates.y_hat,
-        "se": se,  # Total uncertainty (approximation + sampling)
-        "p_loo": p_loo,
-        "n_samples": n_samples,
-        "n_data_points": n_data_points,
-        "warning": warn_mg,
-        "scale": scale,
-        "good_k": good_k,
-        "subsampling_SE": subsampling_se,  # Only subsampling uncertainty
-        "subsample_size": len(indices.idx),
-        "looic": -2 * estimates.y_hat,
-        "looic_se": 2 * se,
-        "looic_subsamp_se": 2 * subsampling_se,
-    }
+    looic = -2 * estimates.y_hat
+    looic_se = 2 * se
+    looic_subsamp_se = 2 * subsampling_se
 
-    if pointwise:
-        base_data.update({
-            "loo_i": xr.DataArray(loo_lppd_i_full, name="loo_i"),
-            "pareto_k": diagnostic,
-        })
+    result_data: list[Any] = []
+    result_index: list[str] = []
 
-    data = [base_data[k] for k in base_data.keys()]
-    index = list(base_data.keys())
-    result = ELPDData(data=data, index=index)
+    if not pointwise:
+        result_data = [
+            estimates.y_hat,  # elpd_loo
+            se,  # Total uncertainty (approximation + sampling)
+            p_loo,
+            n_samples,
+            n_data_points,
+            warn_mg,
+            scale,
+            good_k,
+            subsampling_se,  # Only subsampling uncertainty
+            len(indices.idx),  # subsample_size
+            looic,
+            looic_se,
+            looic_subsamp_se,
+            "loo_subsample",  # method
+        ]
+
+        result_index = [
+            "elpd_loo",
+            "se",
+            "p_loo",
+            "n_samples",
+            "n_data_points",
+            "warning",
+            "scale",
+            "good_k",
+            "subsampling_SE",
+            "subsample_size",
+            "looic",
+            "looic_se",
+            "looic_subsamp_se",
+            "method",
+        ]
+
+        result = ELPDData(data=result_data, index=result_index)
+    else:
+        loo_i = xr.DataArray(loo_lppd_i_full, name="loo_i")
+
+        result_data = [
+            estimates.y_hat,
+            se,
+            p_loo,
+            n_samples,
+            n_data_points,
+            warn_mg,
+            loo_i,
+            scale,
+            good_k,
+            subsampling_se,
+            len(indices.idx),
+            looic,
+            looic_se,
+            looic_subsamp_se,
+            diagnostic,
+            "loo_subsample",
+        ]
+
+        result_index = [
+            "elpd_loo",
+            "se",
+            "p_loo",
+            "n_samples",
+            "n_data_points",
+            "warning",
+            "loo_i",
+            "scale",
+            "good_k",
+            "subsampling_SE",
+            "subsample_size",
+            "looic",
+            "looic_se",
+            "looic_subsamp_se",
+            "pareto_k",
+            "method",
+        ]
+
+        result = ELPDData(data=result_data, index=result_index)
 
     result.estimates = estimates
     result.estimates.data = inference_data
@@ -456,6 +516,7 @@ def loo_subsample(
     result.estimates.estimator = estimator
     result.estimates.loo_approximation_draws = loo_approximation_draws
     result.estimates.var_name = var_name
+    result.method = "loo_subsample"
 
     return result
 

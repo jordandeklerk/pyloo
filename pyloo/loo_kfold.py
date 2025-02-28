@@ -12,7 +12,7 @@ from .elpd import ELPDData
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
 from .wrapper.pymc_wrapper import PyMCWrapper
 
-__all__ = ["kfold", "kfold_split_random", "kfold_split_stratified"]
+__all__ = ["kfold"]
 
 _log = logging.getLogger(__name__)
 
@@ -25,6 +25,8 @@ def kfold(
     scale: str | None = None,
     save_fits: bool = False,
     progressbar: bool = True,
+    stratify: np.ndarray | None = None,
+    random_seed: int | None = None,
     **kwargs: Any,
 ) -> ELPDData:
     r"""Perform K-fold cross-validation for PyMC models.
@@ -42,6 +44,7 @@ def kfold(
     folds : np.ndarray | None
         Optional pre-specified fold assignments. If None, folds are created randomly.
         Fold indices must be integers from 1 to K.
+        If provided, this overrides the stratify parameter.
     var_name : str | None
         Name of the observed variable to use. If None, uses the first observed variable.
     scale : str | None
@@ -50,6 +53,12 @@ def kfold(
         Whether to save the fitted models for each fold (default: False)
     progressbar : bool
         Whether to display a progress bar during fitting (default: True)
+    stratify : np.ndarray | None
+        Array of values to use for stratified k-fold cross-validation. If provided,
+        folds will be created to preserve the distribution of these values across folds.
+        Ignored if folds is not None.
+    random_seed : int | None
+        Random seed for reproducibility when creating folds. Ignored if folds is not None.
     **kwargs : Any
         Additional arguments passed to the sampling function
 
@@ -68,7 +77,7 @@ def kfold(
 
     Examples
     --------
-    Let's walk through a complete example of using K-fold cross-validation with a simple linear regression model.
+    Let's consider using K-fold cross-validation with a simple linear regression model.
 
     .. code-block:: python
 
@@ -112,13 +121,14 @@ def kfold(
     help you assess how well your model generalizes to unseen data.
 
     For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide
-    more reliable performance estimates:
+    more reliable performance estimates. You can use the stratify parameter to ensure each fold
+    has a similar distribution of values:
 
     .. code-block:: python
 
         import pymc as pm
         import numpy as np
-        from pyloo import PyMCWrapper, kfold, kfold_split_stratified
+        from pyloo import PyMCWrapper, kfold
 
         np.random.seed(42)
         n_samples = 200
@@ -145,17 +155,17 @@ def kfold(
 
         wrapper = PyMCWrapper(model, idata)
 
-        # Create stratified folds based on the outcome variable
+        # Use stratified k-fold cross-validation based on the outcome variable
         # This ensures each fold has a similar proportion of class 0 and class 1
-        K = 5
-        stratified_folds = kfold_split_stratified(K=K, x=y, seed=123)
-
-        kfold_result = kfold(wrapper, K=K, folds=stratified_folds)
+        kfold_result = kfold(wrapper, K=5, stratify=wrapper.get_observed_data(), random_seed=123)
 
     Using stratified folds ensures that each fold maintains approximately the same class distribution
     as the original dataset, which is especially important for imbalanced datasets or when the outcome
     variable has a strong relationship with certain features.
     """
+    if not isinstance(data, PyMCWrapper):
+        raise TypeError(f"Expected PyMCWrapper, got {type(data).__name__}")
+
     wrapper = data
     original_idata = wrapper.idata
 
@@ -165,7 +175,9 @@ def kfold(
     observed_data = wrapper.get_observed_data()
     n_obs = len(observed_data)
 
-    scale, K, folds = _validate_kfold_inputs(data, K, folds, scale, n_obs)
+    scale = "log" if scale is None else scale.lower()
+    if scale not in ["log", "negative_log", "deviance"]:
+        raise ValueError("Scale must be 'log', 'negative_log', or 'deviance'")
 
     if scale == "deviance":
         scale_factor = -2
@@ -174,32 +186,47 @@ def kfold(
     else:
         scale_factor = 1
 
+    folds = _prepare_folds(folds, K, n_obs, stratify, random_seed)
+
+    unique_folds = np.unique(folds)
+    K = len(unique_folds)
+
     log_lik_full = get_log_likelihood(original_idata, var_name=var_name)
 
     obs_dims = [dim for dim in log_lik_full.dims if dim not in ("chain", "draw")]
     if not obs_dims:
         raise ValueError("Could not identify observation dimension in log_likelihood")
 
-    elpds = np.zeros(n_obs)
     lpds_full = _compute_lpds_full(log_lik_full)
-    fits = None
+
+    elpds = np.zeros(n_obs)
+    fits: list[Any] | None = [] if save_fits else None
 
     for k in range(1, K + 1):
-        fold_fits, elpds = _process_fold(
-            k,
-            folds,
-            wrapper,
-            var_name,
-            observed_data,
-            elpds,
-            progressbar,
-            save_fits,
+        if progressbar:
+            _log.info(f"Fitting model {k} out of {K}")
+
+        val_indices = np.where(folds == k)[0]
+        if len(val_indices) == 0:
+            _log.warning(f"Fold {k} is empty, skipping")
+            continue
+
+        fold_fits, fold_elpds = _process_fold(
+            wrapper=wrapper,
+            var_name=var_name,
+            observed_data=observed_data,
+            train_indices=np.where(folds != k)[0],
+            val_indices=val_indices,
+            progressbar=progressbar,
+            save_fits=save_fits,
             **kwargs,
         )
-        if save_fits and fold_fits:
-            if fits is None:
-                fits = []
-            fits.extend(fold_fits)
+
+        for idx, val in zip(val_indices, fold_elpds):
+            elpds[idx] = val
+
+        if save_fits and fold_fits and fits is not None:
+            fits.append(fold_fits)
 
     elpds = scale_factor * elpds
     p_kfold = lpds_full - elpds / scale_factor
@@ -207,11 +234,10 @@ def kfold(
     elpd_kfold = np.sum(elpds)
     se = np.sqrt(n_obs * np.var(elpds))
     p_kfold_sum = np.sum(p_kfold)
-    p_kfold_se = np.sqrt(n_obs * np.var(p_kfold))
+    kfoldic = -2 * elpd_kfold / scale_factor
+    kfoldic_se = 2 * se
 
-    kfoldic = -2 * elpds / scale_factor
-    pointwise = np.column_stack((elpds, p_kfold, kfoldic))
-
+    pointwise = np.column_stack((elpds, p_kfold, -2 * elpds / scale_factor))
     pointwise_df = xr.DataArray(
         pointwise,
         dims=("observation", "metric"),
@@ -221,54 +247,116 @@ def kfold(
         },
     )
 
-    result = {
-        "elpd_kfold": elpd_kfold,
-        "se": se,
-        "p_kfold": p_kfold_sum,
-        "se_p_kfold": p_kfold_se,
-        "n_samples": log_lik_full.sizes.get("chain", 1) * log_lik_full.sizes.get(
-            "draw", 1
-        ),
-        "n_data_points": n_obs,
-        "warning": False,
-        "kfold_i": pointwise_df.sel(metric="elpd_kfold"),
-        "scale": scale,
-        "looic": -2 * elpd_kfold / scale_factor,
-        "looic_se": 2 * se,
-    }
+    result_data: list[Any] = [
+        elpd_kfold,
+        se,
+        p_kfold_sum,
+        log_lik_full.sizes.get("chain", 1) * log_lik_full.sizes.get("draw", 1),
+        n_obs,
+        False,
+        scale,
+        K,
+        kfoldic,
+        kfoldic_se,
+        pointwise_df.sel(metric="elpd_kfold"),
+    ]
+
+    index: list[str] = [
+        "elpd_kfold",
+        "se",
+        "p_kfold",
+        "n_samples",
+        "n_data_points",
+        "warning",
+        "scale",
+        "K",
+        "kfoldic",
+        "kfoldic_se",
+        "kfold_i",
+    ]
+
+    result_data.append(stratify is not None and folds is None)
+    index.append("stratified")
 
     if fits is not None:
-        result["fits"] = fits
+        result_data.append(fits)
+        index.append("fits")
 
-    data_list = [result[key] for key in result.keys()]
-    index_list = list(result.keys())
-    elpd_data = ELPDData(data=data_list, index=index_list)
+    elpd_data = ELPDData(data=result_data, index=index)
     elpd_data.method = "kfold"
     elpd_data.K = K
+    elpd_data.stratified = stratify is not None and folds is None
+
     return elpd_data
 
 
-def kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:
-    """Create random folds for K-fold cross-validation.
+def _prepare_folds(
+    folds: np.ndarray | None,
+    K: int,
+    n_obs: int,
+    stratify: np.ndarray | None,
+    random_seed: int | None,
+) -> np.ndarray:
+    """Prepare or validate fold assignments for K-fold cross-validation."""
+    if K <= 0:
+        raise ValueError(f"K must be positive, got {K}")
+    if K > n_obs:
+        _log.warning(f"K ({K}) is greater than N ({n_obs}), setting K=N")
+        K = min(K, n_obs)
 
-    Parameters
-    ----------
-    K : int
-        Number of folds
-    N : int
-        Number of observations
-    seed : int | None
-        Random seed for reproducibility
+    if folds is not None:
+        if stratify is not None:
+            _log.warning(
+                "Both folds and stratify were provided. Using the provided folds and"
+                " ignoring stratify."
+            )
+        folds = np.asarray(folds)
 
-    Returns
-    -------
-    np.ndarray
-        Array of fold assignments (integers from 1 to K)
-    """
+        if len(folds) != n_obs:
+            raise ValueError(
+                f"Length of folds ({len(folds)}) must match observations ({n_obs})"
+            )
+
+        unique_folds = np.unique(folds)
+        if len(unique_folds) < 2:
+            raise ValueError(
+                f"Need at least 2 unique fold values, got {len(unique_folds)}"
+            )
+        if 0 in unique_folds:
+            raise ValueError("Fold indices must be >= 1")
+        return folds
+
+    if stratify is not None:
+        if not isinstance(stratify, np.ndarray):
+            stratify = np.asarray(stratify)
+
+        if len(stratify) != n_obs:
+            raise ValueError(
+                f"Length of stratify ({len(stratify)}) must match observations"
+                f" ({n_obs})"
+            )
+
+        _log.info(f"Creating stratified folds with K={K}")
+        try:
+            return _kfold_split_stratified(K=K, x=stratify, seed=random_seed)
+        except Exception as e:
+            raise ValueError(f"Failed to create stratified folds: {str(e)}")
+
+    _log.info(f"Creating random folds with K={K}")
+
+    return _kfold_split_random(K=K, N=n_obs, seed=random_seed)
+
+
+def _kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:
+    """Create random folds for K-fold cross-validation."""
+    if K <= 0:
+        raise ValueError(f"K must be positive, got {K}")
+    if K > N:
+        _log.warning(f"K ({K}) is greater than N ({N}), setting K=N")
+        K = min(K, N)
+
     if seed is not None:
         np.random.seed(seed)
-
-    K = min(K, N)
 
     folds = np.zeros(N, dtype=int)
 
@@ -281,47 +369,50 @@ def kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:
         end = start + fold_sizes[i]
         folds[fold_indices[start:end]] = i + 1
         start = end
+
     return folds
 
 
-def kfold_split_stratified(
+def _kfold_split_stratified(
     K: int, x: np.ndarray, seed: int | None = None
 ) -> np.ndarray:
-    """Create stratified folds for K-fold cross-validation.
-
-    Parameters
-    ----------
-    K : int
-        Number of folds
-    x : array-like
-        A vector of values used for stratification. Can be categorical or continuous.
-        For categorical variables, each unique value defines a stratum.
-        For continuous variables, values are binned into K groups.
-    seed : int | None
-        Random seed for reproducibility
-
-    Returns
-    -------
-    np.ndarray
-        Array of fold assignments (integers from 1 to K)
-    """
+    """Create stratified folds for K-fold cross-validation."""
     if seed is not None:
         np.random.seed(seed)
 
     x = np.asarray(x)
     N = len(x)
 
-    if K <= 1 or K > N:
-        raise ValueError(f"K must be > 1 and <= {N}, got {K}")
+    if K <= 1:
+        raise ValueError(f"K must be > 1, got {K}")
+    if K > N:
+        _log.warning(f"K ({K}) is greater than N ({N}), setting K=N")
+        K = min(K, N)
+
+    if np.issubdtype(x.dtype, np.number) and np.any(np.isnan(x)):
+        raise ValueError("Stratification variable contains NaN values")
 
     if np.issubdtype(x.dtype, np.number) and len(np.unique(x)) > K:
-        bins = np.percentile(x, np.linspace(0, 100, K + 1))
-        bins = np.unique(bins)
-        x_binned = np.digitize(x, bins[:-1])
+        try:
+            if len(np.unique(x)) <= K:
+                x_binned = x
+            else:
+                bins = np.percentile(x, np.linspace(0, 100, K + 1))
+                bins = np.unique(bins)
+                x_binned = np.digitize(x, bins[:-1])
+        except Exception as e:
+            raise ValueError(f"Failed to bin continuous variable: {str(e)}")
     else:
         x_binned = x
 
     unique_values, counts = np.unique(x_binned, return_counts=True)
+
+    if len(unique_values) == 1 and K > 1:
+        _log.warning(
+            f"Only {len(unique_values)} unique value in stratification variable, using"
+            " random folds instead"
+        )
+        return _kfold_split_random(K=K, N=N, seed=seed)
 
     folds = np.zeros(N, dtype=int)
 
@@ -338,54 +429,77 @@ def kfold_split_stratified(
             folds[val_indices[start:end]] = k + 1
             start = end
 
-    assert np.all(
-        (folds >= 1) & (folds <= K)
-    ), f"Generated fold values outside range 1-{K}"
+    if not np.all((folds >= 1) & (folds <= K)):
+        raise ValueError(f"Generated fold values outside range 1-{K}")
+
     return folds
 
 
-def _validate_kfold_inputs(
-    data: PyMCWrapper, K: int, folds: np.ndarray | None, scale: str | None, n_obs: int
-) -> tuple[str, int, np.ndarray]:
-    """Validate inputs for K-fold cross-validation."""
-    if not isinstance(data, PyMCWrapper):
-        raise TypeError(f"Expected PyMCWrapper, got {type(data).__name__}")
+def _process_fold(
+    wrapper: PyMCWrapper,
+    var_name: str,
+    observed_data: np.ndarray,
+    train_indices: np.ndarray,
+    val_indices: np.ndarray,
+    progressbar: bool,
+    save_fits: bool,
+    **kwargs: Any,
+) -> tuple[tuple | None, list]:
+    """Process a single fold for K-fold cross-validation."""
+    fold_result = None
+    fold_elpds = [0.0] * len(val_indices)
 
-    if K <= 0:
-        raise ValueError(f"K must be positive, got {K}")
+    try:
+        train_data = observed_data[train_indices]
 
-    if K > n_obs:
-        raise ValueError(f"K must be <= number of observations ({n_obs}), got {K}")
+        fold_wrapper = copy.deepcopy(wrapper)
+        fold_wrapper.set_data({var_name: train_data})
+        idata_k = fold_wrapper.sample_posterior(progressbar=progressbar, **kwargs)
 
-    scale = "log" if scale is None else scale.lower()
-    if scale not in ["log", "negative_log", "deviance"]:
-        raise ValueError("Scale must be 'log', 'negative_log', or 'deviance'")
+        val_data = observed_data[val_indices]
 
-    if folds is None:
-        folds = np.zeros(n_obs, dtype=int)
-        fold_size = n_obs // K
-        for k in range(K):
-            start = k * fold_size
-            end = (k + 1) * fold_size if k < K - 1 else n_obs
-            folds[start:end] = k + 1
-    else:
-        folds = np.asarray(folds)
-        if len(folds) != n_obs:
-            raise ValueError(
-                f"Length of folds ({len(folds)}) must match observations ({n_obs})"
-            )
+        val_wrapper = copy.deepcopy(fold_wrapper)
+        val_wrapper.set_data({var_name: val_data})
+        ll_k = pm.compute_log_likelihood(
+            idata_k,
+            var_names=[var_name],
+            model=val_wrapper.model,
+            extend_inferencedata=False,
+        )[var_name]
 
-        unique_folds = np.unique(folds)
-        if len(unique_folds) < 2:
-            raise ValueError(
-                f"Need at least 2 unique fold values, got {len(unique_folds)}"
-            )
+        if save_fits:
+            fold_result = (idata_k, val_indices)
 
-        if 0 in unique_folds:
-            raise ValueError("Fold indices must be >= 1")
+        if "chain" in ll_k.dims and "draw" in ll_k.dims:
+            ll_k_stacked = ll_k.stack(__sample__=("chain", "draw"))
+        else:
+            ll_k_stacked = ll_k
 
-        K = len(unique_folds)
-    return scale, K, folds
+        ufunc_kwargs = {"n_dims": 1, "ravel": False}
+        kwargs = {"input_core_dims": [["__sample__"]]}
+
+        elpds_k_xr = wrap_xarray_ufunc(
+            _logsumexp,
+            ll_k_stacked,
+            func_kwargs={"b_inv": ll_k_stacked.sizes.get("__sample__", 1)},
+            ufunc_kwargs=ufunc_kwargs,
+            **kwargs,
+        )
+
+        k_dims = list(ll_k.dims)
+        k_obs_dims = [dim for dim in k_dims if dim not in ("chain", "draw")]
+
+        if len(k_obs_dims) > 0:
+            k_obs_dim = k_obs_dims[0]
+            for i in range(len(val_indices)):
+                fold_elpds[i] = elpds_k_xr.isel({k_obs_dim: i}).values.item()
+        else:
+            fold_elpds[0] = elpds_k_xr.values.item()
+
+    except Exception as e:
+        _log.warning(f"Error processing fold: {e}")
+
+    return fold_result, fold_elpds
 
 
 def _compute_lpds_full(log_lik_full: xr.DataArray) -> np.ndarray:
@@ -405,97 +519,5 @@ def _compute_lpds_full(log_lik_full: xr.DataArray) -> np.ndarray:
         ufunc_kwargs=ufunc_kwargs,
         **kwargs,
     )
+
     return lpds_full_xr.values
-
-
-def _process_fold(
-    k: int,
-    folds: np.ndarray,
-    wrapper: PyMCWrapper,
-    var_name: str,
-    observed_data: np.ndarray,
-    elpds: np.ndarray,
-    progressbar: bool,
-    save_fits: bool,
-    **kwargs: Any,
-) -> tuple[list | None, np.ndarray]:
-    """Process a single fold for K-fold cross-validation."""
-    fits: list | None = [] if save_fits else None
-
-    if progressbar:
-        _log.info(f"Fitting model {k} out of {len(np.unique(folds))}")
-
-    val_indices = np.where(folds == k)[0]
-    train_indices = np.where(folds != k)[0]
-
-    if len(val_indices) == 0:
-        _log.warning(f"Fold {k} is empty, skipping")
-        return fits, elpds
-
-    try:
-        train_data = observed_data[train_indices]
-
-        fold_wrapper = copy.deepcopy(wrapper)
-        fold_wrapper.set_data({var_name: train_data})
-
-        idata_k = fold_wrapper.sample_posterior(progressbar=progressbar, **kwargs)
-
-        if save_fits and fits is not None:
-            fits.append((idata_k, val_indices))
-
-        val_data = observed_data[val_indices]
-
-        val_wrapper = copy.deepcopy(fold_wrapper)
-        val_wrapper.set_data({var_name: val_data})
-
-        ll_k = pm.compute_log_likelihood(
-            idata_k,
-            var_names=[var_name],
-            model=val_wrapper.model,
-            extend_inferencedata=False,
-        )[var_name]
-
-        elpds = _compute_fold_elpds(ll_k, val_indices, elpds)
-
-    except Exception as e:
-        _log.warning(f"Error processing fold {k}: {e}")
-    return fits, elpds
-
-
-def _compute_fold_elpds(
-    ll_k: xr.DataArray, val_indices: np.ndarray, elpds: np.ndarray
-) -> np.ndarray:
-    """Compute ELPD values for a fold."""
-    k_dims = list(ll_k.dims)
-    k_obs_dims = [dim for dim in k_dims if dim not in ("chain", "draw")]
-
-    try:
-        if "chain" in ll_k.dims and "draw" in ll_k.dims:
-            ll_k_stacked = ll_k.stack(__sample__=("chain", "draw"))
-        else:
-            ll_k_stacked = ll_k
-
-        ufunc_kwargs = {"n_dims": 1, "ravel": False}
-        kwargs = {"input_core_dims": [["__sample__"]]}
-
-        elpds_k_xr = wrap_xarray_ufunc(
-            _logsumexp,
-            ll_k_stacked,
-            func_kwargs={"b_inv": ll_k_stacked.sizes.get("__sample__", 1)},
-            ufunc_kwargs=ufunc_kwargs,
-            **kwargs,
-        )
-
-        # Handle cases with or without observation dimensions
-        if len(k_obs_dims) > 0:
-            # Multiple observations case
-            k_obs_dim = k_obs_dims[0]
-            for i, idx in enumerate(val_indices):
-                elpds[idx] = elpds_k_xr.isel({k_obs_dim: i}).values.item()
-        else:
-            # Single observation case
-            elpds[val_indices[0]] = elpds_k_xr.values.item()
-
-    except Exception as e:
-        _log.warning(f"Error computing ELPD values for fold: {e}")
-    return elpds

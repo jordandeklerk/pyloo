@@ -632,11 +632,31 @@ class PyMCWrapper:
                 if transform is None:
                     unconstrained_samples = self.idata.posterior[var_name].copy()
                 else:
-                    unconstrained_samples = self._apply_ufunc(
-                        self._apply_backward_transform,
-                        var_name=var_name,
-                        func_kwargs={"transform": transform},
+                    is_scalar = all(
+                        dim in ("chain", "draw")
+                        for dim in self.idata.posterior[var_name].dims
                     )
+
+                    if is_scalar:
+                        original_values = self.idata.posterior[var_name].values
+
+                        transformed_tensor = transform.backward(original_values)
+                        if hasattr(transformed_tensor, "eval"):
+                            transformed_values = transformed_tensor.eval()
+                        else:
+                            transformed_values = np.asarray(transformed_tensor)
+
+                        unconstrained_samples = xr.DataArray(
+                            transformed_values,
+                            dims=self.idata.posterior[var_name].dims,
+                            coords=self.idata.posterior[var_name].coords,
+                        )
+                    else:
+                        unconstrained_samples = self._apply_ufunc(
+                            self._apply_backward_transform,
+                            var_name=var_name,
+                            func_kwargs={"transform": transform},
+                        )
             except Exception as e:
                 logger.warning(
                     "Failed to transform %s: %s. Using original values.",
@@ -646,6 +666,7 @@ class PyMCWrapper:
                 unconstrained_samples = self.idata.posterior[var_name].copy()
 
             unconstrained_params[var_name] = unconstrained_samples
+
         return unconstrained_params
 
     def constrain_parameters(
@@ -747,21 +768,40 @@ class PyMCWrapper:
                 constrained = unconstrained.copy()
             else:
                 try:
-                    param_dims = [
-                        dim
-                        for dim in unconstrained.dims
-                        if dim not in ("chain", "draw")
-                    ]
-                    input_core_dims = [["chain", "draw"] + param_dims]
-                    output_core_dims = [["chain", "draw"] + param_dims]
-
-                    constrained = wrap_xarray_ufunc(
-                        self._apply_forward_transform,
-                        unconstrained,
-                        input_core_dims=input_core_dims,
-                        output_core_dims=output_core_dims,
-                        func_kwargs={"transform": transform},
+                    is_scalar = all(
+                        dim in ("chain", "draw") for dim in unconstrained.dims
                     )
+
+                    if is_scalar:
+                        unc_values = unconstrained.values
+
+                        transformed_tensor = transform.forward(unc_values)
+                        if hasattr(transformed_tensor, "eval"):
+                            transformed_values = transformed_tensor.eval()
+                        else:
+                            transformed_values = np.asarray(transformed_tensor)
+
+                        constrained = xr.DataArray(
+                            transformed_values,
+                            dims=unconstrained.dims,
+                            coords=unconstrained.coords,
+                        )
+                    else:
+                        param_dims = [
+                            dim
+                            for dim in unconstrained.dims
+                            if dim not in ("chain", "draw")
+                        ]
+                        input_core_dims = [["chain", "draw"] + param_dims]
+                        output_core_dims = [["chain", "draw"] + param_dims]
+
+                        constrained = wrap_xarray_ufunc(
+                            self._apply_forward_transform,
+                            unconstrained,
+                            input_core_dims=input_core_dims,
+                            output_core_dims=output_core_dims,
+                            func_kwargs={"transform": transform},
+                        )
                 except Exception as e:
                     logger.warning(
                         "Failed to transform %s to constrained space: %s. Using"
@@ -772,6 +812,7 @@ class PyMCWrapper:
                     constrained = unconstrained.copy()
 
             constrained_params[var_name] = constrained
+
         return constrained_params
 
     def get_draws(self) -> np.ndarray:
@@ -1271,8 +1312,14 @@ class PyMCWrapper:
 
     def _apply_backward_transform(self, x, transform):
         """Apply backward transformation to convert from constrained to unconstrained space."""
-        return transform.backward(x).eval()
+        result = transform.backward(x)
+        if hasattr(result, "eval"):
+            return result.eval()
+        return np.asarray(result)
 
     def _apply_forward_transform(self, x, transform):
         """Apply forward transformation to convert from unconstrained to constrained space."""
-        return transform.forward(x).eval()
+        result = transform.forward(x)
+        if hasattr(result, "eval"):
+            return result.eval()
+        return np.asarray(result)
