@@ -385,11 +385,7 @@ def test_kfold_improved_validation(large_regression_model):
     """Test the improved validation in the kfold function."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
-
     n_obs = len(wrapper.get_observed_data())
-
-    with pytest.raises(ValueError, match="K must be positive"):
-        _kfold_split_random(K=0, N=n_obs)
 
     folds = _kfold_split_random(K=n_obs + 5, N=n_obs)
     assert len(folds) == n_obs

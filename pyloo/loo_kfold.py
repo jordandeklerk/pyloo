@@ -77,7 +77,7 @@ def kfold(
 
     Examples
     --------
-    Let's consider using K-fold cross-validation with a simple linear regression model.
+    Let's consider using K-fold cross-validation with a simple linear regression model:
 
     .. code-block:: python
 
@@ -117,8 +117,7 @@ def kfold(
         kfold_result = kfold(wrapper, K=5)
 
     The result contains various statistics about the model's predictive performance, including
-    the expected log pointwise predictive density (ELPD) and its standard error. These metrics
-    help you assess how well your model generalizes to unseen data.
+    the expected log pointwise predictive density (ELPD) and its standard error.
 
     For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide
     more reliable performance estimates. You can use the stratify parameter to ensure each fold
@@ -186,11 +185,7 @@ def kfold(
     else:
         scale_factor = 1
 
-    folds = _prepare_folds(folds, K, n_obs, stratify, random_seed)
-
-    unique_folds = np.unique(folds)
-    K = len(unique_folds)
-
+    folds, K = _prepare_folds(folds, K, n_obs, stratify, random_seed)
     log_lik_full = get_log_likelihood(original_idata, var_name=var_name)
 
     obs_dims = [dim for dim in log_lik_full.dims if dim not in ("chain", "draw")]
@@ -198,7 +193,6 @@ def kfold(
         raise ValueError("Could not identify observation dimension in log_likelihood")
 
     lpds_full = _compute_lpds_full(log_lik_full)
-
     elpds = np.zeros(n_obs)
     fits: list[Any] | None = [] if save_fits else None
 
@@ -296,10 +290,17 @@ def _prepare_folds(
     n_obs: int,
     stratify: np.ndarray | None,
     random_seed: int | None,
-) -> np.ndarray:
-    """Prepare or validate fold assignments for K-fold cross-validation."""
+) -> tuple[np.ndarray, int]:
+    """Prepare or validate fold assignments for K-fold cross-validation.
+
+    Returns
+    -------
+    tuple
+        A tuple containing (folds, adjusted_K)
+    """
     if K <= 0:
         raise ValueError(f"K must be positive, got {K}")
+
     if K > n_obs:
         _log.warning(f"K ({K}) is greater than N ({n_obs}), setting K=N")
         K = min(K, n_obs)
@@ -318,13 +319,15 @@ def _prepare_folds(
             )
 
         unique_folds = np.unique(folds)
+
         if len(unique_folds) < 2:
             raise ValueError(
                 f"Need at least 2 unique fold values, got {len(unique_folds)}"
             )
+
         if 0 in unique_folds:
             raise ValueError("Fold indices must be >= 1")
-        return folds
+        return folds, len(unique_folds)
 
     if stratify is not None:
         if not isinstance(stratify, np.ndarray):
@@ -338,23 +341,17 @@ def _prepare_folds(
 
         _log.info(f"Creating stratified folds with K={K}")
         try:
-            return _kfold_split_stratified(K=K, x=stratify, seed=random_seed)
+            return _kfold_split_stratified(K=K, x=stratify, seed=random_seed), K
         except Exception as e:
             raise ValueError(f"Failed to create stratified folds: {str(e)}")
 
     _log.info(f"Creating random folds with K={K}")
 
-    return _kfold_split_random(K=K, N=n_obs, seed=random_seed)
+    return _kfold_split_random(K=K, N=n_obs, seed=random_seed), K
 
 
 def _kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:
     """Create random folds for K-fold cross-validation."""
-    if K <= 0:
-        raise ValueError(f"K must be positive, got {K}")
-    if K > N:
-        _log.warning(f"K ({K}) is greater than N ({N}), setting K=N")
-        K = min(K, N)
-
     if seed is not None:
         np.random.seed(seed)
 
@@ -384,22 +381,16 @@ def _kfold_split_stratified(
     N = len(x)
 
     if K <= 1:
-        raise ValueError(f"K must be > 1, got {K}")
-    if K > N:
-        _log.warning(f"K ({K}) is greater than N ({N}), setting K=N")
-        K = min(K, N)
+        raise ValueError(f"K must be > 1 for stratified folds, got {K}")
 
     if np.issubdtype(x.dtype, np.number) and np.any(np.isnan(x)):
         raise ValueError("Stratification variable contains NaN values")
 
     if np.issubdtype(x.dtype, np.number) and len(np.unique(x)) > K:
         try:
-            if len(np.unique(x)) <= K:
-                x_binned = x
-            else:
-                bins = np.percentile(x, np.linspace(0, 100, K + 1))
-                bins = np.unique(bins)
-                x_binned = np.digitize(x, bins[:-1])
+            bins = np.percentile(x, np.linspace(0, 100, K + 1))
+            bins = np.unique(bins)
+            x_binned = np.digitize(x, bins[:-1])
         except Exception as e:
             raise ValueError(f"Failed to bin continuous variable: {str(e)}")
     else:
