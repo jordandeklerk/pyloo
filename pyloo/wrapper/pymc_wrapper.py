@@ -570,8 +570,7 @@ class PyMCWrapper:
         .. math::
             p(\theta') = p(\theta) \left| \frac{d}{d\theta'} g^{-1}(\theta') \right|
 
-        The mathematical transformations applied depend on the parameter's domain constraints:
-
+        The mathematical transformations applied depend on the parameter's domain constraints.
         For positive variables (e.g., HalfNormal, Gamma), a logarithmic transformation is applied:
 
         .. math::
@@ -704,9 +703,8 @@ class PyMCWrapper:
         .. math::
             p(\theta) = p(\theta') \left| \frac{d}{d\theta} g(\theta) \right|^{-1} = p(\theta') \left| \frac{1}{\frac{d}{d\theta} g(\theta)} \right|
 
-        The mathematical inverse transformations applied depend on the parameter's original constraints:
-
-        For positive variables, the inverse of the logarithmic transform is applied:
+        The mathematical inverse transformations applied depend on the parameter's original constraints. For positive variables,
+        the inverse of the logarithmic transform is applied:
 
         .. math::
             \theta = g^{-1}(\theta') = \exp(\theta'), \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (0, \infty)
