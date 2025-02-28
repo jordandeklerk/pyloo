@@ -1053,42 +1053,6 @@ class PyMCWrapper:
         )
         return result
 
-    def _apply_transform_wrapper(
-        self, data_array: xr.DataArray, transform_method: str, transform: Any
-    ) -> xr.DataArray:
-        """Apply transformation to an xarray DataArray using custom vectorization."""
-        input_data = data_array.values
-        output_data = np.empty_like(input_data)
-
-        if transform_method == "forward":
-            transform_func = transform.forward
-        else:  # backward
-            transform_func = transform.backward
-
-        flat_input = input_data.reshape(-1)
-        flat_output = output_data.reshape(-1)
-
-        for i in range(len(flat_input)):
-            try:
-                scalar_value = flat_input[i].item()
-                result = transform_func(scalar_value)
-
-                if hasattr(result, "eval"):
-                    result = result.eval()
-
-                flat_output[i] = result
-            except Exception as e:
-                logger.warning(f"Transform error at index {i}: {str(e)}")
-                flat_output[i] = flat_input[i]
-
-        return xr.DataArray(
-            output_data,
-            dims=data_array.dims,
-            coords=data_array.coords,
-            name=data_array.name,
-            attrs=data_array.attrs,
-        )
-
     def _transform_to_unconstrained(self, values, transform):
         """Transform values from constrained to unconstrained space."""
         try:
