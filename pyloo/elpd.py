@@ -56,13 +56,6 @@ SCALE_DICT = {
 }
 
 
-def _histogram(data, bins, range_hist=None):
-    """Histogram."""
-    hist, bin_edges = np.histogram(data, bins=bins, range=range_hist)
-    hist_dens = hist / (hist.sum() * np.diff(bin_edges))
-    return hist, hist_dens, bin_edges
-
-
 class ELPDData(pd.Series):
     """Class to contain ELPD information criterion data.
 
@@ -298,3 +291,10 @@ class ELPDData(pd.Series):
     def stratified(self, value):
         """Set whether stratified k-fold cross-validation was used."""
         self._stratified = value
+
+
+def _histogram(data, bins, range_hist=None):
+    """Histogram."""
+    hist, bin_edges = np.histogram(data, bins=bins, range=range_hist)
+    hist_dens = hist / (hist.sum() * np.diff(bin_edges))
+    return hist, hist_dens, bin_edges
