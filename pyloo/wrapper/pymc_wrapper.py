@@ -560,21 +560,63 @@ class PyMCWrapper:
         r"""Convert posterior samples from the constrained to the unconstrained space.
 
         This method transforms each free parameter's posterior samples from its native, constrained
-        domain—where it adheres to its prior distribution—to an unconstrained space.
+        domain to an unconstrained space where optimization and other operations can be performed
+        more effectively.
 
-        Transformation details depend on the parameter's domain constraints. For variables restricted
-        to positive values (e.g., HalfNormal, Gamma), a logarithmic transformation is applied
-        as $\theta' = \log(\theta)$. For variables restricted to the unit interval $[0, 1]$ (e.g., Beta),
-        a logit transformation is used, calculated as $\theta' = \log\left(\frac{\theta}{1-\theta}\right)$. For variables
-        with an unbounded domain (e.g., Normal), no transformation is necessary
-        and the identity mapping is applied as $\theta' = \theta$.
+        When transforming random variables, we must account for the change in probability density
+        using the Jacobian adjustment. For a transformation :math:`\theta' = g(\theta)`, the probability
+        densities are related by:
+
+        .. math::
+            p(\theta') = p(\theta) \left| \frac{d}{d\theta'} g^{-1}(\theta') \right|
+
+        The mathematical transformations applied depend on the parameter's domain constraints:
+
+        For positive variables (e.g., HalfNormal, Gamma), a logarithmic transformation is applied:
+
+        .. math::
+            \theta' = g(\theta) = \log(\theta), \quad \theta \in (0, \infty) \mapsto \theta' \in (-\infty, \infty)
+
+        With Jacobian determinant:
+
+        .. math::
+            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| = \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
+
+        For example, if :math:`\theta \sim \text{HalfNormal}(0, \sigma)`, then after transformation:
+
+        .. math::
+            p(\theta') &= p(\theta) \cdot \exp(\theta') \\
+            &= \frac{\sqrt{2}}{\sigma\sqrt{\pi}} \exp\left(-\frac{\theta^2}{2\sigma^2}\right) \cdot \exp(\theta') \\
+            &= \frac{\sqrt{2}}{\sigma\sqrt{\pi}} \exp\left(-\frac{\exp(2\theta')}{2\sigma^2}\right) \cdot \exp(\theta')
+
+        For variables restricted to the unit interval (e.g., Beta), a logit transformation is used:
+
+        .. math::
+            \theta' = g(\theta) = \log\left(\frac{\theta}{1-\theta}\right), \quad \theta \in (0, 1) \mapsto \theta' \in (-\infty, \infty)
+
+        For variables with an unbounded domain (e.g., Normal), no transformation is necessary:
+
+        .. math::
+            \theta' = g(\theta) = \theta, \quad \theta \in (-\infty, \infty) \mapsto \theta' \in (-\infty, \infty)
+
+        For simplex variables (e.g., Dirichlet), a stick-breaking transformation is applied:
+
+        .. math::
+            \theta'_i = g_i(\theta) = \log\left(\frac{\theta_i}{\sum_{j=i+1}^K \theta_j}\right), \quad i = 1, \ldots, K-1
 
         Returns
         -------
         dict[str, xr.DataArray]
             A dictionary mapping parameter names to their posterior samples in the unconstrained space.
-            Each array retains its original dimensions (e.g., chain, draw, and any additional parameter-specific
-            dimensions).
+            Each array retains its original dimensions (chain, draw, and parameter-specific dimensions).
+
+        Notes
+        -----
+        The method applies the `backward` transform from each parameter's transform object in the
+        model's `rvs_to_transforms` dictionary. If a transform is unavailable or fails, the original
+        constrained samples are returned instead. Jacobian adjustments are automatically handled
+        by PyMC's transform objects.
+
         Examples
         --------
         Let's first import the necessary packages and create a simple linear regression dataset:
@@ -610,14 +652,6 @@ class PyMCWrapper:
 
             wrapper = PyMCWrapper(model, idata)
             unconstrained_params = wrapper.get_unconstrained_parameters()
-
-        Notes
-        -----
-        When transforming your parameters, the method applies the `backward` method of each parameter's
-        transform as stored in the model's `rvs_to_transforms` dictionary. If a parameter doesn't have
-        a transform available or if the transformation fails for some reason, you'll get back the original
-        constrained samples instead. Jacobian adjustments when transforming between
-        spaces are automatically handled by PyMC's transform objects.
         """
         unconstrained_params = {}
 
@@ -628,42 +662,28 @@ class PyMCWrapper:
 
             transform = self.model.rvs_to_transforms.get(var, None)
 
-            try:
-                if transform is None:
-                    unconstrained_samples = self.idata.posterior[var_name].copy()
-                else:
-                    is_scalar = all(
-                        dim in ("chain", "draw")
-                        for dim in self.idata.posterior[var_name].dims
-                    )
-
-                    if is_scalar:
-                        original_values = self.idata.posterior[var_name].values
-
-                        transformed_tensor = transform.backward(original_values)
-                        if hasattr(transformed_tensor, "eval"):
-                            transformed_values = transformed_tensor.eval()
-                        else:
-                            transformed_values = np.asarray(transformed_tensor)
-
-                        unconstrained_samples = xr.DataArray(
-                            transformed_values,
-                            dims=self.idata.posterior[var_name].dims,
-                            coords=self.idata.posterior[var_name].coords,
-                        )
-                    else:
-                        unconstrained_samples = self._apply_ufunc(
-                            self._apply_backward_transform,
-                            var_name=var_name,
-                            func_kwargs={"transform": transform},
-                        )
-            except Exception as e:
-                logger.warning(
-                    "Failed to transform %s: %s. Using original values.",
-                    var_name,
-                    str(e),
-                )
+            if transform is None:
+                # No transformation needed
                 unconstrained_samples = self.idata.posterior[var_name].copy()
+            else:
+                try:
+                    # Apply transformation
+                    data = self.idata.posterior[var_name].values
+                    transformed_data = self._transform_to_unconstrained(data, transform)
+
+                    unconstrained_samples = xr.DataArray(
+                        transformed_data,
+                        dims=self.idata.posterior[var_name].dims,
+                        coords=self.idata.posterior[var_name].coords,
+                        name=var_name,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to transform %s: %s. Using original values.",
+                        var_name,
+                        str(e),
+                    )
+                    unconstrained_samples = self.idata.posterior[var_name].copy()
 
             unconstrained_params[var_name] = unconstrained_samples
 
@@ -675,15 +695,52 @@ class PyMCWrapper:
         r"""Convert parameters from the unconstrained back to the constrained space.
 
         This method transforms parameter values from an unconstrained representation back to
-        their original constrained domain as specified by their prior distributions. This ensures
-        that the resulting values respect the model's constraints.
+        their original constrained domain as specified by their prior distributions.
 
-        Transformation details depend on the parameter's original constraints. For variables
-        originally restricted to positive values, the inverse of the logarithmic transform is
-        applied as $\theta = \exp(\theta')$. Variables originally restricted to the unit interval $[0, 1]$
-        use the inverse of the logit transform, calculated as $\theta = \frac{1}{1+\exp(-\theta')}$. For variables
-        that were already unconstrained in their original space, no transformation is necessary
-        and the values remain unchanged ($\theta = \theta'$).
+        When transforming random variables from unconstrained to constrained space, we apply the
+        inverse transformation. For a transformation :math:`\theta' = g(\theta)`, we apply
+        :math:`\theta = g^{-1}(\theta')`. The probability densities are related by:
+
+        .. math::
+            p(\theta) = p(\theta') \left| \frac{d}{d\theta} g(\theta) \right|^{-1} = p(\theta') \left| \frac{1}{\frac{d}{d\theta} g(\theta)} \right|
+
+        The mathematical inverse transformations applied depend on the parameter's original constraints:
+
+        For positive variables, the inverse of the logarithmic transform is applied:
+
+        .. math::
+            \theta = g^{-1}(\theta') = \exp(\theta'), \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (0, \infty)
+
+        With Jacobian determinant:
+
+        .. math::
+            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| = \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
+
+        For example, if :math:`\theta' \sim \text{Normal}(\mu, \sigma)` in the unconstrained space,
+        then after transformation to the constrained space:
+
+        .. math::
+            p(\theta) &= p(\theta') \cdot \exp(\theta') \\
+            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\theta' - \mu)^2}{2\sigma^2}\right) \cdot \exp(\theta') \\
+            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\log(\theta) - \mu)^2}{2\sigma^2}\right) \cdot \exp(\log(\theta))
+
+        For variables restricted to the unit interval, the inverse of the logit transform is used:
+
+        .. math::
+            \theta = g^{-1}(\theta') = \frac{1}{1+\exp(-\theta')}, \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (0, 1)
+
+        For variables with an unbounded domain, no transformation is necessary:
+
+        .. math::
+            \theta = g^{-1}(\theta') = \theta', \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (-\infty, \infty)
+
+        For simplex variables, the inverse of the stick-breaking transformation is applied:
+
+        .. math::
+            \theta_i = g^{-1}_i(\theta') = \frac{\exp(\theta'_i)}{1 + \exp(\theta'_i)} \prod_{j=1}^{i-1} \frac{1}{1 + \exp(\theta'_j)}, \quad i = 1, \ldots, K-1
+
+        .. math::
+            \theta_K = g^{-1}_K(\theta') = \prod_{j=1}^{K-1} \frac{1}{1 + \exp(\theta'_j)}
 
         Parameters
         ----------
@@ -696,6 +753,13 @@ class PyMCWrapper:
         dict[str, xr.DataArray]
             A dictionary mapping parameter names to their values transformed back to the constrained
             space, preserving the original dimensions.
+
+        Notes
+        -----
+        The method applies the `forward` transform from each parameter's transform object in the
+        model's `rvs_to_transforms` dictionary. If a transform is unavailable or fails, the original
+        unconstrained values are returned unchanged. Jacobian adjustments are automatically handled
+        by PyMC's transform objects. This operation is the inverse of `get_unconstrained_parameters`.
 
         Examples
         --------
@@ -739,16 +803,6 @@ class PyMCWrapper:
 
             modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
             constrained_params = wrapper.constrain_parameters(modified_unconstrained)
-
-        Notes
-        -----
-        To transform your parameters back to the constrained space, the method applies the `forward`
-        method of each parameter's transform from the model's `rvs_to_transforms` dictionary. If a
-        parameter doesn't have a transform or if something goes wrong during transformation, you'll
-        get the original unconstrained samples unchanged. As with the unconstrained transformation,
-        any scaling changes (reflected by the Jacobian determinant) are automatically handled by
-        PyMC's transform objects. This operation is essentially the inverse of what
-        `get_unconstrained_parameters` does.
         """
         constrained_params = {}
 
@@ -761,47 +815,24 @@ class PyMCWrapper:
             transform = self.model.rvs_to_transforms.get(var, None)
 
             if transform is None:
-                logger.warning(
+                # No transformation needed
+                logger.info(
                     "No transform found for variable %s. Using original values.",
                     var_name,
                 )
                 constrained = unconstrained.copy()
             else:
                 try:
-                    is_scalar = all(
-                        dim in ("chain", "draw") for dim in unconstrained.dims
+                    # Apply transformation
+                    data = unconstrained.values
+                    transformed_data = self._transform_to_constrained(data, transform)
+
+                    constrained = xr.DataArray(
+                        transformed_data,
+                        dims=unconstrained.dims,
+                        coords=unconstrained.coords,
+                        name=var_name,
                     )
-
-                    if is_scalar:
-                        unc_values = unconstrained.values
-
-                        transformed_tensor = transform.forward(unc_values)
-                        if hasattr(transformed_tensor, "eval"):
-                            transformed_values = transformed_tensor.eval()
-                        else:
-                            transformed_values = np.asarray(transformed_tensor)
-
-                        constrained = xr.DataArray(
-                            transformed_values,
-                            dims=unconstrained.dims,
-                            coords=unconstrained.coords,
-                        )
-                    else:
-                        param_dims = [
-                            dim
-                            for dim in unconstrained.dims
-                            if dim not in ("chain", "draw")
-                        ]
-                        input_core_dims = [["chain", "draw"] + param_dims]
-                        output_core_dims = [["chain", "draw"] + param_dims]
-
-                        constrained = wrap_xarray_ufunc(
-                            self._apply_forward_transform,
-                            unconstrained,
-                            input_core_dims=input_core_dims,
-                            output_core_dims=output_core_dims,
-                            func_kwargs={"transform": transform},
-                        )
                 except Exception as e:
                     logger.warning(
                         "Failed to transform %s to constrained space: %s. Using"
@@ -1021,6 +1052,64 @@ class PyMCWrapper:
             **kwargs,
         )
         return result
+
+    def _apply_transform_wrapper(
+        self, data_array: xr.DataArray, transform_method: str, transform: Any
+    ) -> xr.DataArray:
+        """Apply transformation to an xarray DataArray using custom vectorization."""
+        input_data = data_array.values
+        output_data = np.empty_like(input_data)
+
+        if transform_method == "forward":
+            transform_func = transform.forward
+        else:  # backward
+            transform_func = transform.backward
+
+        flat_input = input_data.reshape(-1)
+        flat_output = output_data.reshape(-1)
+
+        for i in range(len(flat_input)):
+            try:
+                scalar_value = flat_input[i].item()
+                result = transform_func(scalar_value)
+
+                if hasattr(result, "eval"):
+                    result = result.eval()
+
+                flat_output[i] = result
+            except Exception as e:
+                logger.warning(f"Transform error at index {i}: {str(e)}")
+                flat_output[i] = flat_input[i]
+
+        return xr.DataArray(
+            output_data,
+            dims=data_array.dims,
+            coords=data_array.coords,
+            name=data_array.name,
+            attrs=data_array.attrs,
+        )
+
+    def _transform_to_unconstrained(self, values, transform):
+        """Transform values from constrained to unconstrained space."""
+        try:
+            result = transform.backward(values)
+            if hasattr(result, "eval"):
+                result = result.eval()
+            return np.asarray(result)
+        except Exception as e:
+            logger.warning("Backward transform failed: %s", str(e))
+            raise
+
+    def _transform_to_constrained(self, values, transform):
+        """Transform values from unconstrained to constrained space."""
+        try:
+            result = transform.forward(values)
+            if hasattr(result, "eval"):
+                result = result.eval()
+            return np.asarray(result)
+        except Exception as e:
+            logger.warning("Forward transform failed: %s", str(e))
+            raise
 
     def _process_and_validate_indices(
         self, idx: int | np.ndarray | slice, n_obs: int
@@ -1309,17 +1398,3 @@ class PyMCWrapper:
                     f"Coordinate length {len(coords[dim])} for dimension {dim} "
                     f"does not match variable shape {size} for {var_name}"
                 )
-
-    def _apply_backward_transform(self, x, transform):
-        """Apply backward transformation to convert from constrained to unconstrained space."""
-        result = transform.backward(x)
-        if hasattr(result, "eval"):
-            return result.eval()
-        return np.asarray(result)
-
-    def _apply_forward_transform(self, x, transform):
-        """Apply forward transformation to convert from unconstrained to constrained space."""
-        result = transform.forward(x)
-        if hasattr(result, "eval"):
-            return result.eval()
-        return np.asarray(result)
