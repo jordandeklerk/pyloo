@@ -8,24 +8,24 @@ import pandas as pd
 
 # Format for standard LOO output
 STD_BASE_FMT = """
-Computed from {n_samples} samples using all {n_points} observations.
+Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
 
-           Estimate   SE
-elpd_loo  {elpd:<10.2f} {se:<.2f}
-p_loo     {p_loo:<10.2f} -
-looic     {looic:<10.2f} {looic_se:<.2f}
+         Estimate       SE
+elpd_loo   {elpd:<8.2f}    {se:<.2f}
+p_loo       {p_loo:<8.2f}        -
+looic      {looic:<8.2f}    {looic_se:<.2f}
 
 {pareto_msg}"""
 
 # Format for k-fold cross-validation output
 KFOLD_BASE_FMT = """
-Computed from {n_samples} samples using {K}-fold cross-validation
+Computed from {n_samples} posterior samples using {K}-fold cross-validation
 with {n_points} observations.{stratify_msg}
 
-             Estimate   SE
-elpd_kfold  {elpd:<10.2f} {se:<.2f}
-p_kfold     {p_kfold:<10.2f} -
-kfoldic     {kfoldic:<10.2f} {kfoldic_se:<.2f}
+           Estimate       SE
+elpd_kfold   {elpd:<8.2f}    {se:<.2f}
+p_kfold       {p_kfold:<8.2f}        -
+kfoldic      {kfoldic:<8.2f}    {kfoldic_se:<.2f}
 """
 
 # Format for subsampled LOO output
@@ -33,19 +33,21 @@ SUBSAMPLE_BASE_FMT = """
 Computed from {n_samples} by {subsample_size} subsampled log-likelihood
 values from {n_data_points} total observations.
 
-           Estimate   SE subsampling SE
-elpd_loo  {0:<10.2f} {1:<.2f}         {2:<.2f}
-p_loo     {3:<10.2f} -                -
-looic     {4:<10.2f} {5:<.2f}         {6:<.2f}
+         Estimate       SE  subsampling SE
+elpd_loo   {0:<8.2f}    {1:<.2f}         {2:<.2f}
+p_loo       {3:<8.2f}        -                -
+looic      {4:<8.2f}    {5:<.2f}         {6:<.2f}
 
 {pareto_msg}"""
 
 POINTWISE_LOO_FMT = """
+------
+
 Pareto k diagnostic values:
-                           {0:>{width}}    {1:>7}
-(-Inf, {2:.2f})    {3:>{width}d}    {6:>7.1f}
-[{2:.2f}, 1)       {4:>{width}d}    {7:>7.1f}
-[1, Inf)         {5:>{width}d}    {8:>7.1f}"""
+                         Count   Pct.
+(-Inf, {2:.2f}]   (good)      {3:d}   {6:.1f}%
+   ({2:.2f}, 1]   (bad)         {4:d}    {7:.1f}%
+   (1, Inf)   (very bad)    {5:d}    {8:.1f}%"""
 
 SCALE_DICT = {
     "log": "Using log score",
@@ -133,26 +135,11 @@ class ELPDData(pd.Series):
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                max_k = (
-                    np.nanmax(self.pareto_k.values)
-                    if not np.all(np.isnan(self.pareto_k.values))
-                    else 0
-                )
-                if max_k < 0.7:
-                    pareto_msg = "All Pareto k estimates are good (k < 0.7)."
-                else:
-                    pareto_msg = "Some Pareto k estimates are high (k >= 0.7)."
-                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+                pareto_msg = ""
             elif method == "psis":
-                # Default message for PSIS when no Pareto k values are available
-                pareto_msg = "All Pareto k estimates are good (k < 0.7)."
-                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+                pareto_msg = ""
             else:
-                # Message for non-PSIS methods
                 pareto_msg = f"Using {method.upper()} importance sampling method."
-                pareto_msg += (
-                    "\nPareto k diagnostics are only available for PSIS method."
-                )
 
             elpd_loo = self["elpd_loo"]
             elpd_loo_se = self["se"]
@@ -187,26 +174,11 @@ class ELPDData(pd.Series):
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                max_k = (
-                    np.nanmax(self.pareto_k.values)
-                    if not np.all(np.isnan(self.pareto_k.values))
-                    else 0
-                )
-                if max_k < 0.7:
-                    pareto_msg = "All Pareto k estimates are good (k < 0.7)."
-                else:
-                    pareto_msg = "Some Pareto k estimates are high (k >= 0.7)."
-                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+                pareto_msg = ""
             elif kind == "loo" and method == "psis":
-                # Default message for PSIS when no Pareto k values are available
-                pareto_msg = "All Pareto k estimates are good (k < 0.7)."
-                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+                pareto_msg = ""
             elif kind == "loo":
-                # Message for non-PSIS methods
                 pareto_msg = f"Using {method.upper()} importance sampling method."
-                pareto_msg += (
-                    "\nPareto k diagnostics are only available for PSIS method."
-                )
             else:
                 pareto_msg = ""
 
@@ -229,7 +201,7 @@ class ELPDData(pd.Series):
 
         if self.warning:
             base += (
-                "\n\nThere has been a warning during the calculation. Please check the"
+                "\nThere has been a warning during the calculation. Please check the"
                 " results."
             )
 
@@ -241,7 +213,6 @@ class ELPDData(pd.Series):
         ):
             bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
             counts, *_ = _histogram(self.pareto_k.values, bins)
-            width = max(4, len(str(np.max(counts))))
             percentages = counts / np.sum(counts) * 100
 
             extended = POINTWISE_LOO_FMT.format(
@@ -254,7 +225,6 @@ class ELPDData(pd.Series):
                 percentages[0],
                 percentages[1],
                 percentages[2],
-                width=width,
             )
             base = "\n".join([base, extended])
 
