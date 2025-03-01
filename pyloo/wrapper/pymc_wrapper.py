@@ -3,7 +3,7 @@
 import copy
 import logging
 import warnings
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 import pymc as pm
@@ -12,6 +12,8 @@ import xarray as xr
 from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
+
+from ..utils import wrap_xarray_ufunc
 
 __all__ = ["PyMCWrapper"]
 
@@ -233,7 +235,6 @@ class PyMCWrapper:
                     f" {expected_shape}, got: {values.shape}"
                 )
 
-            # Create a copy of the data to ensure independence
             values = values.copy()
 
             if mask is not None and var_name in mask:
@@ -297,36 +298,44 @@ class PyMCWrapper:
                             )
 
             self.observed_data[var_name] = values
-            # Make data immutable
             if isinstance(values, np.ndarray):
                 values.flags.writeable = False
 
     def log_likelihood_i(
         self,
-        idx: int,
+        idx: int | np.ndarray | slice,
         idata: InferenceData,
         var_name: str | None = None,
     ) -> xr.DataArray:
-        r"""Compute pointwise log likelihood for a single observation using a fitted model.
+        r"""Compute pointwise log likelihood for one or more observations using a fitted model.
 
-        This method computes the log likelihood for a single observation intended to be used
-        in leave-one-out cross-validation (LOO-CV). It uses a fitted model (i.e. one that has been
-        refitted without the observation at the given index) to evaluate the likelihood of the
-        observation.
+        This method computes the log likelihood for one or more observations intended to be used
+        in cross-validation procedures like leave-one-out cross-validation (LOO-CV) or k-fold CV.
+        It uses a fitted model (i.e. one that has been refitted without the observation(s) at the given
+        index/indices) to evaluate the likelihood of the observation(s).
 
         Parameters
         ----------
-        var_name : str
-            Name of the variable for which to compute the log likelihood.
-        idx : int
-            Index of the held-out observation.
+        idx : int | np.ndarray | slice
+            Index or indices of the held-out observation(s).
         idata : InferenceData
-            InferenceData object from a model that was refitted without the observation at index `idx`.
+            InferenceData object from a model that was refitted without the observation(s) at index `idx`.
+        var_name : str | None
+            Name of the variable for which to compute the log likelihood.
+            If None, uses the first observed variable.
 
         Returns
         -------
         xr.DataArray
-            Log likelihood values for the held-out observation with dimensions (chain, draw).
+            Log likelihood values for the held-out observation(s).
+
+            For a single index (int), returns a DataArray with dimensions (chain, draw) and
+            with an attribute 'observation_index' containing the index. The coordinate for the
+            observation dimension is preserved but set to the index value.
+
+            For multiple indices (array, slice), returns a DataArray with dimensions (chain, draw, obs_idx)
+            where obs_idx is the dimension for the observations, with an attribute 'observation_indices'
+            containing the list of indices.
 
         Raises
         ------
@@ -334,7 +343,8 @@ class PyMCWrapper:
             If the variable is not found, observed data is missing, the variable contains missing values,
             or if the log likelihood computation fails.
         IndexError
-            If `idx` is out of bounds for the observed data.
+            If `idx` is out of bounds for the observed data when providing a single index.
+            For slices or arrays, out-of-bounds indices will be clipped with a warning.
 
         Examples
         --------
@@ -372,15 +382,24 @@ class PyMCWrapper:
 
             wrapper = PyMCWrapper(model, idata)
             idata = wrapper.sample_posterior(draws=1000, tune=1000, chains=2, target_accept=0.9)
+
+            # Single observation
             log_like_i = wrapper.log_likelihood_i(10, idata)
+
+            # Multiple observations
+            indices = np.array([10, 20, 30])
+            log_like_multiple = wrapper.log_likelihood_i(indices, idata)
+
+            # Using a slice
+            log_like_slice = wrapper.log_likelihood_i(slice(10, 15), idata)
         """
         if var_name is None:
             var_name = self.get_observed_name()
 
         if self.get_variable(var_name) is None:
             raise PyMCWrapperError(
-                f"Variable '{var_name}' not found in model. Available variables:"
-                f" {list(self._untransformed_model.named_vars.keys())}"
+                f"Variable '{var_name}' not found in model. Available variables: "
+                f"{list(self._untransformed_model.named_vars.keys())}"
             )
 
         if var_name not in self.observed_data:
@@ -402,18 +421,16 @@ class PyMCWrapper:
         if data_shape is None:
             raise PyMCWrapperError(f"Could not determine shape for variable {var_name}")
 
-        if idx < 0 or idx >= data_shape[0]:
-            raise IndexError(
-                f"Index {idx} is out of bounds for axis 0 with size {data_shape[0]}"
-            )
+        n_obs = data_shape[0]
+        original_data = None
+        orig_coords = None
+
+        indices, single_idx = self._process_and_validate_indices(idx, n_obs)
 
         try:
-            holdout_data, _ = self.select_observations(
-                np.array([idx], dtype=int), var_name=var_name
-            )
             original_data = self.observed_data[var_name].copy()
+            holdout_data, _ = self.select_observations(indices, var_name=var_name)
 
-            orig_coords = None
             if hasattr(self, "observed_dims") and var_name in self.observed_dims:
                 orig_coords = self._get_coords(var_name)
 
@@ -433,16 +450,9 @@ class PyMCWrapper:
                 )
 
             log_like_i = log_like[var_name]
-            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
-
-            for dim in obs_dims:
-                log_like_i = log_like_i.isel({dim: 0})
-
-            for dim in obs_dims:
-                if dim in log_like_i.coords:
-                    log_like_i.coords[dim] = idx
-
-            log_like_i.attrs["observation_index"] = idx
+            log_like_i = self._format_log_likelihood_result(
+                log_like_i, indices, single_idx, idx, holdout_data, n_obs, var_name
+            )
 
             return log_like_i
 
@@ -451,10 +461,11 @@ class PyMCWrapper:
                 raise
             raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
         finally:
-            if orig_coords is not None:
-                self.set_data({var_name: original_data}, coords=orig_coords)
-            else:
-                self.set_data({var_name: original_data})
+            if original_data is not None:
+                if orig_coords is not None:
+                    self.set_data({var_name: original_data}, coords=orig_coords)
+                else:
+                    self.set_data({var_name: original_data})
 
     def sample_posterior(
         self,
@@ -549,21 +560,62 @@ class PyMCWrapper:
         r"""Convert posterior samples from the constrained to the unconstrained space.
 
         This method transforms each free parameter's posterior samples from its native, constrained
-        domain—where it adheres to its prior distribution—to an unconstrained space.
+        domain to an unconstrained space where optimization and other operations can be performed
+        more effectively.
 
-        Transformation details depend on the parameter's domain constraints. For variables restricted
-        to positive values (e.g., HalfNormal, Gamma), a logarithmic transformation is applied
-        as $\theta' = \log(\theta)$. For variables restricted to the unit interval $[0, 1]$ (e.g., Beta),
-        a logit transformation is used, calculated as $\theta' = \log\left(\frac{\theta}{1-\theta}\right)$.
-        For variables with an unbounded domain (e.g., Normal), no transformation is necessary
-        and the identity mapping is applied as $\theta' = \theta$.
+        When transforming random variables, we must account for the change in probability density
+        using the Jacobian adjustment. For a transformation :math:`\theta' = g(\theta)`, the probability
+        densities are related by:
+
+        .. math::
+            p(\theta') = p(\theta) \left| \frac{d}{d\theta'} g^{-1}(\theta') \right|
+
+        The mathematical transformations applied depend on the parameter's domain constraints.
+        For positive variables (e.g., HalfNormal, Gamma), a logarithmic transformation is applied:
+
+        .. math::
+            \theta' = g(\theta) = \log(\theta), \quad \theta \in (0, \infty) \mapsto \theta' \in (-\infty, \infty)
+
+        With Jacobian determinant:
+
+        .. math::
+            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| = \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
+
+        For example, if :math:`\theta \sim \text{HalfNormal}(0, \sigma)`, then after transformation:
+
+        .. math::
+            p(\theta') &= p(\theta) \cdot \exp(\theta') \\
+            &= \frac{\sqrt{2}}{\sigma\sqrt{\pi}} \exp\left(-\frac{\theta^2}{2\sigma^2}\right) \cdot \exp(\theta') \\
+            &= \frac{\sqrt{2}}{\sigma\sqrt{\pi}} \exp\left(-\frac{\exp(2\theta')}{2\sigma^2}\right) \cdot \exp(\theta')
+
+        For variables restricted to the unit interval (e.g., Beta), a logit transformation is used:
+
+        .. math::
+            \theta' = g(\theta) = \log\left(\frac{\theta}{1-\theta}\right), \quad \theta \in (0, 1) \mapsto \theta' \in (-\infty, \infty)
+
+        For variables with an unbounded domain (e.g., Normal), no transformation is necessary:
+
+        .. math::
+            \theta' = g(\theta) = \theta, \quad \theta \in (-\infty, \infty) \mapsto \theta' \in (-\infty, \infty)
+
+        For simplex variables (e.g., Dirichlet), a stick-breaking transformation is applied:
+
+        .. math::
+            \theta'_i = g_i(\theta) = \log\left(\frac{\theta_i}{\sum_{j=i+1}^K \theta_j}\right), \quad i = 1, \ldots, K-1
 
         Returns
         -------
         dict[str, xr.DataArray]
             A dictionary mapping parameter names to their posterior samples in the unconstrained space.
-            Each array retains its original dimensions (e.g., chain, draw, and any additional parameter-specific
-            dimensions).
+            Each array retains its original dimensions (chain, draw, and parameter-specific dimensions).
+
+        Notes
+        -----
+        The method applies the `backward` transform from each parameter's transform object in the
+        model's `rvs_to_transforms` dictionary. If a transform is unavailable or fails, the original
+        constrained samples are returned instead. Jacobian adjustments are automatically handled
+        by PyMC's transform objects.
+
         Examples
         --------
         Let's first import the necessary packages and create a simple linear regression dataset:
@@ -599,14 +651,6 @@ class PyMCWrapper:
 
             wrapper = PyMCWrapper(model, idata)
             unconstrained_params = wrapper.get_unconstrained_parameters()
-
-        Notes
-        -----
-        When transforming your parameters, the method applies the `backward` method of each parameter's
-        transform as stored in the model's `rvs_to_transforms` dictionary. If a parameter doesn't have
-        a transform available or if the transformation fails for some reason, you'll get back the original
-        constrained samples instead. Jacobian adjustments when transforming between
-        spaces are automatically handled by PyMC's transform objects.
         """
         unconstrained_params = {}
 
@@ -615,31 +659,30 @@ class PyMCWrapper:
             if var_name not in self.idata.posterior:
                 continue
 
-            param_samples = self.idata.posterior[var_name]
-            # Get transform from model's rvs_to_transforms dict
             transform = self.model.rvs_to_transforms.get(var, None)
 
-            try:
-                if transform is None:
-                    # No transform available, use original values
-                    unconstrained_samples = param_samples.copy()
-                else:
-                    # Apply backward transformation to get unconstrained space
-                    samples_np = param_samples.values
-                    unconstrained_np = transform.backward(samples_np).eval()
+            if transform is None:
+                # No transformation needed
+                unconstrained_samples = self.idata.posterior[var_name].copy()
+            else:
+                try:
+                    # Apply transformation
+                    data = self.idata.posterior[var_name].values
+                    transformed_data = self._transform_to_unconstrained(data, transform)
+
                     unconstrained_samples = xr.DataArray(
-                        unconstrained_np,
-                        dims=param_samples.dims,
-                        coords=param_samples.coords,
-                        name=param_samples.name,
+                        transformed_data,
+                        dims=self.idata.posterior[var_name].dims,
+                        coords=self.idata.posterior[var_name].coords,
+                        name=var_name,
                     )
-            except Exception as e:
-                logger.warning(
-                    "Failed to transform %s: %s. Using original values.",
-                    var_name,
-                    str(e),
-                )
-                unconstrained_samples = param_samples.copy()
+                except Exception as e:
+                    logger.warning(
+                        "Failed to transform %s: %s. Using original values.",
+                        var_name,
+                        str(e),
+                    )
+                    unconstrained_samples = self.idata.posterior[var_name].copy()
 
             unconstrained_params[var_name] = unconstrained_samples
 
@@ -651,15 +694,51 @@ class PyMCWrapper:
         r"""Convert parameters from the unconstrained back to the constrained space.
 
         This method transforms parameter values from an unconstrained representation back to
-        their original constrained domain as specified by their prior distributions. This ensures
-        that the resulting values respect the model's constraints.
+        their original constrained domain as specified by their prior distributions.
 
-        Transformation details depend on the parameter's original constraints. For variables
-        originally restricted to positive values, the inverse of the logarithmic transform is
-        applied as $\theta = \exp(\theta')$. Variables originally restricted to the unit interval $[0, 1]$
-        use the inverse of the logit transform, calculated as $\theta = \frac{1}{1+\exp(-\theta')}$. For variables
-        that were already unconstrained in their original space, no transformation is necessary
-        and the values remain unchanged ($\theta = \theta'$).
+        When transforming random variables from unconstrained to constrained space, we apply the
+        inverse transformation. For a transformation :math:`\theta' = g(\theta)`, we apply
+        :math:`\theta = g^{-1}(\theta')`. The probability densities are related by:
+
+        .. math::
+            p(\theta) = p(\theta') \left| \frac{d}{d\theta} g(\theta) \right|^{-1} = p(\theta') \left| \frac{1}{\frac{d}{d\theta} g(\theta)} \right|
+
+        The mathematical inverse transformations applied depend on the parameter's original constraints. For positive variables,
+        the inverse of the logarithmic transform is applied:
+
+        .. math::
+            \theta = g^{-1}(\theta') = \exp(\theta'), \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (0, \infty)
+
+        With Jacobian determinant:
+
+        .. math::
+            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| = \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
+
+        For example, if :math:`\theta' \sim \text{Normal}(\mu, \sigma)` in the unconstrained space,
+        then after transformation to the constrained space:
+
+        .. math::
+            p(\theta) &= p(\theta') \cdot \exp(\theta') \\
+            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\theta' - \mu)^2}{2\sigma^2}\right) \cdot \exp(\theta') \\
+            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\log(\theta) - \mu)^2}{2\sigma^2}\right) \cdot \exp(\log(\theta))
+
+        For variables restricted to the unit interval, the inverse of the logit transform is used:
+
+        .. math::
+            \theta = g^{-1}(\theta') = \frac{1}{1+\exp(-\theta')}, \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (0, 1)
+
+        For variables with an unbounded domain, no transformation is necessary:
+
+        .. math::
+            \theta = g^{-1}(\theta') = \theta', \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (-\infty, \infty)
+
+        For simplex variables, the inverse of the stick-breaking transformation is applied:
+
+        .. math::
+            \theta_i = g^{-1}_i(\theta') = \frac{\exp(\theta'_i)}{1 + \exp(\theta'_i)} \prod_{j=1}^{i-1} \frac{1}{1 + \exp(\theta'_j)}, \quad i = 1, \ldots, K-1
+
+        .. math::
+            \theta_K = g^{-1}_K(\theta') = \prod_{j=1}^{K-1} \frac{1}{1 + \exp(\theta'_j)}
 
         Parameters
         ----------
@@ -672,6 +751,13 @@ class PyMCWrapper:
         dict[str, xr.DataArray]
             A dictionary mapping parameter names to their values transformed back to the constrained
             space, preserving the original dimensions.
+
+        Notes
+        -----
+        The method applies the `forward` transform from each parameter's transform object in the
+        model's `rvs_to_transforms` dictionary. If a transform is unavailable or fails, the original
+        unconstrained values are returned unchanged. Jacobian adjustments are automatically handled
+        by PyMC's transform objects. This operation is the inverse of `get_unconstrained_parameters`.
 
         Examples
         --------
@@ -715,16 +801,6 @@ class PyMCWrapper:
 
             modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
             constrained_params = wrapper.constrain_parameters(modified_unconstrained)
-
-        Notes
-        -----
-        To transform your parameters back to the constrained space, the method applies the `forward`
-        method of each parameter's transform from the model's `rvs_to_transforms` dictionary. If a
-        parameter doesn't have a transform or if something goes wrong during transformation, you'll
-        get the original unconstrained samples unchanged. As with the unconstrained transformation,
-        any scaling changes (reflected by the Jacobian determinant) are automatically handled by
-        PyMC's transform objects. This operation is essentially the inverse of what
-        `get_unconstrained_parameters` does.
         """
         constrained_params = {}
 
@@ -737,21 +813,23 @@ class PyMCWrapper:
             transform = self.model.rvs_to_transforms.get(var, None)
 
             if transform is None:
-                logger.warning(
+                # No transformation needed
+                logger.info(
                     "No transform found for variable %s. Using original values.",
                     var_name,
                 )
                 constrained = unconstrained.copy()
             else:
                 try:
-                    # Apply forward transformation to get constrained space
-                    unconstrained_np = unconstrained.values
-                    constrained_np = transform.forward(unconstrained_np).eval()
+                    # Apply transformation
+                    data = unconstrained.values
+                    transformed_data = self._transform_to_constrained(data, transform)
+
                     constrained = xr.DataArray(
-                        constrained_np,
+                        transformed_data,
                         dims=unconstrained.dims,
                         coords=unconstrained.coords,
-                        name=unconstrained.name,
+                        name=var_name,
                     )
                 except Exception as e:
                     logger.warning(
@@ -894,7 +972,6 @@ class PyMCWrapper:
             dims = self.idata.observed_data[self.get_observed_name()].dims
             if dims:
                 return tuple(dims)
-
         return None
 
     def get_shape(self, var_name: str) -> tuple[int, ...] | None:
@@ -922,6 +999,213 @@ class PyMCWrapper:
             return tuple(d.eval() if hasattr(d, "eval") else d for d in var.shape)
         return None
 
+    def _apply_ufunc(
+        self,
+        func: Callable[..., Any],
+        var_name: str | None = None,
+        input_core_dims: list[list[str]] | None = None,
+        output_core_dims: list[list[str]] | None = None,
+        func_kwargs: dict | None = None,
+        **kwargs: Any,
+    ) -> xr.DataArray:
+        """This is a utility method that applies a function to posterior samples using
+        ``wrap_xarray_ufunc``."""
+        if not hasattr(self.idata, "posterior"):
+            raise PyMCWrapperError(
+                "InferenceData object must contain posterior samples. "
+                "The model does not appear to be fitted."
+            )
+
+        if input_core_dims is None:
+            input_core_dims = [["chain", "draw"]]
+        if output_core_dims is None:
+            output_core_dims = [["chain", "draw"]]
+
+        if var_name is not None:
+            if var_name not in self.idata.posterior:
+                raise PyMCWrapperError(
+                    f"Variable '{var_name}' not found in posterior. Available"
+                    f" variables: {list(self.idata.posterior.data_vars.keys())}"
+                )
+            data = self.idata.posterior[var_name]
+        else:
+            input_vars = kwargs.pop("input_vars", None)
+            if input_vars is not None:
+                for var in input_vars:
+                    if var not in self.idata.posterior:
+                        raise PyMCWrapperError(
+                            f"Variable '{var}' not found in posterior. Available"
+                            f" variables: {list(self.idata.posterior.data_vars.keys())}"
+                        )
+                    data = [self.idata.posterior[var] for var in input_vars]
+            else:
+                data = self.idata.posterior
+
+        result = wrap_xarray_ufunc(
+            func,
+            data if isinstance(data, list) else [data],
+            input_core_dims=input_core_dims,
+            output_core_dims=output_core_dims,
+            func_kwargs=func_kwargs,
+            **kwargs,
+        )
+        return result
+
+    def _transform_to_unconstrained(self, values, transform):
+        """Transform values from constrained to unconstrained space."""
+        try:
+            result = transform.backward(values)
+            if hasattr(result, "eval"):
+                result = result.eval()
+            return np.asarray(result)
+        except Exception as e:
+            logger.warning("Backward transform failed: %s", str(e))
+            raise
+
+    def _transform_to_constrained(self, values, transform):
+        """Transform values from unconstrained to constrained space."""
+        try:
+            result = transform.forward(values)
+            if hasattr(result, "eval"):
+                result = result.eval()
+            return np.asarray(result)
+        except Exception as e:
+            logger.warning("Forward transform failed: %s", str(e))
+            raise
+
+    def _process_and_validate_indices(
+        self, idx: int | np.ndarray | slice, n_obs: int
+    ) -> tuple[np.ndarray, bool]:
+        """Process and validate indices for log likelihood computation."""
+        if isinstance(idx, (int, np.integer)):
+            if idx < 0 or idx >= n_obs:
+                raise IndexError(
+                    f"Index {idx} is out of bounds for axis 0 with size {n_obs}"
+                )
+            indices = np.array([idx], dtype=int)
+            single_idx = True
+        elif isinstance(idx, slice):
+            start, stop, step = idx.indices(n_obs)
+
+            if stop > n_obs:
+                warnings.warn(
+                    f"Slice end index {idx.stop} is out of bounds for axis 0 with size"
+                    f" {n_obs}. Only indices up to {n_obs - 1} will be used.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+            indices = np.arange(start, min(stop, n_obs), step, dtype=int)
+            single_idx = False
+        elif isinstance(idx, np.ndarray):
+            if idx.dtype == bool:
+                if len(idx) != n_obs:
+                    raise IndexError(
+                        f"Boolean mask length {len(idx)} does not match "
+                        f"data shape {n_obs} along axis 0"
+                    )
+                indices = np.where(idx)[0]
+                single_idx = False
+            else:
+                if len(idx) == 0:
+                    raise IndexError("Empty index array provided")
+
+                invalid_indices = (idx < 0) | (idx >= n_obs)
+                if np.any(invalid_indices):
+                    out_of_bounds = idx[invalid_indices]
+                    warnings.warn(
+                        f"Some indices {out_of_bounds} are out of bounds for axis 0"
+                        f" with size {n_obs}. These indices will be ignored.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    indices = idx[~invalid_indices].astype(int)
+                    if len(indices) == 0:
+                        raise IndexError(
+                            f"All indices {idx} are out of bounds for axis 0 with size"
+                            f" {n_obs}"
+                        )
+                else:
+                    indices = idx.astype(int)
+
+                single_idx = len(indices) == 1 and isinstance(idx[0], (int, np.integer))
+        else:
+            raise PyMCWrapperError(f"Unsupported index type: {type(idx)}")
+        return indices, single_idx
+
+    def _format_log_likelihood_result(
+        self,
+        log_like_i: xr.DataArray,
+        indices: np.ndarray,
+        single_idx: bool,
+        original_idx: int | np.ndarray | slice,
+        holdout_data: np.ndarray,
+        n_obs: int,
+        var_name: str,
+    ) -> xr.DataArray:
+        """Format log likelihood results based on index type."""
+        if single_idx and isinstance(original_idx, int):
+            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+
+            for dim in obs_dims:
+                log_like_i = log_like_i.isel({dim: 0})
+
+            if obs_dims and obs_dims[0] in log_like_i.coords:
+                log_like_i.coords[obs_dims[0]] = original_idx
+
+            log_like_i.attrs["observation_index"] = original_idx
+            return log_like_i
+
+        chains = log_like_i.sizes.get("chain", 1)
+        draws = log_like_i.sizes.get("draw", 1)
+
+        obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
+
+        if not obs_dims:
+            values = np.zeros((chains, draws, len(indices)))
+
+            for i in range(len(indices)):
+                values[:, :, i] = log_like_i.values
+
+            result = xr.DataArray(
+                values,
+                dims=["chain", "draw", "obs_idx"],
+                coords={
+                    "chain": log_like_i.coords.get("chain", np.arange(chains)),
+                    "draw": log_like_i.coords.get("draw", np.arange(draws)),
+                    "obs_idx": indices,
+                },
+                name=var_name,
+            )
+        else:
+            obs_dim = obs_dims[0]
+            obs_size = log_like_i.sizes[obs_dim]
+            values = np.zeros((chains, draws, len(indices)))
+
+            for i, idx_val in enumerate(indices):
+                if obs_size == len(holdout_data):
+                    index_to_use = min(i, obs_size - 1)
+                elif obs_size == n_obs:
+                    index_to_use = min(idx_val, obs_size - 1)
+                else:
+                    index_to_use = 0
+
+                values[:, :, i] = log_like_i.isel({obs_dim: index_to_use}).values
+
+            result = xr.DataArray(
+                values,
+                dims=["chain", "draw", "obs_idx"],
+                coords={
+                    "chain": log_like_i.coords.get("chain", np.arange(chains)),
+                    "draw": log_like_i.coords.get("draw", np.arange(draws)),
+                    "obs_idx": indices,
+                },
+                name=var_name,
+            )
+
+        result.attrs["observation_indices"] = indices.tolist()
+        return result
+
     def _create_selection_mask(
         self, indices: np.ndarray | slice, length: int, axis: int
     ) -> np.ndarray:
@@ -944,20 +1228,29 @@ class PyMCWrapper:
 
         # Integer array input
         indices = np.asarray(indices, dtype=np.int64)
-        if indices.size > 0:
-            if np.any(indices < 0):
-                raise IndexError(
-                    "Negative indices are not allowed. Found indices:"
-                    f" {indices[indices < 0]}"
-                )
-            if np.any(indices >= length):
-                raise IndexError(
-                    f"Index {max(indices)} is out of bounds for axis {axis}"
-                    f" with size {length}"
-                )
+
+        if indices.size == 0:
+            raise IndexError("Empty index array provided")
 
         mask = np.zeros(length, dtype=bool)
-        np.put(mask, indices, True)
+        valid_mask = (indices >= 0) & (indices < length)
+
+        if not np.any(valid_mask):
+            raise IndexError(
+                f"All indices are out of bounds for axis {axis} with size {length}"
+            )
+
+        if not np.all(valid_mask):
+            invalid_indices = indices[~valid_mask]
+            warnings.warn(
+                f"Some indices {invalid_indices} are out of bounds for axis {axis}"
+                f" with size {length}. These indices will be ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        valid_indices = indices[valid_mask]
+        mask[valid_indices] = True
         return mask
 
     def _validate_model_state(self) -> None:

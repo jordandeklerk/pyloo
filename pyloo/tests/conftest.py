@@ -360,6 +360,39 @@ def bernoulli_model():
 
 
 @pytest.fixture(scope="session")
+def large_regression_model():
+    """Create a large linear regression model with many observations for K-fold testing."""
+    rng = np.random.default_rng(42)
+    n_obs = 1000
+    n_predictors = 3
+
+    X = rng.normal(0, 1, size=(n_obs, n_predictors))
+
+    true_alpha = 1.5
+    true_betas = np.array([0.8, -0.5, 1.2])
+    true_sigma = 0.7
+
+    y = true_alpha + X @ true_betas + rng.normal(0, true_sigma, size=n_obs)
+
+    with pm.Model(
+        coords={"obs_id": range(n_obs), "predictor": range(n_predictors)}
+    ) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=5)
+        betas = pm.Normal("betas", mu=0, sigma=2, dims="predictor")
+        sigma = pm.HalfNormal("sigma", sigma=3)
+
+        mu = alpha + pm.math.dot(X, betas)
+
+        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            draws=1000, tune=500, random_seed=42, idata_kwargs={"log_likelihood": True}
+        )
+
+    return model, idata
+
+
+@pytest.fixture(scope="session")
 def student_t_model():
     """Create a Student's T model for testing different likelihood types."""
     rng = np.random.default_rng(42)
@@ -367,7 +400,7 @@ def student_t_model():
     true_alpha = 1.0
     true_beta = 2.0
     true_sigma = 1.0
-    true_nu = 4.0  # Degrees of freedom
+    true_nu = 4.0
 
     y = true_alpha + true_beta * X + rng.standard_t(true_nu) * true_sigma
 
@@ -375,7 +408,7 @@ def student_t_model():
         alpha = pm.Normal("alpha", mu=0, sigma=10)
         beta = pm.Normal("beta", mu=0, sigma=10)
         sigma = pm.HalfNormal("sigma", sigma=10)
-        nu = pm.Exponential("nu", lam=1 / 10)  # Prior for degrees of freedom
+        nu = pm.Exponential("nu", lam=1 / 10)
 
         mu = alpha + beta * X
         pm.StudentT("y", nu=nu, mu=mu, sigma=sigma, observed=y, dims="obs_id")
@@ -393,7 +426,7 @@ def mixture_model():
     rng = np.random.default_rng(42)
     n_samples = 200
 
-    true_w = 0.7  # mixture weight for first component
+    true_w = 0.7
     true_mu1 = -2.0
     true_mu2 = 3.0
     true_sigma1 = 0.5

@@ -1,4 +1,4 @@
-"""Expected Log Pointwise Predictive Density (ELPD) data container based on ArviZ."""
+"""Expected Log Pointwise Predictive Density (ELPD) data container."""
 
 from copy import copy as _copy
 from copy import deepcopy as _deepcopy
@@ -8,46 +8,52 @@ import pandas as pd
 
 # Format for standard LOO output
 STD_BASE_FMT = """
-Computed from {n_samples} samples using all {n_points} observations.
+Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
 
-           Estimate   SE
-elpd_loo  {elpd:<10.2f} {se:<.2f}
-p_loo     {p_loo:<10.2f} -
-looic     {looic:<10.2f} {looic_se:<.2f}
+         Estimate       SE
+elpd_loo   {elpd:<8.2f}    {se:<.2f}
+p_loo       {p_loo:<8.2f}        -
+looic      {looic:<8.2f}    {looic_se:<.2f}
 
 {pareto_msg}"""
+
+# Format for k-fold cross-validation output
+KFOLD_BASE_FMT = """
+Computed from {n_samples} posterior samples using {K}-fold cross-validation
+with {n_points} observations.{stratify_msg}
+
+           Estimate       SE
+elpd_kfold   {elpd:<8.2f}    {se:<.2f}
+p_kfold       {p_kfold:<8.2f}        -
+kfoldic      {kfoldic:<8.2f}    {kfoldic_se:<.2f}
+"""
 
 # Format for subsampled LOO output
 SUBSAMPLE_BASE_FMT = """
 Computed from {n_samples} by {subsample_size} subsampled log-likelihood
 values from {n_data_points} total observations.
 
-           Estimate   SE subsampling SE
-elpd_loo  {0:<10.2f} {1:<.2f}         {2:<.2f}
-p_loo     {3:<10.2f} -                -
-looic     {4:<10.2f} {5:<.2f}         {6:<.2f}
+         Estimate       SE  subsampling SE
+elpd_loo   {0:<8.2f}    {1:<.2f}         {2:<.2f}
+p_loo       {3:<8.2f}        -                -
+looic      {4:<8.2f}    {5:<.2f}         {6:<.2f}
 
 {pareto_msg}"""
 
 POINTWISE_LOO_FMT = """
+------
+
 Pareto k diagnostic values:
-                           {0:>{width}}    {1:>7}
-(-Inf, {2:.2f})    {3:>{width}d}    {6:>7.1f}
-[{2:.2f}, 1)       {4:>{width}d}    {7:>7.1f}
-[1, Inf)         {5:>{width}d}    {8:>7.1f}"""
+                         Count   Pct.
+(-Inf, {2:.2f}]   (good)      {3:d}   {6:.1f}%
+   ({2:.2f}, 1]   (bad)         {4:d}    {7:.1f}%
+   (1, Inf)   (very bad)    {5:d}    {8:.1f}%"""
 
 SCALE_DICT = {
     "log": "Using log score",
     "negative_log": "Using negative log score",
     "deviance": "Using deviance score",
 }
-
-
-def _histogram(data, bins, range_hist=None):
-    """Histogram."""
-    hist, bin_edges = np.histogram(data, bins=bins, range=range_hist)
-    hist_dens = hist / (hist.sum() * np.diff(bin_edges))
-    return hist, hist_dens, bin_edges
 
 
 class ELPDData(pd.Series):
@@ -75,31 +81,58 @@ class ELPDData(pd.Series):
         """
         kind = self.index[0].split("_")[1]
 
-        if kind not in ("loo", "waic"):
+        if kind not in ("loo", "waic", "kfold"):
             raise ValueError("Invalid ELPDData object")
 
         is_subsampled = "subsampling_SE" in self
 
-        if is_subsampled:
+        if kind == "kfold":
+            K = getattr(self, "K", None)
+
+            elpd_kfold = self["elpd_kfold"]
+            se = self["se"]
+            p_kfold = self["p_kfold"]
+            p_kfold_se = self.get("se_p_kfold", float("nan"))
+            kfoldic = -2 * elpd_kfold
+            kfoldic_se = 2 * se
+
+            stratify_msg = ""
+            if self.stratified:
+                stratify_msg = " Using stratified k-fold cross-validation"
+
+            base = KFOLD_BASE_FMT.format(
+                n_samples=self.n_samples,
+                K=K,
+                n_points=self.n_data_points,
+                elpd=elpd_kfold,
+                se=se,
+                p_kfold=p_kfold,
+                p_kfold_se=p_kfold_se,
+                kfoldic=kfoldic,
+                kfoldic_se=kfoldic_se,
+                stratify_msg=stratify_msg,
+            )
+
+            if hasattr(self, "scale") and self.scale in SCALE_DICT:
+                base += f"\n{SCALE_DICT[self.scale]}"
+
+            return base
+
+        elif is_subsampled:
             subsample_size = self["subsample_size"]
+            pareto_msg = ""
+            method = getattr(self, "method", "psis")
 
             if (
                 "pareto_k" in self
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                max_k = (
-                    np.nanmax(self.pareto_k.values)
-                    if not np.all(np.isnan(self.pareto_k.values))
-                    else 0
-                )
-                if max_k < 0.7:
-                    pareto_msg = "All Pareto k estimates are good (k < 0.7)."
-                else:
-                    pareto_msg = "Some Pareto k estimates are high (k >= 0.7)."
-                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
-            else:
                 pareto_msg = ""
+            elif method == "psis":
+                pareto_msg = ""
+            else:
+                pareto_msg = f"Using {method.upper()} importance sampling method."
 
             elpd_loo = self["elpd_loo"]
             elpd_loo_se = self["se"]
@@ -126,21 +159,19 @@ class ELPDData(pd.Series):
                 r_eff=self.get("r_eff", 1.0),
             )
         else:
+            pareto_msg = ""
+            method = getattr(self, "method", "psis")
+
             if (
                 "pareto_k" in self
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                max_k = (
-                    np.nanmax(self.pareto_k.values)
-                    if not np.all(np.isnan(self.pareto_k.values))
-                    else 0
-                )
-                if max_k < 0.7:
-                    pareto_msg = "All Pareto k estimates are good (k < 0.7)."
-                else:
-                    pareto_msg = "Some Pareto k estimates are high (k >= 0.7)."
-                pareto_msg += "\nSee help('pareto-k-diagnostic') for details."
+                pareto_msg = ""
+            elif kind == "loo" and method == "psis":
+                pareto_msg = ""
+            elif kind == "loo":
+                pareto_msg = f"Using {method.upper()} importance sampling method."
             else:
                 pareto_msg = ""
 
@@ -163,20 +194,18 @@ class ELPDData(pd.Series):
 
         if self.warning:
             base += (
-                "\n\nThere has been a warning during the calculation. Please check the"
+                "\nThere has been a warning during the calculation. Please check the"
                 " results."
             )
 
         if (
-            not is_subsampled
-            and kind == "loo"
+            kind == "loo"
             and "pareto_k" in self
             and hasattr(self, "good_k")
             and self.good_k is not None
         ):
             bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
             counts, *_ = _histogram(self.pareto_k.values, bins)
-            width = max(4, len(str(np.max(counts))))
             percentages = counts / np.sum(counts) * 100
 
             extended = POINTWISE_LOO_FMT.format(
@@ -189,15 +218,8 @@ class ELPDData(pd.Series):
                 percentages[0],
                 percentages[1],
                 percentages[2],
-                width=width,
             )
             base = "\n".join([base, extended])
-        elif not is_subsampled and kind == "loo" and "pareto_k" in self:
-            # For non-PSIS methods, show simplified diagnostics
-            method = getattr(self, "method", "unknown")
-            base += f"\n\nUsing {method.upper()} importance sampling method"
-            if method in ("tis", "sis"):
-                base += " (no Pareto k diagnostics available)"
 
         return base
 
@@ -249,3 +271,30 @@ class ELPDData(pd.Series):
     def estimates(self, value):
         """Set the estimation results."""
         self._estimates = value
+
+    @property
+    def K(self):
+        """Get the number of folds for k-fold cross-validation."""
+        return getattr(self, "_K", None)
+
+    @K.setter
+    def K(self, value):
+        """Set the number of folds."""
+        self._K = value
+
+    @property
+    def stratified(self):
+        """Get whether stratified k-fold cross-validation was used."""
+        return getattr(self, "_stratified", False)
+
+    @stratified.setter
+    def stratified(self, value):
+        """Set whether stratified k-fold cross-validation was used."""
+        self._stratified = value
+
+
+def _histogram(data, bins, range_hist=None):
+    """Histogram."""
+    hist, bin_edges = np.histogram(data, bins=bins, range=range_hist)
+    hist_dens = hist / (hist.sum() * np.diff(bin_edges))
+    return hist, hist_dens, bin_edges

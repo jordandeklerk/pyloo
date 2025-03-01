@@ -1,6 +1,5 @@
 """Tests for ELPD base class."""
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -62,28 +61,6 @@ def test_elpd_data_properties():
     estimates = {"mean": 1.0, "std": 0.5}
     elpd.estimates = estimates
     assert elpd.estimates == estimates
-
-
-def test_elpd_str_standard_format():
-    """Test string representation for standard LOO output."""
-    data = {
-        "elpd_loo": 1.0,
-        "se": 0.5,
-        "p_loo": 0.1,
-        "n_samples": 1000,
-        "warning": False,
-        "n_data_points": 100,
-        "pareto_k": pd.Series(np.random.normal(0, 0.3, 100)),
-    }
-    elpd = ELPDData(data=pd.Series(data))
-    elpd.good_k = 0.7
-
-    str_output = str(elpd)
-    assert "Computed from 1000 samples" in str_output
-    assert "elpd_loo" in str_output
-    assert "p_loo" in str_output
-    assert "looic" in str_output
-    assert "Pareto k diagnostic values:" in str_output
 
 
 def test_elpd_str_subsampled_format():

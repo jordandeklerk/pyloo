@@ -1,8 +1,8 @@
-"""Model comparison utilities for LOO-CV based on Arviz."""
+"""Model comparison utilities for LOO-CV, WAIC, and K-fold CV based on Arviz."""
 
 import warnings
 from copy import deepcopy
-from typing import Callable, Literal, Mapping, Optional
+from typing import Callable, Literal
 
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ from scipy import optimize
 
 from .elpd import ELPDData
 from .loo import loo
+from .loo_kfold import kfold
 from .loo_subsample import loo_subsample
 from .rcparams import _validate_scale
 from .waic import waic
@@ -20,29 +21,37 @@ __all__ = ["loo_compare"]
 
 
 def loo_compare(
-    compare_dict: Mapping[str, InferenceData | ELPDData],
+    compare_dict: dict[str, InferenceData | ELPDData],
     ic: str = "loo",
     method: Literal["stacking", "bb-pseudo-bma", "pseudo-bma"] = "stacking",
     b_samples: int = 1000,
     alpha: float = 1,
-    seed: Optional[int | np.random.RandomState] = None,
-    scale: Optional[str] = None,
-    var_name: Optional[str] = None,
-    observations: Optional[int | np.ndarray] = None,
-    estimator: Optional[Literal["diff_srs", "srs", "hh_pps"]] = None,
+    seed: int | np.random.RandomState | None = None,
+    scale: str | None = None,
+    var_name: str | None = None,
+    observations: int | np.ndarray | None = None,
+    estimator: Literal["diff_srs", "srs", "hh_pps"] | None = None,
+    K: int | None = None,
+    folds: np.ndarray | None = None,
+    stratify: np.ndarray | None = None,
+    random_seed: int | None = None,
 ) -> pd.DataFrame:
     """Compare models based on their expected log pointwise predictive density (ELPD).
+
     The ELPD is estimated either by Pareto smoothed importance sampling leave-one-out
-    cross-validation (LOO) or using the widely applicable information criterion (WAIC).
-    We recommend LOO. For large datasets, LOO can be approximated using subsampling.
+    cross-validation (PSIS-LOO), using the widely applicable information criterion (WAIC),
+    or using K-fold cross-validation. We recommend PSIS-LOO over WAIC for most cases.
+    For large datasets, PSIS-LOO can be approximated using subsampling. For models with
+    influential observations, K-fold cross-validation may provide more stable estimates.
+    K-fold cross-validation is only supported for PyMC models.
 
     Parameters
     ----------
     compare_dict : dict of {str: InferenceData or ELPDData}
         A dictionary of model names and InferenceData or ELPDData objects
     ic : str, optional
-        Information Criterion (LOO or WAIC) used to compare models.
-        Default is "loo". We recommend using LOO over WAIC.
+        Information Criterion (LOO, WAIC, or kfold) used to compare models.
+        Default is "loo". We recommend using LOO over WAIC for most cases.
     method : str, optional
         Method used to estimate the weights for each model. Available options are:
         - 'stacking' : stacking of predictive distributions.
@@ -76,6 +85,18 @@ def loo_compare(
     estimator : str, optional
         Estimator to use for subsampling. Only used if observations is not None.
         Options are "diff_srs", "srs", or "hh_pps".
+    K : int, optional
+        Number of folds for K-fold cross-validation. Only used if ic="kfold".
+        Default is 10 if not specified.
+    folds : array-like, optional
+        Pre-specified fold assignments for K-fold cross-validation. Only used if ic="kfold".
+        If provided, this overrides the K parameter.
+    stratify : array-like, optional
+        Array of values to use for stratified K-fold cross-validation. Only used if ic="kfold".
+        If provided, folds will be created to preserve the distribution of these values.
+    random_seed : int, optional
+        Random seed for reproducibility when creating folds for K-fold cross-validation.
+        Only used if ic="kfold" and folds is None.
 
     Returns
     -------
@@ -106,11 +127,50 @@ def loo_compare(
         compare_dict = {"centered": data1, "non_centered": data2}
         pl.loo_compare(compare_dict)
 
+    Compare models using K-fold cross-validation:
+
+    .. code-block:: python
+
+        import arviz as az
+        import pyloo as pl
+        from pyloo import PyMCWrapper
+        import pymc as pm
+        import numpy as np
+
+        # Create two PyMC models with different priors
+        x = np.random.normal(0, 1, size=100)
+        y = 2 * x + np.random.normal(0, 1, size=100)
+
+        # Model 1 with informative priors
+        with pm.Model() as model1:
+            alpha = pm.Normal("alpha", mu=0, sigma=1)
+            beta = pm.Normal("beta", mu=2, sigma=1)
+            sigma = pm.HalfNormal("sigma", sigma=1)
+            mu = alpha + beta * x
+            obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+            idata1 = pm.sample(1000, return_inferencedata=True)
+
+        # Model 2 with less informative priors
+        with pm.Model() as model2:
+            alpha = pm.Normal("alpha", mu=0, sigma=10)
+            beta = pm.Normal("beta", mu=0, sigma=10)
+            sigma = pm.HalfNormal("sigma", sigma=10)
+            mu = alpha + beta * x
+            obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+            idata2 = pm.sample(1000, return_inferencedata=True)
+
+        wrapper1 = PyMCWrapper(model1, idata1)
+        wrapper2 = PyMCWrapper(model2, idata2)
+
+        compare_dict = {"informative_priors": wrapper1, "weak_priors": wrapper2}
+        pl.loo_compare(compare_dict, ic="kfold", K=5)
+
     See Also
     --------
     loo : Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
     loo_subsample : Compute approximate LOO-CV using subsampling.
     waic : Compute the widely applicable information criterion (WAIC).
+    kfold : Compute K-fold cross-validation for PyMC models.
     """
     if not isinstance(compare_dict, dict):
         raise TypeError("compare_dict must be a dictionary")
@@ -128,8 +188,8 @@ def loo_compare(
     if method not in ["stacking", "bb-pseudo-bma", "pseudo-bma"]:
         raise ValueError("Method must be 'stacking', 'BB-pseudo-BMA' or 'pseudo-BMA'")
 
-    if ic not in ["loo", "waic"]:
-        raise ValueError("ic must be 'loo' or 'waic'")
+    if ic not in ["loo", "waic", "kfold"]:
+        raise ValueError("ic must be 'loo', 'waic', or 'kfold'")
 
     elpds, scale, ic = _calculate_ics(
         compare_dict,
@@ -138,6 +198,10 @@ def loo_compare(
         var_name=var_name,
         observations=observations,
         estimator=estimator,
+        K=K,
+        folds=folds,
+        stratify=stratify,
+        random_seed=random_seed,
     )
 
     ascending = scale != "log"
@@ -205,7 +269,7 @@ def loo_compare(
     return df
 
 
-def _ic_matrix(elpds: Mapping[str, ELPDData], ic_i: str) -> tuple[int, int, np.ndarray]:
+def _ic_matrix(elpds: dict[str, ELPDData], ic_i: str) -> tuple[int, int, np.ndarray]:
     """Store the previously computed pointwise predictive accuracy values (elpds) in a 2D matrix."""
     model_names = list(elpds.keys())
     cols = len(model_names)
@@ -224,14 +288,18 @@ def _ic_matrix(elpds: Mapping[str, ELPDData], ic_i: str) -> tuple[int, int, np.n
 
 
 def _calculate_ics(
-    compare_dict: Mapping[str, InferenceData | ELPDData],
-    scale: Optional[str] = None,
-    ic: Optional[str] = None,
-    var_name: Optional[str] = None,
-    observations: Optional[int | np.ndarray] = None,
-    estimator: Optional[Literal["diff_srs", "srs", "hh_pps"]] = None,
+    compare_dict: dict[str, InferenceData | ELPDData],
+    scale: str | None = None,
+    ic: str | None = None,
+    var_name: str | None = None,
+    observations: int | np.ndarray | None = None,
+    estimator: Literal["diff_srs", "srs", "hh_pps"] | None = None,
+    K: int | None = None,
+    folds: np.ndarray | None = None,
+    stratify: np.ndarray | None = None,
+    random_seed: int | None = None,
 ) -> tuple[dict[str, ELPDData], str, str]:
-    """Calculate LOO, WAIC, or subsampled LOO.
+    """Calculate LOO, WAIC, K-fold CV, or subsampled LOO.
 
     Parameters
     ----------
@@ -244,7 +312,7 @@ def _calculate_ics(
         - 'deviance' : -2 * log-score
         A higher log-score (or a lower deviance) indicates better predictive accuracy.
     ic : str, optional
-        Information Criterion (LOO) used to compare models.
+        Information Criterion (LOO, WAIC, or kfold) used to compare models.
         Default is "loo".
     var_name : str, optional
         Name of the variable storing pointwise log likelihood values.
@@ -253,6 +321,18 @@ def _calculate_ics(
     estimator : str, optional
         Estimator to use for subsampling. Only used if observations is not None.
         Options are "diff_srs", "srs", or "hh_pps".
+    K : int, optional
+        Number of folds for K-fold cross-validation. Only used if ic="kfold".
+        Default is 10 if not specified.
+    folds : array-like, optional
+        Pre-specified fold assignments for K-fold cross-validation. Only used if ic="kfold".
+        If provided, this overrides the K parameter.
+    stratify : array-like, optional
+        Array of values to use for stratified K-fold cross-validation. Only used if ic="kfold".
+        If provided, folds will be created to preserve the distribution of these values.
+    random_seed : int, optional
+        Random seed for reproducibility when creating folds for K-fold cross-validation.
+        Only used if ic="kfold" and folds is None.
 
     Returns
     -------
@@ -299,7 +379,7 @@ def _calculate_ics(
                 "Not all provided ELPDData have been calculated with pointwise=True"
             )
 
-        if ic is not None and ic.lower() != precomputed_ic:
+        if ic is not None and ic.lower() != precomputed_ic.lower():
             warnings.warn(
                 "Provided ic argument is incompatible with precomputed elpd data. "
                 f"Using ic from precomputed elpddata: {precomputed_ic}",
@@ -331,6 +411,8 @@ def _calculate_ics(
     ic_func: Callable[..., ELPDData]
     if ic == "waic":
         ic_func = waic
+    elif ic == "kfold":
+        ic_func = kfold
     elif observations is not None:
         ic_func = loo_subsample
     else:
@@ -340,12 +422,34 @@ def _calculate_ics(
     for name, dataset in compare_dict.items():
         if not isinstance(dataset, ELPDData):
             try:
-                compare_dict[name] = ic_func(
-                    dataset,
-                    pointwise=True,
-                    var_name=var_name,
-                    scale=scale,
-                )
+                if ic == "kfold":
+                    compare_dict[name] = ic_func(
+                        dataset,
+                        K=K if K is not None else 10,
+                        folds=folds,
+                        var_name=var_name,
+                        scale=scale,
+                        stratify=stratify,
+                        random_seed=random_seed,
+                        save_fits=False,
+                        progressbar=True,
+                    )
+                elif observations is not None:
+                    compare_dict[name] = ic_func(
+                        dataset,
+                        observations=observations,
+                        estimator=estimator,
+                        pointwise=True,
+                        var_name=var_name,
+                        scale=scale,
+                    )
+                else:
+                    compare_dict[name] = ic_func(
+                        dataset,
+                        pointwise=True,
+                        var_name=var_name,
+                        scale=scale,
+                    )
             except Exception as e:
                 raise e.__class__(
                     f"Encountered error trying to compute {ic} from model {name}."
@@ -357,12 +461,12 @@ def _calculate_ics(
 
 
 def _compute_weights(
-    elpds: Mapping[str, ELPDData],
+    elpds: dict[str, ELPDData],
     ic: str,
     method: Literal["stacking", "bb-pseudo-bma", "pseudo-bma"],
     b_samples: int,
     alpha: float,
-    seed: Optional[int | np.random.RandomState],
+    seed: int | np.random.RandomState | None,
     scale: str,
 ) -> dict[str, float] | tuple[dict[str, float], pd.Series]:
     """Compute model weights using the specified method."""
@@ -375,7 +479,7 @@ def _compute_weights(
 
 
 def _stacking_weights(
-    elpds: Mapping[str, ELPDData], ic: str, scale: str
+    elpds: dict[str, ELPDData], ic: str, scale: str
 ) -> dict[str, float]:
     """Compute stacking weights."""
     model_names = list(elpds.keys())
@@ -437,11 +541,11 @@ def _stacking_weights(
 
 
 def _bb_pseudo_bma_weights(
-    elpds: Mapping[str, ELPDData],
+    elpds: dict[str, ELPDData],
     ic: str,
     b_samples: int,
     alpha: float,
-    seed: Optional[int | np.random.RandomState],
+    seed: int | np.random.RandomState | None,
     scale: str,
 ) -> tuple[dict[str, float], pd.Series]:
     """Compute Bayesian bootstrap pseudo-BMA weights."""
@@ -478,7 +582,7 @@ def _bb_pseudo_bma_weights(
 
 
 def _pseudo_bma_weights(
-    elpds: Mapping[str, ELPDData], ic: str, scale: str
+    elpds: dict[str, ELPDData], ic: str, scale: str
 ) -> dict[str, float]:
     """Compute pseudo-BMA weights."""
     model_names = list(elpds.keys())

@@ -257,8 +257,11 @@ def loo(
     looic = -2 * loo_lppd
     looic_se = 2 * loo_lppd_se
 
+    result_data: list[Any] = []
+    result_index: list[str] = []
+
     if not pointwise:
-        data = [
+        result_data = [
             loo_lppd,
             loo_lppd_se,
             p_loo,
@@ -270,7 +273,7 @@ def loo(
             looic,
             looic_se,
         ]
-        index = [
+        result_index = [
             "elpd_loo",
             "se",
             "p_loo",
@@ -284,10 +287,10 @@ def loo(
         ]
 
         if method == ISMethod.PSIS:
-            data.insert(-2, good_k)  # Insert before looic
-            index.insert(-2, "good_k")  # Insert before looic
+            result_data.insert(-2, good_k)  # Insert before looic
+            result_index.insert(-2, "good_k")  # Insert before looic
 
-        return ELPDData(data=data, index=index)
+        return ELPDData(data=result_data, index=result_index)
 
     if np.allclose(loo_lppd_i, loo_lppd_i[0]):
         warnings.warn(
@@ -296,7 +299,7 @@ def loo(
             stacklevel=2,
         )
 
-    data = [
+    result_data = [
         loo_lppd,
         loo_lppd_se,
         p_loo,
@@ -309,7 +312,7 @@ def loo(
         looic,
         looic_se,
     ]
-    index = [
+    result_index = [
         "elpd_loo",
         "se",
         "p_loo",
@@ -324,12 +327,12 @@ def loo(
     ]
 
     if method == ISMethod.PSIS:
-        data.append(diagnostic)
-        index.append("pareto_k")
-        data.insert(-2, good_k)
-        index.insert(-2, "good_k")
+        result_data.append(diagnostic)
+        result_index.append("pareto_k")
+        result_data.insert(-2, good_k)
+        result_index.insert(-2, "good_k")
     else:
-        data.append(diagnostic)
-        index.append("ess")
+        result_data.append(diagnostic)
+        result_index.append("ess")
 
-    return ELPDData(data=data, index=index)
+    return ELPDData(data=result_data, index=result_index)
