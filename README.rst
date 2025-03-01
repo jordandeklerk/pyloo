@@ -32,7 +32,7 @@
    :target: https://www.python.org/
    :alt: Python version
 
-**pyloo** is a framework-agnostic Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models. This package has an R twin `loo <https://github.com/stan-dev/loo>`_.
+**pyloo** is a framework-agnostic Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models, with advanced features for PyMC models. This package has an R twin `loo <https://github.com/stan-dev/loo>`_.
 
 .. warning::
    This project is in active development and not all features from the R package have been implemented yet. While the core functionality is available, some advanced features are still being developed.
@@ -276,9 +276,9 @@ Resources
 .. warning::
    Documentation coming soon.
 
-* `Documentation <https://pyloo.readthedocs.io/>`_ (API reference, examples)
-* `R package documentation <https://mc-stan.org/loo/reference/index.html>`_ (Additional methodology details)
-* `Open an issue <https://github.com/jordandeklerk/pyloo/issues>`_ (Bug reports, feature requests)
+* `Documentation <>`_ (API reference, examples)
+* `R package documentation <>`_ (Additional methodology details)
+* `Open an issue <>`_ (Bug reports, feature requests)
 
 Citation
 --------
