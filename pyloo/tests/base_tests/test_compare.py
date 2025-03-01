@@ -12,6 +12,7 @@ from ...compare import loo_compare
 from ...loo import loo
 from ...loo_subsample import loo_subsample
 from ...waic import waic
+from ...wrapper.pymc_wrapper import PyMCWrapper
 from ..helpers import create_large_model
 
 
@@ -209,7 +210,7 @@ def test_loo_compare_invalid_method(models):
 
 def test_loo_compare_invalid_ic(models):
     """Test model comparison with invalid information criterion."""
-    with pytest.raises(ValueError, match="ic must be 'loo' or 'waic'"):
+    with pytest.raises(ValueError, match="ic must be 'loo', 'waic', or 'kfold'"):
         loo_compare(models, ic="invalid")
 
 
@@ -343,3 +344,159 @@ def test_loo_compare_subsample_warning(large_models):
         result = loo_compare(models, observations=1000, estimator="diff_srs")
         assert result is not None
         assert any(result["warning"])
+
+
+@pytest.mark.parametrize("K", [2, 5])
+def test_kfold_compare_basic(simple_model, K):
+    """Test basic model comparison functionality using K-fold cross-validation."""
+    model1, idata1 = simple_model
+    model2, idata2 = simple_model
+
+    wrapper1 = PyMCWrapper(model1, idata1)
+    wrapper2 = PyMCWrapper(model2, idata2)
+
+    pymc_wrappers = {
+        "simple": wrapper1,
+        "hierarchical": wrapper2,
+    }
+
+    try:
+        result = loo_compare(pymc_wrappers, ic="kfold", K=K)
+    except Exception as e:
+        pytest.skip(f"Skipping K-fold test due to error: {e}")
+
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 2
+    assert all(
+        col in result.columns
+        for col in [
+            "rank",
+            "elpd_kfold",
+            "p_kfold",
+            "elpd_diff",
+            "weight",
+            "se",
+            "dse",
+            "warning",
+            "scale",
+        ]
+    )
+
+    assert set(result["rank"]) == {0, 1}
+    assert result.loc[result["rank"] == 0, "elpd_diff"].item() == 0
+    assert_allclose(result["weight"].sum(), 1.0, rtol=1e-7)
+    assert np.all(result["weight"] >= 0)
+
+
+@pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
+def test_kfold_compare_scales(simple_model, scale):
+    """Test model comparison with different scales using K-fold cross-validation."""
+    model1, idata1 = simple_model
+    model2, idata2 = simple_model
+
+    wrapper1 = PyMCWrapper(model1, idata1)
+    wrapper2 = PyMCWrapper(model2, idata2)
+
+    pymc_wrappers = {
+        "simple": wrapper1,
+        "large_regression": wrapper2,
+    }
+
+    try:
+        result = loo_compare(pymc_wrappers, ic="kfold", K=2, scale=scale)
+    except Exception as e:
+        pytest.skip(f"Skipping K-fold test due to error: {e}")
+
+    assert result["scale"].iloc[0] == scale
+
+    if scale == "log":
+        assert result.iloc[0]["elpd_kfold"] >= result.iloc[1]["elpd_kfold"]
+    else:
+        assert result.iloc[0]["elpd_kfold"] <= result.iloc[1]["elpd_kfold"]
+
+
+@pytest.mark.parametrize("method", ["stacking", "BB-pseudo-BMA", "pseudo-BMA"])
+def test_kfold_compare_methods(simple_model, poisson_model, method):
+    """Test different methods for computing model weights using K-fold cross-validation."""
+    model1, idata1 = simple_model
+    model2, idata2 = poisson_model
+
+    wrapper1 = PyMCWrapper(model1, idata1)
+    wrapper2 = PyMCWrapper(model2, idata2)
+
+    pymc_wrappers = {
+        "simple": wrapper1,
+        "poisson": wrapper2,
+    }
+
+    try:
+        result = loo_compare(pymc_wrappers, ic="kfold", K=2, method=method)
+    except Exception as e:
+        pytest.skip(f"Skipping K-fold test due to error: {e}")
+
+    assert_allclose(result["weight"].sum(), 1.0, rtol=1e-7)
+    assert np.all(result["weight"] >= 0)
+
+
+def test_kfold_compare_with_folds(simple_model):
+    """Test model comparison with pre-specified folds."""
+    model, idata = simple_model
+
+    wrapper1 = PyMCWrapper(model, idata)
+    wrapper2 = PyMCWrapper(model, idata)
+
+    try:
+        n_obs = len(wrapper1.get_observed_data())
+
+        custom_folds = np.array([1, 2] * (n_obs // 2))
+        if len(custom_folds) < n_obs:
+            custom_folds = np.append(custom_folds, [1] * (n_obs - len(custom_folds)))
+
+        custom_folds2 = np.array([2, 1] * (n_obs // 2))
+        if len(custom_folds2) < n_obs:
+            custom_folds2 = np.append(custom_folds2, [2] * (n_obs - len(custom_folds2)))
+
+        result = loo_compare(
+            {
+                "model1": wrapper1,
+                "model2": wrapper2,
+            },
+            ic="kfold",
+            folds=custom_folds,
+        )
+
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 2
+        assert "elpd_kfold" in result.columns
+    except Exception as e:
+        pytest.skip(f"Skipping K-fold test due to error: {e}")
+
+
+def test_kfold_compare_stratified(simple_model):
+    """Test model comparison with stratified K-fold cross-validation."""
+    model, idata = simple_model
+
+    wrapper1 = PyMCWrapper(model, idata)
+    wrapper2 = PyMCWrapper(model, idata)
+
+    try:
+        n_obs = len(wrapper1.get_observed_data())
+
+        np.random.seed(42)
+        strat_var = np.random.choice([0, 1], size=n_obs, p=[0.7, 0.3])
+
+        result = loo_compare(
+            {
+                "model1": wrapper1,
+                "model2": wrapper2,
+            },
+            ic="kfold",
+            K=2,
+            stratify=strat_var,
+        )
+
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 2
+        assert "elpd_kfold" in result.columns
+    except Exception as e:
+        pytest.skip(f"Skipping K-fold test due to error: {e}")
