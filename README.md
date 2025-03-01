@@ -16,7 +16,7 @@
 
 __pyloo__ is a framework-agnostic Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models. This package has an R twin [loo](https://github.com/stan-dev/loo).
 <br><br><br>
-> ⚠️ **Note**: This project is in active development and not all features from the R package have been implemented yet. While the core functionality is available, some advanced features are still being worked on.
+> ⚠️ **Note**: This project is in active development and not all features from the R package have been implemented yet. While the core functionality is available, some advanced features are still being developed.
 
 
 From existing posterior simulation draws, we compute approximate LOO-CV using Pareto smoothed importance sampling (PSIS), a procedure for regularizing importance weights. As a byproduct of our calculations, we also obtain approximate standard errors for estimated predictive errors, enabling robust model comparison and evaluation across multiple models.
@@ -92,7 +92,10 @@ All Pareto k estimates are good (k < 0.7)
 ```
 
 ### Advanced Usage
-For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations for PyMC models:
+pyloo has several advanced features for fitted PyMC models.
+
+#### Reloo
+For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations:
 
 ```python
 import pyloo as pl
@@ -123,7 +126,89 @@ loo_exact_subsample = pl.reloo(
 )
 ```
 
+#### K-fold Cross-Validation
+When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
+
+```python
+import pyloo as pl
+from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+import pymc as pm
+import numpy as np
+
+np.random.seed(42)
+x = np.random.normal(0, 1, size=100)
+true_alpha = 1.0
+true_beta = 2.5
+true_sigma = 1.0
+y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
+
+with pm.Model() as model:
+    alpha = pm.Normal("alpha", mu=0, sigma=10)
+    beta = pm.Normal("beta", mu=0, sigma=10)
+    sigma = pm.HalfNormal("sigma", sigma=10)
+
+    mu = alpha + beta * x
+    obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+
+    idata = pm.sample(1000, chains=4, return_inferencedata=True,
+                     idata_kwargs={"log_likelihood": True})
+
+# Wrap the model in the PyMC wrapper
+wrapper = PyMCWrapper(model, idata)
+
+# Perform 5-fold cross-validation
+kfold_result = pl.kfold(wrapper, K=5)
+```
+
+For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide more reliable performance estimates:
+
+```python
+np.random.seed(42)
+n_samples = 200
+y = np.random.binomial(1, 0.3, size=n_samples)
+
+x1 = np.random.normal(y, 1.0)  # Correlated with outcome
+x2 = np.random.normal(0, 1.0, size=n_samples)  # Independent feature
+X = np.column_stack((x1, x2))
+
+with pm.Model() as model:
+    alpha = pm.Normal("alpha", mu=0, sigma=2)
+    beta = pm.Normal("beta", mu=0, sigma=2, shape=2)
+
+    logit_p = alpha + pm.math.dot(X, beta)
+    obs = pm.Bernoulli("y", logit_p=logit_p, observed=y)
+
+    idata = pm.sample(1000, chains=2, return_inferencedata=True,
+                     idata_kwargs={"log_likelihood": True})
+
+wrapper = PyMCWrapper(model, idata)
+
+# Use stratified k-fold CV to maintain class distribution across folds
+kfold_result = pl.kfold(
+    wrapper,
+    K=5,
+    stratify=wrapper.get_observed_data(),  # Stratify by outcome
+    random_seed=123
+)
+```
+
+You can also save the fitted models for each fold for further analysis:
+
+```python
+kfold_with_fits = pl.kfold(
+    wrapper,
+    K=5,
+    save_fits=True,  # Save the fitted models
+    random_seed=123
+)
+
+# Access the fits for the first fold
+first_fold_idata, first_fold_indices = kfold_with_fits.fits[0]
+```
+
 ### Installation
+
+> ⚠️ **Note**: Not yet available for installation from PyPI.
 
 ```bash
 pip install pyloo
@@ -135,27 +220,31 @@ Or with conda:
 conda install -c conda-forge pyloo
 ```
 
-### Resources
+#### Development Version
 
-* [Documentation](https://pyloo.readthedocs.io/) (API reference, examples)
-* [R package documentation](https://mc-stan.org/loo/reference/index.html) (Additional methodology details)
-* [Open an issue](https://github.com/jordandeklerk/pyloo/issues) (Bug reports, feature requests)
+To install the latest development version directly from GitHub:
 
-### Citation
-
-If you use pyloo in your research, please cite:
-
-```bibtex
-@software{pyloo2025,
-  author = {Jordan Deklerk},
-  title = {pyloo: Python Implementation of LOO-CV and PSIS},
-  year = {2025},
-  publisher = {GitHub},
-  url = {https://github.com/jordandeklerk/pyloo}
-}
+```bash
+pip install git+https://github.com/jordandeklerk/pyloo.git
 ```
 
-For the underlying methodology, please also cite:
+For development purposes, you can clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/jordandeklerk/pyloo.git
+cd pyloo
+pip install -e .
+```
+
+### Resources
+
+> ⚠️ **Note**: Documentation coming soon.
+
+* [Documentation]() (API reference, examples)
+* [R package documentation]() (Additional methodology details)
+* [Open an issue]() (Bug reports, feature requests)
+
+### Citation
 
 ```bibtex
 @article{vehtari2024practical,

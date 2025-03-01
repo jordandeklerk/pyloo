@@ -728,7 +728,8 @@ class PyMCWrapper:
         .. math::
             p(\theta) &= p(\theta') \cdot \exp(\theta') \\
             &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\theta' - \mu)^2}{2\sigma^2}\right) \cdot \exp(\theta') \\
-            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\log(\theta) - \mu)^2}{2\sigma^2}\right) \cdot \exp(\log(\theta))
+            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\log(\theta)
+            - \mu)^2}{2\sigma^2}\right) \cdot \exp(\log(\theta))
 
         For variables restricted to the unit interval, the inverse of the logit transform is used:
 
