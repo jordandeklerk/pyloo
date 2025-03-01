@@ -24,10 +24,15 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 ## Features
 
+### Core
+
 - **LOO-CV Implementation**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
 - **WAIC Implementation**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
 - **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy.
-- **Universal PyMC Wrapper**: Standardized interface to model components that manages parameter transformations, data manipulation, and posterior sampling.
+- **Model Comparison**: Compare models based on their expected log pointwise predictive density (ELPD).
+
+### Advanced
+- **Universal PyMC Wrapper**: Standardized interface to model components that manages parameter transformations, data manipulation, posterior sampling, and pointwise log-likelihood computations.
 - **Reloo Implementation**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
 - **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
 
