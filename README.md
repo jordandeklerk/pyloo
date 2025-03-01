@@ -112,7 +112,8 @@ with pm.Model() as model:
     mu = pm.Normal('mu', mu=0, sigma=10)
     sigma = pm.HalfNormal('sigma', sigma=10)
     likelihood = pm.Normal('y', mu=mu, sigma=sigma, observed=y)
-    idata = pm.sample(1000, tune=1000)
+    idata = pm.sample(1000, chains=4, return_inferencedata=True,
+                     idata_kwargs={"log_likelihood": True})
 
 # Wrap the model in the PyMC wrapper
 wrapper = PyMCWrapper(model, idata)
