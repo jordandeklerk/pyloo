@@ -22,7 +22,16 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 * Vehtari, A., Gelman, A., and Gabry, J. (2024). [Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC](https://arxiv.org/abs/1507.02646). _Statistics and Computing_. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
 
-## PSIS-LOO-CV
+## Features
+
+- **LOO-CV Implementation**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
+- **WAIC Implementation**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
+- **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy:
+- **Universal PyMC Wrapper**: Standardized interface to model components that manages parameter transformations, data manipulation, and posterior sampling.
+- **Reloo Implementation**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
+- **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
+
+## PSIS-LOO-CV Example
 
 ```python
 import pyloo as pl
@@ -57,7 +66,7 @@ Pareto k diagnostic values:
 [1, Inf)                     0     0.0
 ```
 
-## Model Comparison
+## Model Comparison Example
 
 Compare multiple models using stacking weights or other methods:
 
@@ -90,7 +99,7 @@ All Pareto k estimates are good (k < 0.7)
 ## Advanced Features
 We provide several advanced features beyond the core capabilities for PyMC models.
 
-### Reloo
+### Reloo Example
 For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations:
 
 ```python
@@ -124,7 +133,7 @@ loo_exact_subsample = pl.reloo(
 )
 ```
 
-### K-fold Cross-Validation
+### K-fold Cross-Validation Example
 When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
 
 ```python
