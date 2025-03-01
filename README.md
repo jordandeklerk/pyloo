@@ -22,9 +22,8 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 * Vehtari, A., Gelman, A., and Gabry, J. (2024). [Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC](https://arxiv.org/abs/1507.02646). _Statistics and Computing_. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
 
-### Usage
+## PSIS-LOO-CV
 
-#### Standard PSIS-LOO-CV
 ```python
 import pyloo as pl
 import arviz as az
@@ -58,7 +57,8 @@ Pareto k diagnostic values:
 [1, Inf)                     0     0.0
 ```
 
-#### Model Comparison
+## Model Comparison
+
 Compare multiple models using stacking weights or other methods:
 
 ```python
@@ -87,10 +87,10 @@ centered         -11.5    2.3    3.3     0.38       -0.3       0.4
 All Pareto k estimates are good (k < 0.7)
 ```
 
-### Advanced Usage
+## Advanced Features
 We provide several advanced features beyond the core capabilities for PyMC models.
 
-#### Reloo
+### Reloo
 For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations:
 
 ```python
@@ -124,7 +124,7 @@ loo_exact_subsample = pl.reloo(
 )
 ```
 
-#### K-fold Cross-Validation
+### K-fold Cross-Validation
 When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
 
 ```python
@@ -191,21 +191,7 @@ kfold_result = pl.kfold(
 )
 ```
 
-You can also save the fitted models for each fold for further analysis:
-
-```python
-kfold_with_fits = pl.kfold(
-    wrapper,
-    K=5,
-    save_fits=True,  # Save the fitted models
-    random_seed=123
-)
-
-# Access the fits for the first fold
-first_fold_idata, first_fold_indices = kfold_with_fits.fits[0]
-```
-
-### Installation
+## Installation
 
 > ⚠️ **Note**: Not yet available for installation from PyPI.
 
@@ -219,7 +205,7 @@ Or with conda:
 conda install -c conda-forge pyloo
 ```
 
-#### Development Version
+### Development Version
 
 To install the latest development version directly from GitHub:
 
@@ -235,7 +221,7 @@ cd pyloo
 pip install -e .
 ```
 
-### Resources
+## Resources
 
 > ⚠️ **Note**: Documentation coming soon.
 
@@ -243,7 +229,7 @@ pip install -e .
 * [R package documentation]() (Additional methodology details)
 * [Open an issue]() (Bug reports, feature requests)
 
-### Citation
+## Citation
 
 ```bibtex
 @article{vehtari2024practical,
