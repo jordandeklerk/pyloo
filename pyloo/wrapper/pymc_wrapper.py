@@ -574,12 +574,14 @@ class PyMCWrapper:
         For positive variables (e.g., HalfNormal, Gamma), a logarithmic transformation is applied:
 
         .. math::
-            \theta' = g(\theta) = \log(\theta), \quad \theta \in (0, \infty) \mapsto \theta' \in (-\infty, \infty)
+            \theta' = g(\theta) = \log(\theta), \quad \theta \in (0, \infty) \mapsto
+            \theta' \in (-\infty, \infty)
 
         With Jacobian determinant:
 
         .. math::
-            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| = \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
+            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| =
+            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
 
         For example, if :math:`\theta \sim \text{HalfNormal}(0, \sigma)`, then after transformation:
 
@@ -591,17 +593,20 @@ class PyMCWrapper:
         For variables restricted to the unit interval (e.g., Beta), a logit transformation is used:
 
         .. math::
-            \theta' = g(\theta) = \log\left(\frac{\theta}{1-\theta}\right), \quad \theta \in (0, 1) \mapsto \theta' \in (-\infty, \infty)
+            \theta' = g(\theta) = \log\left(\frac{\theta}{1-\theta}\right), \quad \theta \in (0, 1) \mapsto
+            \theta' \in (-\infty, \infty)
 
         For variables with an unbounded domain (e.g., Normal), no transformation is necessary:
 
         .. math::
-            \theta' = g(\theta) = \theta, \quad \theta \in (-\infty, \infty) \mapsto \theta' \in (-\infty, \infty)
+            \theta' = g(\theta) = \theta, \quad \theta \in (-\infty, \infty) \mapsto
+            \theta' \in (-\infty, \infty)
 
         For simplex variables (e.g., Dirichlet), a stick-breaking transformation is applied:
 
         .. math::
-            \theta'_i = g_i(\theta) = \log\left(\frac{\theta_i}{\sum_{j=i+1}^K \theta_j}\right), \quad i = 1, \ldots, K-1
+            \theta'_i = g_i(\theta) = \log\left(\frac{\theta_i}{\sum_{j=i+1}^K \theta_j}\right),
+            \quad i = 1, \ldots, K-1
 
         Returns
         -------
@@ -701,18 +706,21 @@ class PyMCWrapper:
         :math:`\theta = g^{-1}(\theta')`. The probability densities are related by:
 
         .. math::
-            p(\theta) = p(\theta') \left| \frac{d}{d\theta} g(\theta) \right|^{-1} = p(\theta') \left| \frac{1}{\frac{d}{d\theta} g(\theta)} \right|
+            p(\theta) = p(\theta') \left| \frac{d}{d\theta} g(\theta) \right|^{-1} =
+            p(\theta') \left| \frac{1}{\frac{d}{d\theta} g(\theta)} \right|
 
-        The mathematical inverse transformations applied depend on the parameter's original constraints. For positive variables,
-        the inverse of the logarithmic transform is applied:
+        The mathematical inverse transformations applied depend on the parameter's original constraints.
+        For positive variables, the inverse of the logarithmic transform is applied:
 
         .. math::
-            \theta = g^{-1}(\theta') = \exp(\theta'), \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (0, \infty)
+            \theta = g^{-1}(\theta') = \exp(\theta'), \quad \theta' \in (-\infty, \infty) \mapsto
+            \theta \in (0, \infty)
 
         With Jacobian determinant:
 
         .. math::
-            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| = \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
+            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| =
+            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
 
         For example, if :math:`\theta' \sim \text{Normal}(\mu, \sigma)` in the unconstrained space,
         then after transformation to the constrained space:
@@ -725,17 +733,20 @@ class PyMCWrapper:
         For variables restricted to the unit interval, the inverse of the logit transform is used:
 
         .. math::
-            \theta = g^{-1}(\theta') = \frac{1}{1+\exp(-\theta')}, \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (0, 1)
+            \theta = g^{-1}(\theta') = \frac{1}{1+\exp(-\theta')}, \quad \theta' \in (-\infty, \infty) \mapsto
+            \theta \in (0, 1)
 
         For variables with an unbounded domain, no transformation is necessary:
 
         .. math::
-            \theta = g^{-1}(\theta') = \theta', \quad \theta' \in (-\infty, \infty) \mapsto \theta \in (-\infty, \infty)
+            \theta = g^{-1}(\theta') = \theta', \quad \theta' \in (-\infty, \infty) \mapsto
+            \theta \in (-\infty, \infty)
 
         For simplex variables, the inverse of the stick-breaking transformation is applied:
 
         .. math::
-            \theta_i = g^{-1}_i(\theta') = \frac{\exp(\theta'_i)}{1 + \exp(\theta'_i)} \prod_{j=1}^{i-1} \frac{1}{1 + \exp(\theta'_j)}, \quad i = 1, \ldots, K-1
+            \theta_i = g^{-1}_i(\theta') = \frac{\exp(\theta'_i)}{1 + \exp(\theta'_i)}
+            \prod_{j=1}^{i-1} \frac{1}{1 + \exp(\theta'_j)}, \quad i = 1, \ldots, K-1
 
         .. math::
             \theta_K = g^{-1}_K(\theta') = \prod_{j=1}^{K-1} \frac{1}{1 + \exp(\theta'_j)}
