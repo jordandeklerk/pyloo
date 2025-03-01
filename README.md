@@ -92,16 +92,17 @@ All Pareto k estimates are good (k < 0.7)
 ```
 
 ### Advanced Usage
-pyloo has several advanced features for fitted PyMC models.
+We provide several advanced features beyond the core capabilities for fitted PyMC models.
 
 #### Reloo
 For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations:
 
 ```python
 import pyloo as pl
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
 import pymc as pm
 import numpy as np
+
+from pyloo.wrapper.pymc_wrapper import PyMCWrapper
 
 np.random.seed(0)
 N = 100
@@ -131,9 +132,10 @@ When you have a moderate amount of data or when individual observations have str
 
 ```python
 import pyloo as pl
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
 import pymc as pm
 import numpy as np
+
+from pyloo.wrapper.pymc_wrapper import PyMCWrapper
 
 np.random.seed(42)
 x = np.random.normal(0, 1, size=100)
