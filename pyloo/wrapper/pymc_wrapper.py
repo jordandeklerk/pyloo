@@ -856,6 +856,135 @@ class PyMCWrapper:
 
         return constrained_params
 
+    def get_log_likelihood(
+        self,
+        var_name: str | None = None,
+        draws: dict[str, np.ndarray] | None = None,
+    ) -> xr.DataArray:
+        """Compute the log likelihood for a set of posterior draws.
+
+        This method calculates the pointwise log likelihood for an observed variable
+        in the model. It can either use the current parameter values in the model or
+        a specific set of parameter draws.
+
+        Parameters
+        ----------
+        var_name : str | None, default=None
+            Name of the observed variable for which to compute the log likelihood.
+            If None, the method will use the first observed variable in the model,
+            as determined by `get_observed_name()`.
+
+        draws : dict[str, np.ndarray] | None, default=None
+            Optional dictionary mapping parameter names to parameter values.
+            If provided, the method will temporarily set these parameter values
+            in the model before computing the log likelihood. The original values
+            will be restored after computation.
+
+        Returns
+        -------
+        xr.DataArray
+            An xarray DataArray containing the pointwise log likelihood values.
+            The dimensions and coordinates of the DataArray will match those of
+            the observed variable, with the name format "log_likelihood_{var_name}".
+
+        Raises
+        ------
+        PyMCWrapperError
+            If the variable is not found in the model, if no observed data exists
+            for the variable, if the variable contains missing values, or if the
+            log likelihood computation fails for any other reason.
+        """
+        if var_name is None:
+            var_name = self.get_observed_name()
+
+        if self.get_variable(var_name) is None:
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in model. Available variables: "
+                f"{list(self.model.named_vars.keys())}"
+            )
+
+        if var_name not in self.observed_data:
+            raise PyMCWrapperError(
+                f"No observed data found for variable '{var_name}'. "
+                f"Available observed variables: {list(self.observed_data.keys())}"
+            )
+
+        if np.any(self.get_missing_mask(var_name)):
+            raise PyMCWrapperError(f"Missing values found in {var_name}")
+
+        try:
+            # If draws are provided, temporarily set the model's parameters
+            original_values = {}
+            if draws is not None:
+                for param_name, param_draws in draws.items():
+                    if param_name in self.model.named_vars:
+                        var = self.model.named_vars[param_name]
+                        if hasattr(var, "get_value"):
+                            original_values[param_name] = var.get_value()
+                            var.set_value(param_draws)
+                        else:
+                            logger.warning(
+                                f"Could not set value for parameter {param_name}"
+                            )
+
+            observed_rv = None
+            for rv in self.model.observed_RVs:
+                if rv.name == var_name:
+                    observed_rv = rv
+                    break
+
+            if observed_rv is None:
+                raise PyMCWrapperError(f"Could not find observed RV for {var_name}")
+
+            # Compute the pointwise log likelihood
+            elemwise_logp = self.model.logp([observed_rv], sum=False)
+
+            if hasattr(self, "observed_dims") and var_name in self.observed_dims:
+                dims = self.observed_dims[var_name]
+                coords = self._get_coords(var_name)
+                if coords is None:
+                    coords = {}
+                    for i, dim in enumerate(dims):
+                        if dim is not None:
+                            shape = self.get_shape(var_name)
+                            if shape is not None:
+                                coords[dim] = np.arange(shape[i])
+
+                log_like = xr.DataArray(
+                    elemwise_logp,
+                    dims=dims,
+                    coords=coords,
+                    name=f"log_likelihood_{var_name}",
+                )
+            else:
+                shape = self.get_shape(var_name)
+                if shape is None:
+                    raise PyMCWrapperError(f"Could not determine shape for {var_name}")
+
+                dims = [f"dim_{i}" for i in range(len(shape))]
+                coords = {dim: np.arange(size) for dim, size in zip(dims, shape)}
+
+                log_like = xr.DataArray(
+                    elemwise_logp,
+                    dims=dims,
+                    coords=coords,
+                    name=f"log_likelihood_{var_name}",
+                )
+
+            return log_like
+
+        except Exception as e:
+            if isinstance(e, PyMCWrapperError):
+                raise
+            raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
+        finally:
+            # Restore original parameter values if they were changed
+            if draws is not None:
+                for param_name, original_value in original_values.items():
+                    var = self.model.named_vars[param_name]
+                    if hasattr(var, "set_value"):
+                        var.set_value(original_value)
+
     def get_draws(self) -> np.ndarray:
         """Get all draws from the posterior.
 
@@ -1010,103 +1139,6 @@ class PyMCWrapper:
             var = self._untransformed_model.named_vars[var_name]
             return tuple(d.eval() if hasattr(d, "eval") else d for d in var.shape)
         return None
-
-    def _get_log_likelihood(
-        self,
-        var_name: str | None = None,
-        draws: dict[str, np.ndarray] | None = None,
-    ) -> xr.DataArray:
-        """Compute the log likelihood for a set of posterior draws."""
-        if var_name is None:
-            var_name = self.get_observed_name()
-
-        if self.get_variable(var_name) is None:
-            raise PyMCWrapperError(
-                f"Variable '{var_name}' not found in model. Available variables: "
-                f"{list(self.model.named_vars.keys())}"
-            )
-
-        if var_name not in self.observed_data:
-            raise PyMCWrapperError(
-                f"No observed data found for variable '{var_name}'. "
-                f"Available observed variables: {list(self.observed_data.keys())}"
-            )
-
-        if np.any(self.get_missing_mask(var_name)):
-            raise PyMCWrapperError(f"Missing values found in {var_name}")
-
-        try:
-            # If draws are provided, temporarily set the model's parameters
-            original_values = {}
-            if draws is not None:
-                for param_name, param_draws in draws.items():
-                    if param_name in self.model.named_vars:
-                        var = self.model.named_vars[param_name]
-                        if hasattr(var, "get_value"):
-                            original_values[param_name] = var.get_value()
-                            var.set_value(param_draws)
-                        else:
-                            logger.warning(
-                                f"Could not set value for parameter {param_name}"
-                            )
-
-            observed_rv = None
-            for rv in self.model.observed_RVs:
-                if rv.name == var_name:
-                    observed_rv = rv
-                    break
-
-            if observed_rv is None:
-                raise PyMCWrapperError(f"Could not find observed RV for {var_name}")
-
-            # Compute the pointwise log likelihood
-            elemwise_logp = self.model.logp([observed_rv], sum=False)
-
-            if hasattr(self, "observed_dims") and var_name in self.observed_dims:
-                dims = self.observed_dims[var_name]
-                coords = self._get_coords(var_name)
-                if coords is None:
-                    coords = {}
-                    for i, dim in enumerate(dims):
-                        if dim is not None:
-                            shape = self.get_shape(var_name)
-                            if shape is not None:
-                                coords[dim] = np.arange(shape[i])
-
-                log_like = xr.DataArray(
-                    elemwise_logp,
-                    dims=dims,
-                    coords=coords,
-                    name=f"log_likelihood_{var_name}",
-                )
-            else:
-                shape = self.get_shape(var_name)
-                if shape is None:
-                    raise PyMCWrapperError(f"Could not determine shape for {var_name}")
-
-                dims = [f"dim_{i}" for i in range(len(shape))]
-                coords = {dim: np.arange(size) for dim, size in zip(dims, shape)}
-
-                log_like = xr.DataArray(
-                    elemwise_logp,
-                    dims=dims,
-                    coords=coords,
-                    name=f"log_likelihood_{var_name}",
-                )
-
-            return log_like
-
-        except Exception as e:
-            if isinstance(e, PyMCWrapperError):
-                raise
-            raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
-        finally:
-            # Restore original parameter values if they were changed
-            if draws is not None:
-                for param_name, original_value in original_values.items():
-                    var = self.model.named_vars[param_name]
-                    if hasattr(var, "set_value"):
-                        var.set_value(original_value)
 
     def _apply_ufunc(
         self,

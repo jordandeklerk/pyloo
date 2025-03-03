@@ -856,7 +856,7 @@ def test_mixture_model_log_likelihood_i_workflow(mixture_model):
 
 
 def test_get_log_likelihood_internal(simple_model, monkeypatch):
-    """Test the internal _get_log_likelihood method functionality."""
+    """Test the internal get_log_likelihood method functionality."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -865,7 +865,7 @@ def test_get_log_likelihood_internal(simple_model, monkeypatch):
 
     monkeypatch.setattr(wrapper.model, "logp", mock_logp)
 
-    log_like = wrapper._get_log_likelihood()
+    log_like = wrapper.get_log_likelihood()
 
     assert isinstance(log_like, xr.DataArray)
     assert log_like.name == "log_likelihood_y"
@@ -874,7 +874,7 @@ def test_get_log_likelihood_internal(simple_model, monkeypatch):
     assert_finite(log_like)
     assert_bounded(log_like, upper=0)
 
-    log_like_explicit = wrapper._get_log_likelihood(var_name="y")
+    log_like_explicit = wrapper.get_log_likelihood(var_name="y")
     assert isinstance(log_like_explicit, xr.DataArray)
     assert log_like_explicit.name == "log_likelihood_y"
     assert_arrays_equal(log_like.values, log_like_explicit.values)
@@ -882,10 +882,10 @@ def test_get_log_likelihood_internal(simple_model, monkeypatch):
     with pytest.raises(
         PyMCWrapperError, match="Variable 'nonexistent' not found in model"
     ):
-        wrapper._get_log_likelihood(var_name="nonexistent")
+        wrapper.get_log_likelihood(var_name="nonexistent")
 
     with pytest.raises(PyMCWrapperError, match="No observed data found for variable"):
-        wrapper._get_log_likelihood(
+        wrapper.get_log_likelihood(
             var_name="alpha"
         )  # alpha is not an observed variable
 
@@ -896,7 +896,7 @@ def test_get_log_likelihood_internal(simple_model, monkeypatch):
     wrapper.set_data({"y": missing_data})
 
     with pytest.raises(PyMCWrapperError, match="Missing values found in y"):
-        wrapper._get_log_likelihood()
+        wrapper.get_log_likelihood()
 
     wrapper.set_data({"y": original_data})
 
@@ -910,7 +910,7 @@ def test_get_log_likelihood_internal(simple_model, monkeypatch):
     monkeypatch.setattr(wrapper.model, "logp", mock_logp_with_draws_check)
 
     custom_draws = {"alpha": np.array([0.5])}
-    wrapper._get_log_likelihood(draws=custom_draws)
+    wrapper.get_log_likelihood(draws=custom_draws)
 
     assert (
         draw_test_called
@@ -927,7 +927,7 @@ def test_get_log_likelihood_internal(simple_model, monkeypatch):
     draw_test_called = False
     monkeypatch.setattr(wrapper.model, "logp", mock_logp_with_draws_check)
 
-    log_like_unconstrained = wrapper._get_log_likelihood(draws=single_draw_params)
+    log_like_unconstrained = wrapper.get_log_likelihood(draws=single_draw_params)
 
     assert (
         draw_test_called
