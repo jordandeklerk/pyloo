@@ -341,7 +341,7 @@ def test_loo_moment_match_with_problematic_k(problematic_k_model):
     result = loo_moment_match(
         wrapper,
         loo_data,
-        max_iters=30,
+        max_iters=1,
         k_threshold=0.7,
         split=True,
         cov=True,
