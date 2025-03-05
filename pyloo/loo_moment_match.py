@@ -122,14 +122,28 @@ def loo_moment_match(
 
     .. code-block:: python
 
-        loo_new = pl.loo_moment_match(wrapper, loo_orig)
+        loo_new = pl.loo_moment_match(
+            wrapper,
+            loo_orig,
+            max_iters=30,
+            k_threshold=0.7,
+            split=False,
+            cov=True,
+        )
 
     If we want to use split moment matching, we can do the following. Split moment matching transforms only half of the draws
     and computes a single elpd using multiple importance sampling.
 
     .. code-block:: python
 
-        loo_new = pl.loo_moment_match(wrapper, loo_orig, split=True)
+        loo_new = pl.loo_moment_match(
+            wrapper,
+            loo_orig,
+            split=True,
+            max_iters=30,
+            k_threshold=0.7,
+            cov=True,
+            )
 
     """
     unconstrained = wrapper.get_unconstrained_parameters()
