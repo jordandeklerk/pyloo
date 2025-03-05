@@ -255,7 +255,6 @@ def loo_moment_match(
             stacklevel=2,
         )
 
-    # TODO: This still gives a warning even if split=True
     if not split and np.any(kfs > k_threshold):
         warnings.warn(
             "The accuracy of self-normalized importance sampling may be bad. "
