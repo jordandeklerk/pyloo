@@ -320,11 +320,10 @@ def loo_moment_match_split(
 ) -> SplitMomentMatchResult:
     """Split moment matching for efficient approximate leave-one-out cross-validation.
 
-    The key insight of split moment matching is that instead of transforming
-    all posterior draws, we apply transformations to only half of them while leaving
-    the other half unchanged. This creates two different but complementary approximations
-    of the leave-one-out posterior. When we combine these halves using multiple importance
-    sampling, we get more reliable estimates while maintaining computational efficiency.
+    Instead of transforming all posterior draws, we apply transformations to only half of
+    them while leaving the other half unchanged. This creates two different but complementary
+    approximations of the leave-one-out posterior. When we combine these halves using multiple
+    importance sampling, we get more reliable estimates while maintaining computational efficiency.
 
     Parameters
     ----------
@@ -355,6 +354,11 @@ def loo_moment_match_split(
         - lwfi: Updated log importance weights for full distribution
         - log_liki: Updated log likelihood values
         - r_eff_i: Updated relative effective sample size
+
+    References
+    ----------
+    Paananen, T., Piironen, J., Buerkner, P.-C., Vehtari, A. (2020). Implicitly Adaptive Importance
+    Sampling. arXiv preprint arXiv:1906.08850.
     """
     S = upars.shape[0]
     S_half = S // 2
