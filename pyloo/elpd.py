@@ -14,7 +14,6 @@ Computed from {n_samples} posterior samples and {n_points} observations log-like
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
 p_loo       {p_loo:<8.2f}        -
 looic      {looic:<8.2f}    {looic_se:<.2f}
-
 {pareto_msg}"""
 
 # Format for k-fold cross-validation output
@@ -35,9 +34,8 @@ values from {n_data_points} total observations.
 
          Estimate       SE  subsampling SE
 elpd_loo   {0:<8.2f}    {1:<.2f}         {2:<.2f}
-p_loo       {3:<8.2f}        -                -
+p_loo       {3:<8.2f}        -            -
 looic      {4:<8.2f}    {5:<.2f}         {6:<.2f}
-
 {pareto_msg}"""
 
 POINTWISE_LOO_FMT = """
@@ -113,26 +111,42 @@ class ELPDData(pd.Series):
                 stratify_msg=stratify_msg,
             )
 
-            if hasattr(self, "scale") and self.scale in SCALE_DICT:
-                base += f"\n{SCALE_DICT[self.scale]}"
-
             return base
 
         elif is_subsampled:
             subsample_size = self["subsample_size"]
-            pareto_msg = ""
             method = getattr(self, "method", "psis")
+            default_good_k = 0.7
+            pareto_msg = (
+                f"\n\nAll Pareto k estimates are good (k < {default_good_k:.1f}).\nSee"
+                " help('pareto-k-diagnostic') for details."
+            )
 
             if (
                 "pareto_k" in self
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                pareto_msg = ""
-            elif method == "psis":
-                pareto_msg = ""
-            else:
-                pareto_msg = f"Using {method.upper()} importance sampling method."
+                # Check if all Pareto k values are good
+                bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
+                counts, *_ = _histogram(self.pareto_k.values, bins)
+                if counts[1] == 0 and counts[2] == 0:
+                    # Already set with default message above
+                    pass
+                else:
+                    # Format the detailed Pareto k diagnostics for bad values
+                    percentages = counts / np.sum(counts) * 100
+                    pareto_msg = POINTWISE_LOO_FMT.format(
+                        "Count",
+                        "Pct.",
+                        self.good_k,
+                        counts[0],
+                        counts[1],
+                        counts[2],
+                        percentages[0],
+                        percentages[1],
+                        percentages[2],
+                    )
 
             elpd_loo = self["elpd_loo"]
             elpd_loo_se = self["se"]
@@ -159,21 +173,43 @@ class ELPDData(pd.Series):
                 r_eff=self.get("r_eff", 1.0),
             )
         else:
-            pareto_msg = ""
             method = getattr(self, "method", "psis")
+            default_good_k = 0.7
+            pareto_msg = ""
 
             if (
                 "pareto_k" in self
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                pareto_msg = ""
+                # Check if all Pareto k values are good
+                bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
+                counts, *_ = _histogram(self.pareto_k.values, bins)
+                if counts[1] == 0 and counts[2] == 0:
+                    pareto_msg = (
+                        "\n\nAll Pareto k estimates are good (k <"
+                        f" {self.good_k:.1f}).\nSee help('pareto-k-diagnostic') for"
+                        " details."
+                    )
+                else:
+                    percentages = counts / np.sum(counts) * 100
+                    pareto_msg = POINTWISE_LOO_FMT.format(
+                        "Count",
+                        "Pct.",
+                        self.good_k,
+                        counts[0],
+                        counts[1],
+                        counts[2],
+                        percentages[0],
+                        percentages[1],
+                        percentages[2],
+                    )
             elif kind == "loo" and method == "psis":
-                pareto_msg = ""
-            elif kind == "loo":
-                pareto_msg = f"Using {method.upper()} importance sampling method."
-            else:
-                pareto_msg = ""
+                pareto_msg = (
+                    "\n\nAll Pareto k estimates are good (k <"
+                    f" {default_good_k:.1f}).\nSee help('pareto-k-diagnostic') for"
+                    " details."
+                )
 
             elpd_loo = self["elpd_loo"]
             se = self["se"]
@@ -197,29 +233,6 @@ class ELPDData(pd.Series):
                 "\nThere has been a warning during the calculation. Please check the"
                 " results."
             )
-
-        if (
-            kind == "loo"
-            and "pareto_k" in self
-            and hasattr(self, "good_k")
-            and self.good_k is not None
-        ):
-            bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
-            counts, *_ = _histogram(self.pareto_k.values, bins)
-            percentages = counts / np.sum(counts) * 100
-
-            extended = POINTWISE_LOO_FMT.format(
-                "Count",
-                "Pct.",
-                self.good_k,
-                counts[0],
-                counts[1],
-                counts[2],
-                percentages[0],
-                percentages[1],
-                percentages[2],
-            )
-            base = "\n".join([base, extended])
 
         return base
 
