@@ -97,6 +97,7 @@ def loo_moment_match(
     -----
     Moment matching can fail to improve LOO estimates for several reasons such as very high-dimensional
     parameter spaces, multi-modality, weight instability, and insufficient sample size.
+
     Split moment matching can be used to improve the estimates by transforming only half of the draws
     and using multiple importance sampling to combine them with untransformed draws. This strategy
     provides more stability than transforming all draws, particularly in cases where the transformation
