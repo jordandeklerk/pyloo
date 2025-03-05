@@ -111,9 +111,10 @@ def loo(
 
         See Also
         --------
-        loo_i : Pointwise LOO-CV values
         loo_subsample : Subsampled LOO-CV computation
         reloo : Exact LOO-CV computation for PyMC models
+        loo_moment_match : LOO-CV computation using moment matching
+        loo_kfold : K-fold cross-validation
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
