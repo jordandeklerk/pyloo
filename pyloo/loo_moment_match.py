@@ -320,9 +320,11 @@ def loo_moment_match_split(
 ) -> SplitMomentMatchResult:
     """Split moment matching for efficient approximate leave-one-out cross-validation.
 
-    This function computes the split moment matching importance sampling loo.
-    It transforms only half of the draws and computes a single elpd using
-    multiple importance sampling.
+    The key insight of split moment matching is that instead of transforming
+    all posterior draws, we apply transformations to only half of them while leaving
+    the other half unchanged. This creates two different but complementary approximations
+    of the leave-one-out posterior. When we combine these halves using multiple importance
+    sampling, we get more reliable estimates while maintaining computational efficiency.
 
     Parameters
     ----------
