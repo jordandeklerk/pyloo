@@ -159,6 +159,12 @@ def loo_moment_match(
             cov=True,
             )
 
+    See Also
+    --------
+    loo : Leave-one-out cross-validation
+    loo_subsample : Subsampled LOO-CV computation
+    reloo : Exact LOO-CV computation for PyMC models
+    loo_kfold : K-fold cross-validation
     """
     unconstrained = wrapper.get_unconstrained_parameters()
     param_names = list(unconstrained.keys())
