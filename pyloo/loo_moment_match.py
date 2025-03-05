@@ -12,6 +12,8 @@ from .importance_sampling import ISMethod, compute_importance_weights
 from .utils import _logsumexp
 from .wrapper.pymc_wrapper import PyMCWrapper
 
+__all__ = ["loo_moment_match"]
+
 
 class SplitMomentMatchResult(TypedDict):
     """Result of split moment matching."""
