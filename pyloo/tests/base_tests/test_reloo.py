@@ -374,3 +374,19 @@ def test_reloo_subsample_hierarchical(hierarchical_model):
         assert hasattr(result, "elpd_loo")
         assert hasattr(result, "pareto_k")
         assert len(result.loo_i) == len(wrapper.get_observed_data())
+
+
+def test_reloo_with_problematic_k(problematic_k_model):
+    """Test reloo with problematic Pareto k values."""
+    model, idata = problematic_k_model
+    wrapper = PyMCWrapper(model, idata)
+
+    loo_result = loo(idata, pointwise=True)
+
+    result = reloo(wrapper, loo_result, k_thresh=0.7)
+
+    print(loo_result)
+    print(result)
+
+    assert np.all(result.pareto_k <= loo_result.pareto_k)
+    assert np.all(result.elpd_loo > loo_result.elpd_loo)

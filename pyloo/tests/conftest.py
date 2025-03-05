@@ -462,3 +462,54 @@ def mixture_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def problematic_k_model():
+    """Create a model that generates problematic pareto k values for LOO-CV testing."""
+    rng = np.random.default_rng(42)
+
+    n_obs = 200
+    true_alpha = 1.0
+    true_beta = 2.0
+    true_sigma = 0.1
+    df = 2
+
+    X = rng.normal(0, 1, size=n_obs)
+
+    outlier_indices = np.arange(0, n_obs, 10)
+    X[outlier_indices] = rng.normal(5, 2, size=len(outlier_indices))
+
+    noise = np.zeros(n_obs)
+    regular_indices = np.ones(n_obs, dtype=bool)
+    regular_indices[outlier_indices] = False
+
+    noise[regular_indices] = rng.normal(0, true_sigma, size=regular_indices.sum())
+    noise[outlier_indices] = (
+        rng.standard_t(df, size=len(outlier_indices)) * true_sigma * 10
+    )
+
+    extreme_indices = np.arange(5, n_obs, 50)
+    noise[extreme_indices] = (
+        rng.standard_t(df, size=len(extreme_indices)) * true_sigma * 20
+    )
+
+    y = true_alpha + true_beta * X + noise
+
+    with pm.Model(coords={"obs_id": range(n_obs)}) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=10)
+        beta = pm.Normal("beta", mu=0, sigma=10)
+        sigma = pm.HalfNormal("sigma", sigma=10)
+
+        mu = alpha + beta * X
+        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            1000,
+            tune=2000,
+            target_accept=0.95,
+            random_seed=42,
+            idata_kwargs={"log_likelihood": True},
+        )
+
+    return model, idata

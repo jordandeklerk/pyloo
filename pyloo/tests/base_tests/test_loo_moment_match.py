@@ -329,3 +329,27 @@ def test_variance_and_covariance_transformations(simple_model):
         weights = np.exp(-log_liki - np.max(-log_liki))
         weights = weights / np.sum(weights)
         assert np.allclose(np.sum(weights), 1.0, rtol=1e-10)
+
+
+def test_loo_moment_match_with_problematic_k(problematic_k_model):
+    """Test loo_moment_match with problematic Pareto k values."""
+    model, idata = problematic_k_model
+    wrapper = PyMCWrapper(model, idata)
+
+    loo_data = loo(idata, pointwise=True)
+
+    result = loo_moment_match(
+        wrapper,
+        loo_data,
+        max_iters=30,
+        k_threshold=0.7,
+        split=True,
+        cov=True,
+        method=ISMethod.PSIS,
+    )
+
+    print(loo_data)
+    print(result)
+
+    assert np.all(result.pareto_k <= loo_data.pareto_k)
+    assert np.all(result.elpd_loo >= loo_data.elpd_loo)
