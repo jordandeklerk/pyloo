@@ -687,12 +687,11 @@ def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndScaleResult:
     mean_weighted, mean_original = _compute_means(upars, weights)
     shift = mean_weighted - mean_original
 
-    # Compute variance scaling
     centered_upars = upars - mean_weighted[None, :]
     var_weighted_orig = np.sum(weights[:, None] * centered_upars**2, axis=0)
     var_original = np.var(upars, axis=0)
 
-    # Handle zero variance case
+    # Handle zero variance
     var_original = np.where(var_original == 0, 1.0, var_original)
     scaling = np.sqrt(var_weighted_orig / var_original)
 
@@ -706,7 +705,7 @@ def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndScaleResult:
     centered_upars_new = upars_new - mean_weighted[None, :]
     var_weighted_new = np.sum(weights[:, None] * centered_upars_new**2, axis=0)
 
-    # Handle zero variance case
+    # Handle zero variance
     var_weighted_new = np.where(var_weighted_new == 0, 1.0, var_weighted_new)
     scaling_correction = np.sqrt(var_weighted_orig / var_weighted_new)
     upars_new = (
