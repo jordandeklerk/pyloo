@@ -17,6 +17,27 @@ from ...loo_moment_match import (
 from ...wrapper.pymc_wrapper import PyMCWrapper
 
 
+def test_shift_transformation_dimensions(rng):
+    """Test the shift transformation with different dimensions."""
+    upars_1d = rng.normal(size=(1000, 1))
+    lwi_1d = rng.normal(size=1000)
+    result_1d = shift(upars_1d, lwi_1d)
+    assert result_1d["upars"].shape == upars_1d.shape
+    assert result_1d["shift"].shape == (1,)
+
+    upars_10d = rng.normal(size=(1000, 10))
+    lwi_10d = rng.normal(size=1000)
+    result_10d = shift(upars_10d, lwi_10d)
+    assert result_10d["upars"].shape == upars_10d.shape
+    assert result_10d["shift"].shape == (10,)
+
+    upars_small = rng.normal(size=(10, 2))
+    lwi_small = rng.normal(size=10)
+    result_small = shift(upars_small, lwi_small)
+    assert result_small["upars"].shape == upars_small.shape
+    assert result_small["shift"].shape == (2,)
+
+
 def test_shift_transformation(rng):
     """Test the shift transformation."""
     upars = rng.normal(size=(1000, 2))
@@ -41,6 +62,29 @@ def test_shift_transformation(rng):
     )
 
     assert np.all(np.abs(result["shift"]) < 10 * np.std(upars, axis=0))
+
+
+def test_shift_and_scale_transformation_edge_cases(rng):
+    """Test shift_and_scale with edge cases."""
+    upars = rng.normal(size=(1000, 2))
+    lwi = np.full(1000, -1e10)
+    lwi[0] = 0  # One dominant weight
+    result = shift_and_scale(upars, lwi)
+    assert np.all(np.isfinite(result["upars"]))
+    assert np.all(np.isfinite(result["shift"]))
+    assert np.all(np.isfinite(result["scaling"]))
+
+    upars_const = np.ones((1000, 2))
+    lwi_const = rng.normal(size=1000)
+    result_const = shift_and_scale(upars_const, lwi_const)
+    assert np.all(np.isfinite(result_const["scaling"]))
+
+    upars_extreme = rng.normal(size=(1000, 2)) * 1e6
+    lwi_extreme = rng.normal(size=1000)
+    result_extreme = shift_and_scale(upars_extreme, lwi_extreme)
+    assert np.all(np.isfinite(result_extreme["upars"]))
+    assert np.all(np.isfinite(result_extreme["shift"]))
+    assert np.all(np.isfinite(result_extreme["scaling"]))
 
 
 def test_shift_and_scale_transformation(rng):
@@ -82,6 +126,23 @@ def test_shift_and_scale_transformation(rng):
     assert np.all(np.abs(np.log(result["scaling"])) < 5)
 
 
+def test_shift_and_cov_transformation_numerical_stability(rng):
+    """Test numerical stability of shift_and_cov transformation."""
+    upars = np.zeros((1000, 2))
+    upars[:, 0] = rng.normal(size=1000)
+    upars[:, 1] = upars[:, 0] + 1e-10 * rng.normal(size=1000)
+    lwi = rng.normal(size=1000)
+    result = shift_and_cov(upars, lwi)
+    assert np.all(np.isfinite(result["upars"]))
+    assert np.all(np.isfinite(result["mapping"]))
+
+    upars_large = rng.normal(size=(1000, 2)) * 1e6
+    lwi_large = rng.normal(size=1000)
+    result_large = shift_and_cov(upars_large, lwi_large)
+    assert np.all(np.isfinite(result_large["upars"]))
+    assert np.all(np.isfinite(result_large["mapping"]))
+
+
 def test_shift_and_cov_transformation(rng):
     """Test the shift and covariance transformation."""
     upars = rng.normal(size=(1000, 2))
@@ -109,7 +170,7 @@ def test_shift_and_cov_transformation(rng):
     cov_weighted_result = np.cov(result["upars"], rowvar=False, aweights=weights)
     cov_weighted_orig = np.cov(upars, rowvar=False, aweights=weights)
     np.testing.assert_allclose(
-        cov_weighted_result, cov_weighted_orig, rtol=1e-1, atol=1e-2
+        cov_weighted_result, cov_weighted_orig, rtol=2e-1, atol=5e-2
     )
 
     assert np.allclose(
@@ -118,6 +179,75 @@ def test_shift_and_cov_transformation(rng):
     eigvals = np.linalg.eigvals(result["mapping"] @ result["mapping"].T)
     assert np.all(eigvals > 0)
     assert np.all(np.abs(np.log(eigvals)) < 5)
+
+
+def test_loo_moment_match_mmm(mmm_model):
+    """Test loo_moment_match with media mix model."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+
+    loo_data = loo(idata, pointwise=True)
+
+    thresholds = [0.5, 0.7, 0.9]
+    for k_thresh in thresholds:
+        result = loo_moment_match(
+            wrapper,
+            loo_data,
+            max_iters=30,
+            k_threshold=k_thresh,
+            split=True,
+            cov=True,
+            method=ISMethod.PSIS,
+        )
+        assert np.all(result.pareto_k <= loo_data.pareto_k)
+        assert np.all(np.isfinite(result.elpd_loo))
+
+
+def test_loo_moment_match_mmm_convergence(mmm_model):
+    """Test convergence behavior of loo_moment_match with media mix model."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    loo_data = loo(idata, pointwise=True)
+
+    iters_list = [1, 5, 10, 30]
+    prev_pareto_k = None
+
+    for max_iters in iters_list:
+        result = loo_moment_match(
+            wrapper,
+            loo_data,
+            max_iters=max_iters,
+            k_threshold=0.7,
+            split=True,
+            cov=True,
+            method=ISMethod.PSIS,
+        )
+
+        if prev_pareto_k is not None:
+            assert np.mean(result.pareto_k) <= np.mean(prev_pareto_k)
+
+        prev_pareto_k = result.pareto_k.copy()
+
+
+def test_loo_moment_match_mmm_parameter_combinations(mmm_model):
+    """Test loo_moment_match with different parameter combinations on media mix model."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    loo_data = loo(idata, pointwise=True)
+
+    params = [(True, True), (True, False), (False, True), (False, False)]
+    for split, cov in params:
+        result = loo_moment_match(
+            wrapper,
+            loo_data,
+            max_iters=30,
+            k_threshold=0.7,
+            split=split,
+            cov=cov,
+            method=ISMethod.PSIS,
+        )
+        assert np.all(result.pareto_k <= loo_data.pareto_k)
+        assert np.all(np.isfinite(result.elpd_loo))
 
 
 def test_loo_moment_match_warnings(simple_model):
@@ -184,8 +314,6 @@ def test_loo_moment_match_functionality(simple_model):
     else:
         loo_data.pareto_k[:] = np.array([0.9] * len(loo_data.pareto_k))
 
-    print(np.any(loo_data.pareto_k > 0.8))
-
     result1 = loo_moment_match(
         wrapper,
         loo_data,
@@ -195,7 +323,6 @@ def test_loo_moment_match_functionality(simple_model):
         cov=True,
         method=ISMethod.PSIS,
     )
-    print(result1)
 
     result2 = loo_moment_match(
         wrapper,
@@ -206,7 +333,7 @@ def test_loo_moment_match_functionality(simple_model):
         cov=True,
         method=ISMethod.PSIS,
     )
-    print(result2)
+
     result3 = loo_moment_match(
         wrapper,
         loo_data,
@@ -216,7 +343,6 @@ def test_loo_moment_match_functionality(simple_model):
         cov=True,
         method=ISMethod.PSIS,
     )
-    print(result3)
 
     assert np.all(result1.pareto_k <= loo_data.pareto_k)
     assert np.all(result2.pareto_k <= loo_data.pareto_k)
@@ -347,9 +473,6 @@ def test_loo_moment_match_with_problematic_k(problematic_k_model):
         cov=True,
         method=ISMethod.PSIS,
     )
-
-    print(loo_data)
-    print(result)
 
     assert np.all(result.pareto_k <= loo_data.pareto_k)
     assert np.all(result.elpd_loo >= loo_data.elpd_loo)

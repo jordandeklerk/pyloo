@@ -89,9 +89,16 @@ def loo_moment_match(
     """
     unconstrained = wrapper.get_unconstrained_parameters()
     param_names = list(unconstrained.keys())
-    upars = np.column_stack(
-        [unconstrained[name].values.flatten() for name in param_names]
-    )
+
+    # Stack parameters into a matrix
+    param_arrays = []
+    for name in param_names:
+        param = unconstrained[name].values.flatten()
+        param_arrays.append(param)
+
+    # Stack parameters into a matrix - ensure all arrays have the same length
+    min_size = min(len(arr) for arr in param_arrays)
+    upars = np.column_stack([arr[:min_size] for arr in param_arrays])
     S = upars.shape[0]
 
     if k_threshold is None:
@@ -610,6 +617,9 @@ def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
     centered_upars = upars - mean_weighted[None, :]
     var_weighted_orig = np.sum(weights[:, None] * centered_upars**2, axis=0)
     var_original = np.var(upars, axis=0)
+
+    # Handle zero variance case
+    var_original = np.where(var_original == 0, 1.0, var_original)
     scaling = np.sqrt(var_weighted_orig / var_original)
 
     # Apply transformation
@@ -621,6 +631,9 @@ def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
     # Correct scaling
     centered_upars_new = upars_new - mean_weighted[None, :]
     var_weighted_new = np.sum(weights[:, None] * centered_upars_new**2, axis=0)
+
+    # Handle zero variance case
+    var_weighted_new = np.where(var_weighted_new == 0, 1.0, var_weighted_new)
     scaling_correction = np.sqrt(var_weighted_orig / var_weighted_new)
     upars_new = (
         mean_weighted[None, :] + centered_upars_new * scaling_correction[None, :]
@@ -710,6 +723,12 @@ def _compute_means(
     upars: np.ndarray, weights: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute weighted and original means of parameters."""
+    # Ensure weights and upars have compatible shapes
+    if len(weights) != upars.shape[0]:
+        raise ValueError(
+            f"Weights length ({len(weights)}) must match first dimension of upars"
+            f" ({upars.shape[0]})"
+        )
     mean_weighted = np.sum(weights[:, None] * upars, axis=0)
     mean_original = np.mean(upars, axis=0)
     return mean_weighted, mean_original
