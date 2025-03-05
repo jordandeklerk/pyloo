@@ -78,9 +78,12 @@ def loo_moment_match(
         ki = ks[i]
         kfi = 0
 
-        log_liki_raw = wrapper.log_likelihood_i(i, wrapper.idata)
-        log_liki_raw = log_liki_raw.stack(__sample__=("chain", "draw"))
-        log_liki = log_liki_raw.values.flatten()
+        try:
+            log_liki = _compute_log_likelihood(wrapper, i)
+        except Exception as e:
+            raise ValueError(
+                f"Error computing log likelihood for observation {i}"
+            ) from e
 
         if hasattr(wrapper.idata, "posterior"):
             posterior = wrapper.idata.posterior
@@ -88,9 +91,12 @@ def loo_moment_match(
             if n_chains == 1:
                 r_eff_i = 1.0
             else:
-                log_liki_chains = wrapper.log_likelihood_i(i, wrapper.idata)
-                log_liki_chains = log_liki_chains.stack(__sample__=("chain", "draw"))
-                log_liki_chains = log_liki_chains.values
+                try:
+                    log_liki_chains = _compute_log_likelihood(wrapper, i)
+                except Exception as e:
+                    raise ValueError(
+                        f"Error computing log likelihood for observation {i}"
+                    ) from e
 
                 ess_i = ess(log_liki_chains, method="mean")
                 if isinstance(ess_i, xr.DataArray):
@@ -351,9 +357,10 @@ def loo_moment_match_split(
         - np.log(np.abs(np.linalg.det(total_mapping)))
     )
 
-    log_liki_half = wrapper.log_likelihood_i(i, wrapper.idata)
-    log_liki_half = log_liki_half.stack(__sample__=("chain", "draw"))
-    log_liki_half = log_liki_half.values.flatten()
+    try:
+        log_liki_half = _compute_log_likelihood(wrapper, i)
+    except Exception as e:
+        raise ValueError(f"Error computing log likelihood for observation {i}") from e
 
     stable_S = log_prob_half_trans > log_prob_half_trans_inv
     lwi_half = -log_liki_half + log_prob_half_trans
@@ -399,9 +406,12 @@ def loo_moment_match_split(
             r_eff_i1 = r_eff_i2 = 1.0
         else:
             # Calculate ESS for each half's log likelihood
-            log_liki_chains = wrapper.log_likelihood_i(i, wrapper.idata)
-            log_liki_chains = log_liki_chains.stack(__sample__=("chain", "draw"))
-            log_liki_chains = log_liki_chains.values
+            try:
+                log_liki_chains = _compute_log_likelihood(wrapper, i)
+            except Exception as e:
+                raise ValueError(
+                    f"Error computing log likelihood for observation {i}"
+                ) from e
 
             n_chains = wrapper.idata.posterior.chain.size
             n_draws = wrapper.idata.posterior.draw.size
@@ -483,39 +493,19 @@ def update_quantities_i(
         - kfi: New Pareto k value for full distribution
         - log_liki: New log likelihood values
     """
-    constrained_params = {}
-    param_names = list(wrapper.get_unconstrained_parameters().keys())
-    for j, name in enumerate(param_names):
-        constrained_params[name] = xr.DataArray(
-            upars[:, j],
-            dims=["sample"],
-            coords={"sample": np.arange(len(upars))},
-        )
-    constrained = wrapper.constrain_parameters(constrained_params)
-
-    log_prob_new = np.zeros(len(upars))
-    for name, param in constrained.items():
-        var = wrapper.get_variable(name)
-        if var is not None and hasattr(var, "logp"):
-            if isinstance(param, xr.DataArray):
-                param = param.values
-            log_prob_part = var.logp(param).eval()
-            log_prob_new += log_prob_part
-
-    log_liki_new = wrapper.log_likelihood_i(i, wrapper.idata)
-    log_liki_new = log_liki_new.stack(__sample__=("chain", "draw"))
-    log_liki_new = log_liki_new.values.flatten()
+    log_prob_new = _compute_log_prob(wrapper, upars)
+    try:
+        log_liki_new = _compute_log_likelihood(wrapper, i)
+    except Exception as e:
+        raise ValueError(f"Error computing log likelihood for observation {i}") from e
 
     lr = -log_liki_new + log_prob_new - orig_log_prob
     lr[np.isnan(lr)] = -np.inf
 
-    is_obj_new = compute_importance_weights(lr, method=method, reff=r_eff_i)
-    lwi_new, ki_new = is_obj_new
-
-    is_obj_f_new = compute_importance_weights(
+    lwi_new, ki_new = compute_importance_weights(lr, method=method, reff=r_eff_i)
+    lwfi_new, kfi_new = compute_importance_weights(
         log_prob_new - orig_log_prob, method=method, reff=r_eff_i
     )
-    lwfi_new, kfi_new = is_obj_f_new
 
     return {
         "lwi": lwi_new,
@@ -543,20 +533,12 @@ def shift(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
         - upars: The transformed parameter matrix
         - shift: The shift that was performed
     """
-    weights = np.exp(lwi - np.max(lwi))  # Numerical stability
-    weights = weights / np.sum(weights)
-
-    mean_weighted = np.sum(weights[:, None] * upars, axis=0)
-    mean_original = np.mean(upars, axis=0)
-
+    weights = _compute_weights(lwi)
+    mean_weighted, mean_original = _compute_means(upars, weights)
     shift = mean_weighted - mean_original
 
-    upars_new = upars.copy()
-    upars_new = upars_new + shift
-
-    mean_weighted_new = np.sum(weights[:, None] * upars_new, axis=0)
-    correction = mean_weighted - mean_weighted_new
-    upars_new = upars_new + correction
+    upars_new = upars + shift
+    upars_new, correction = _apply_correction(upars_new, weights, mean_weighted)
 
     return {"upars": upars_new, "shift": shift + correction}
 
@@ -579,28 +561,23 @@ def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
         - shift: The shift that was performed
         - scaling: The scaling that was performed
     """
-    weights = np.exp(lwi - np.max(lwi))  # Numerical stability
-    weights = weights / np.sum(weights)
-
-    mean_original = np.mean(upars, axis=0)
-    mean_weighted = np.sum(weights[:, None] * upars, axis=0)
+    weights = _compute_weights(lwi)
+    mean_weighted, mean_original = _compute_means(upars, weights)
     shift = mean_weighted - mean_original
 
+    # Compute variance scaling
     centered_upars = upars - mean_weighted[None, :]
     var_weighted_orig = np.sum(weights[:, None] * centered_upars**2, axis=0)
     var_original = np.var(upars, axis=0)
-
     scaling = np.sqrt(var_weighted_orig / var_original)
 
-    upars_new = upars.copy()
-    upars_new = (upars_new - mean_original[None, :]) * scaling[None, :] + mean_weighted[
+    # Apply transformation
+    upars_new = (upars - mean_original[None, :]) * scaling[None, :] + mean_weighted[
         None, :
     ]
+    upars_new, correction = _apply_correction(upars_new, weights, mean_weighted)
 
-    mean_weighted_new = np.sum(weights[:, None] * upars_new, axis=0)
-    correction = mean_weighted - mean_weighted_new
-    upars_new = upars_new + correction[None, :]
-
+    # Correct scaling
     centered_upars_new = upars_new - mean_weighted[None, :]
     var_weighted_new = np.sum(weights[:, None] * centered_upars_new**2, axis=0)
     scaling_correction = np.sqrt(var_weighted_orig / var_weighted_new)
@@ -629,16 +606,13 @@ def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
         - shift: The shift that was performed
         - mapping: The mapping matrix that was used
     """
-    weights = np.exp(lwi - np.max(lwi))  # Numerical stability
-    weights = weights / np.sum(weights)
-
-    mean_original = np.mean(upars, axis=0)
-    mean_weighted = np.sum(weights[:, None] * upars, axis=0)
+    weights = _compute_weights(lwi)
+    mean_weighted, mean_original = _compute_means(upars, weights)
     shift = mean_weighted - mean_original
 
+    # Compute covariance mapping
     centered_upars = upars - mean_weighted[None, :]
     cov_weighted_orig = np.cov(centered_upars, rowvar=False, aweights=weights)
-
     cov_original = np.cov(upars - mean_original[None, :], rowvar=False)
 
     try:
@@ -648,13 +622,62 @@ def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
     except np.linalg.LinAlgError:
         mapping = np.eye(len(mean_original))
 
-    upars_new = upars.copy()
-    upars_new = (upars_new - mean_original[None, :]) @ mapping.T + mean_weighted[
-        None, :
-    ]
-
-    mean_weighted_new = np.sum(weights[:, None] * upars_new, axis=0)
-    correction = mean_weighted - mean_weighted_new
-    upars_new = upars_new + correction[None, :]
+    # Apply transformation
+    upars_new = (upars - mean_original[None, :]) @ mapping.T + mean_weighted[None, :]
+    upars_new, correction = _apply_correction(upars_new, weights, mean_weighted)
 
     return {"upars": upars_new, "shift": shift + correction, "mapping": mapping}
+
+
+def _compute_log_prob(wrapper: PyMCWrapper, upars: np.ndarray) -> np.ndarray:
+    """Compute log probability for parameters."""
+    constrained_params = {}
+    param_names = list(wrapper.get_unconstrained_parameters().keys())
+    for j, name in enumerate(param_names):
+        constrained_params[name] = xr.DataArray(
+            upars[:, j],
+            dims=["sample"],
+            coords={"sample": np.arange(len(upars))},
+        )
+    constrained = wrapper.constrain_parameters(constrained_params)
+
+    log_prob = np.zeros(len(upars))
+    for name, param in constrained.items():
+        var = wrapper.get_variable(name)
+        if var is not None and hasattr(var, "logp"):
+            if isinstance(param, xr.DataArray):
+                param = param.values
+            log_prob_part = var.logp(param).eval()
+            log_prob += log_prob_part
+    return log_prob
+
+
+def _compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
+    """Compute log likelihood for observation i."""
+    log_liki = wrapper.log_likelihood_i(i, wrapper.idata)
+    log_liki = log_liki.stack(__sample__=("chain", "draw"))
+    return log_liki.values.flatten()
+
+
+def _compute_weights(lwi: np.ndarray) -> np.ndarray:
+    """Compute normalized weights from log weights with numerical stability."""
+    weights = np.exp(lwi - np.max(lwi))  # Numerical stability
+    return weights / np.sum(weights)
+
+
+def _compute_means(
+    upars: np.ndarray, weights: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute weighted and original means of parameters."""
+    mean_weighted = np.sum(weights[:, None] * upars, axis=0)
+    mean_original = np.mean(upars, axis=0)
+    return mean_weighted, mean_original
+
+
+def _apply_correction(
+    upars_new: np.ndarray, weights: np.ndarray, mean_weighted: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply mean correction to transformed parameters."""
+    mean_weighted_new = np.sum(weights[:, None] * upars_new, axis=0)
+    correction = mean_weighted - mean_weighted_new
+    return upars_new + correction[None, :], correction
