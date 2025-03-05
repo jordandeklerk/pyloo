@@ -1,5 +1,6 @@
 """Moment matching for efficient approximate leave-one-out cross-validation (LOO)."""
 
+import logging
 import warnings
 from typing import Literal, TypedDict
 
@@ -13,6 +14,8 @@ from .utils import _logsumexp
 from .wrapper.pymc_wrapper import PyMCWrapper
 
 __all__ = ["loo_moment_match"]
+
+_log = logging.getLogger(__name__)
 
 
 class SplitMomentMatchResult(TypedDict):
@@ -177,6 +180,7 @@ def loo_moment_match(
         ks = loo_data.diagnostics["pareto_k"]
 
     bad_obs = np.where(ks > k_threshold)[0]
+    _log.info(f"Found {len(bad_obs)} observations with Pareto k > {k_threshold}")
     kfs = np.zeros_like(ks)
 
     for i in bad_obs:
@@ -196,8 +200,6 @@ def loo_moment_match(
         if n_chains == 1:
             r_eff_i = 1.0
         else:
-            log_liki
-
             ess_i = ess(log_liki, method="mean")
             if isinstance(ess_i, xr.DataArray):
                 ess_i = ess_i.values
@@ -211,6 +213,7 @@ def loo_moment_match(
         total_mapping = np.eye(upars.shape[1])
 
         iterind = 1
+        _log.info(f"Processing observation {i} with Pareto k = {ks[i]}")
 
         while iterind <= max_iters and ki > k_threshold:
             if iterind == max_iters:
@@ -272,6 +275,9 @@ def loo_moment_match(
                     continue
 
             # None of the transformations improved khat
+            _log.info(
+                f"Observation {i}: No further improvement after {iterind} iterations"
+            )
             break
 
         if max_iters == 1:
@@ -283,6 +289,7 @@ def loo_moment_match(
 
         # Split transformation if requested and transformations were successful
         if split and iterind > 1:
+            _log.info(f"Performing split transformation for observation {i}")
             split_result = loo_moment_match_split(
                 wrapper,
                 upars,
