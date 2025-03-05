@@ -1,33 +1,76 @@
 """Moment matching for efficient approximate leave-one-out cross-validation (LOO)."""
 
 import warnings
-from typing import Any
+from typing import Literal, TypedDict
 
 import numpy as np
 import xarray as xr
 from arviz.stats.diagnostics import ess
 
+from .elpd import ELPDData
 from .importance_sampling import ISMethod, compute_importance_weights
 from .utils import _logsumexp
 from .wrapper.pymc_wrapper import PyMCWrapper
 
 
+class SplitMomentMatchResult(TypedDict):
+    """Result of split moment matching."""
+
+    lwi: np.ndarray
+    lwfi: np.ndarray
+    log_liki: np.ndarray
+    r_eff_i: float
+
+
+class UpdateQuantitiesResult(TypedDict):
+    """Result of updating quantities for observation i."""
+
+    lwi: np.ndarray
+    lwfi: np.ndarray
+    ki: float
+    kfi: int
+    log_liki: np.ndarray
+
+
+class ShiftResult(TypedDict):
+    """Result of shift transformation."""
+
+    upars: np.ndarray
+    shift: np.ndarray
+
+
+class ShiftAndScaleResult(TypedDict):
+    """Result of shift and scale transformation."""
+
+    upars: np.ndarray
+    shift: np.ndarray
+    scaling: np.ndarray
+
+
+class ShiftAndCovResult(TypedDict):
+    """Result of shift and covariance transformation."""
+
+    upars: np.ndarray
+    shift: np.ndarray
+    mapping: np.ndarray
+
+
 def loo_moment_match(
     wrapper: PyMCWrapper,
-    loo_data: Any,
+    loo_data: ELPDData,
     max_iters: int = 30,
     k_threshold: float | None = None,
     split: bool = True,
     cov: bool = True,
-    method: ISMethod = ISMethod.PSIS,
-) -> Any:
+    method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+) -> ELPDData:
     r"""Moment matching algorithm for updating a loo object when Pareto k estimates are large.
 
     Parameters
     ----------
     wrapper : PyMCWrapper
         PyMC model wrapper instance
-    loo_data : Any
+    loo_data : ELPDData
         A loo object to be modified
     max_iters : int
         Maximum number of moment matching iterations
@@ -42,7 +85,7 @@ def loo_moment_match(
 
     Returns
     -------
-    Any
+    ELPDData
         Updated loo object with improved estimates
 
     Examples
@@ -90,13 +133,11 @@ def loo_moment_match(
     unconstrained = wrapper.get_unconstrained_parameters()
     param_names = list(unconstrained.keys())
 
-    # Stack parameters into a matrix
     param_arrays = []
     for name in param_names:
         param = unconstrained[name].values.flatten()
         param_arrays.append(param)
 
-    # Stack parameters into a matrix - ensure all arrays have the same length
     min_size = min(len(arr) for arr in param_arrays)
     upars = np.column_stack([arr[:min_size] for arr in param_arrays])
     S = upars.shape[0]
@@ -134,25 +175,17 @@ def loo_moment_match(
                 f"Error computing log likelihood for observation {i}"
             ) from e
 
-        if hasattr(wrapper.idata, "posterior"):
-            posterior = wrapper.idata.posterior
-            n_chains = len(posterior.chain)
-            if n_chains == 1:
-                r_eff_i = 1.0
-            else:
-                try:
-                    log_liki_chains = _compute_log_likelihood(wrapper, i)
-                except Exception as e:
-                    raise ValueError(
-                        f"Error computing log likelihood for observation {i}"
-                    ) from e
-
-                ess_i = ess(log_liki_chains, method="mean")
-                if isinstance(ess_i, xr.DataArray):
-                    ess_i = ess_i.values
-                r_eff_i = float(ess_i / len(log_liki))
-        else:
+        posterior = wrapper.idata.posterior
+        n_chains = len(posterior.chain)
+        if n_chains == 1:
             r_eff_i = 1.0
+        else:
+            log_liki
+
+            ess_i = ess(log_liki, method="mean")
+            if isinstance(ess_i, xr.DataArray):
+                ess_i = ess_i.values
+            r_eff_i = float(ess_i / len(log_liki))
 
         is_obj = compute_importance_weights(-log_liki, method=method, reff=r_eff_i)
         lwi, _ = is_obj
@@ -281,8 +314,8 @@ def loo_moment_match_split(
     total_mapping: np.ndarray,
     i: int,
     r_eff_i: float,
-    method: ISMethod = ISMethod.PSIS,
-) -> dict[str, Any]:
+    method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+) -> SplitMomentMatchResult:
     """Split moment matching for efficient approximate leave-one-out cross-validation.
 
     This function computes the split moment matching importance sampling loo.
@@ -323,112 +356,49 @@ def loo_moment_match_split(
     S_half = S // 2
     mean_original = np.mean(upars, axis=0)
 
-    if total_shift.shape[0] != upars.shape[1]:
-        total_shift = np.zeros(upars.shape[1])
-    if total_scaling.shape[0] != upars.shape[1]:
-        total_scaling = np.ones(upars.shape[1])
-    if total_mapping.shape[0] != upars.shape[1]:
-        total_mapping = np.eye(upars.shape[1])
+    dim = upars.shape[1]
+    total_shift = _initialize_array(total_shift, np.zeros, dim)
+    total_scaling = _initialize_array(total_scaling, np.ones, dim)
+    total_mapping = _initialize_array(total_mapping, np.eye, dim)
 
-    # Affine transformation
-    upars_trans = upars - mean_original
-    upars_trans = upars_trans * total_scaling[None, :]
-    if cov:
-        upars_trans = upars_trans @ total_mapping.T
-    upars_trans = upars_trans + total_shift[None, :] + mean_original
+    # Apply transformations
+    upars_trans, upars_trans_inv = _apply_transformations(
+        upars, mean_original, total_shift, total_scaling, total_mapping, cov
+    )
 
-    # Inverse affine transformation
-    upars_trans_inv = upars - mean_original
-    if cov:
-        upars_trans_inv = upars_trans_inv @ np.linalg.inv(total_mapping).T
-    upars_trans_inv = upars_trans_inv / total_scaling[None, :]
-    upars_trans_inv = upars_trans_inv + mean_original - total_shift[None, :]
-
-    # First half of upars_trans_half are T(theta)
-    # Second half are theta
+    # Create half-transformed parameter sets
     upars_trans_half = upars.copy()
     upars_trans_half[:S_half] = upars_trans[:S_half]
 
-    # First half of upars_half_inv are theta
-    # Second half are T^-1(theta)
     upars_trans_half_inv = upars.copy()
     upars_trans_half_inv[S_half:] = upars_trans_inv[S_half:]
 
-    constrained_params = {}
-    param_names = list(wrapper.get_unconstrained_parameters().keys())
-
-    # Transformed parameters
-    for j, name in enumerate(param_names):
-        constrained_params[name] = xr.DataArray(
-            upars_trans_half[:, j],
-            dims=["sample"],
-            coords={"sample": np.arange(len(upars))},
+    # Compute log probabilities for transformed and inverse transformed parameters
+    try:
+        log_prob_half_trans, log_prob_half_trans_inv = _compute_split_log_probs(
+            wrapper,
+            upars_trans_half,
+            upars_trans_half_inv,
+            total_scaling,
+            total_mapping,
         )
-    constrained_trans = wrapper.constrain_parameters(constrained_params)
+    except Exception as e:
+        raise ValueError(
+            f"Error computing log probabilities for transformed parameters {e}"
+        ) from e
 
-    # Inverse transformed parameters
-    for j, name in enumerate(param_names):
-        constrained_params[name] = xr.DataArray(
-            upars_trans_half_inv[:, j],
-            dims=["sample"],
-            coords={"sample": np.arange(len(upars))},
-        )
-    constrained_trans_inv = wrapper.constrain_parameters(constrained_params)
-
-    log_prob_half_trans = np.zeros(S)
-    log_prob_half_trans_inv = np.zeros(S)
-
-    for name in param_names:
-        var = wrapper.get_variable(name)
-        if var is not None and hasattr(var, "logp"):
-
-            # Transformed parameters
-            param_trans = constrained_trans[name]
-            if isinstance(param_trans, xr.DataArray):
-                param_trans = param_trans.values
-
-            log_prob_trans = var.logp(param_trans).eval()
-            log_prob_half_trans += log_prob_trans
-
-            # Inverse transformed parameters
-            param_inv = constrained_trans_inv[name]
-            if isinstance(param_inv, xr.DataArray):
-                param_inv = param_inv.values
-
-            log_prob_inv = var.logp(param_inv).eval()
-            log_prob_half_trans_inv += log_prob_inv
-
-    # Adjust for transformation Jacobian
-    log_prob_half_trans_inv = (
-        log_prob_half_trans_inv
-        - np.sum(np.log(total_scaling))
-        - np.log(np.abs(np.linalg.det(total_mapping)))
-    )
-
+    # Compute log likelihood for observation i
     try:
         log_liki_half = _compute_log_likelihood(wrapper, i)
     except Exception as e:
         raise ValueError(f"Error computing log likelihood for observation {i}") from e
 
-    stable_S = log_prob_half_trans > log_prob_half_trans_inv
-    lwi_half = -log_liki_half + log_prob_half_trans
-
-    # For numerically stable regions
-    lwi_half[stable_S] = lwi_half[stable_S] - (
-        log_prob_half_trans[stable_S]
-        + np.log1p(
-            np.exp(log_prob_half_trans_inv[stable_S] - log_prob_half_trans[stable_S])
-        )
+    # Compute importance weights
+    lwi_half = _compute_split_stable_weights(
+        log_liki_half, log_prob_half_trans, log_prob_half_trans_inv
     )
 
-    # For numerically unstable regions
-    lwi_half[~stable_S] = lwi_half[~stable_S] - (
-        log_prob_half_trans_inv[~stable_S]
-        + np.log1p(
-            np.exp(log_prob_half_trans[~stable_S] - log_prob_half_trans_inv[~stable_S])
-        )
-    )
-
+    # Compute importance sampling weights
     lr = lwi_half.copy()
     lr[np.isnan(lr)] = -np.inf
 
@@ -441,62 +411,8 @@ def loo_moment_match_split(
     is_obj_f_half = compute_importance_weights(lr, method=method, reff=r_eff_i)
     lwfi_half, _ = is_obj_f_half
 
-    # Compute relative effective sample size
-    # Currently ignores chain information since we have two proposal distributions
-    log_liki_half_1 = log_liki_half[S_half:]
-    log_liki_half_2 = log_liki_half[:S_half]
-    r_eff_i1 = r_eff_i2 = r_eff_i
-
-    if hasattr(wrapper.idata, "posterior"):
-        posterior = wrapper.idata.posterior
-        n_chains = len(posterior.chain)
-        if n_chains == 1:
-            r_eff_i1 = r_eff_i2 = 1.0
-        else:
-            # Calculate ESS for each half's log likelihood
-            try:
-                log_liki_chains = _compute_log_likelihood(wrapper, i)
-            except Exception as e:
-                raise ValueError(
-                    f"Error computing log likelihood for observation {i}"
-                ) from e
-
-            n_chains = wrapper.idata.posterior.chain.size
-            n_draws = wrapper.idata.posterior.draw.size
-            log_liki_chains = log_liki_chains.reshape(n_chains, n_draws)
-
-            # Split into two halves
-            if log_liki_chains[:, S_half:].size > 0 and n_chains > 0:
-                try:
-                    ess_i1 = ess(log_liki_chains[:, S_half:], method="mean")
-                    if isinstance(ess_i1, xr.DataArray):
-                        ess_i1 = ess_i1.values
-                    if ess_i1.size > 0:
-                        r_eff_i1 = float(ess_i1 / max(1, len(log_liki_half_1)))
-                except (ValueError, np.linalg.LinAlgError) as e:
-                    warnings.warn(
-                        f"Error computing effective sample size for half 1: {e}",
-                        stacklevel=2,
-                    )
-                    r_eff_i1 = r_eff_i
-
-            if log_liki_chains[:, :S_half].size > 0 and n_chains > 0:
-                try:
-                    ess_i2 = ess(log_liki_chains[:, :S_half], method="mean")
-                    if isinstance(ess_i2, xr.DataArray):
-                        ess_i2 = ess_i2.values
-                    if ess_i2.size > 0:
-                        r_eff_i2 = float(ess_i2 / max(1, len(log_liki_half_2)))
-                except (ValueError, np.linalg.LinAlgError) as e:
-                    warnings.warn(
-                        f"Error computing effective sample size for half 2: {e}",
-                        stacklevel=2,
-                    )
-                    r_eff_i2 = r_eff_i
-    else:
-        r_eff_i1 = r_eff_i2 = 1.0
-
-    r_eff_i = min(r_eff_i1, r_eff_i2)
+    # Compute updated relative effective sample size
+    r_eff_i = _compute_updated_r_eff(wrapper, i, log_liki_half, S_half, r_eff_i)
 
     return {
         "lwi": lwi_half,
@@ -512,8 +428,8 @@ def update_quantities_i(
     i: int,
     orig_log_prob: np.ndarray,
     r_eff_i: float,
-    method: ISMethod = ISMethod.PSIS,
-) -> dict[str, Any]:
+    method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+) -> UpdateQuantitiesResult:
     """Update the importance weights, Pareto diagnostic and log-likelihood for observation i.
 
     Parameters
@@ -564,7 +480,7 @@ def update_quantities_i(
     }
 
 
-def shift(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
+def shift(upars: np.ndarray, lwi: np.ndarray) -> ShiftResult:
     """Shift a matrix of parameters to their weighted mean.
 
     Parameters
@@ -591,7 +507,7 @@ def shift(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
     return {"upars": upars_new, "shift": shift + correction}
 
 
-def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
+def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndScaleResult:
     """Shift a matrix of parameters to their weighted mean and scale the marginal variances.
 
     Parameters
@@ -642,7 +558,7 @@ def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
     return {"upars": upars_new, "shift": shift + correction, "scaling": scaling}
 
 
-def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
+def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndCovResult:
     """Shift a matrix of parameters and scale the covariance to match the weighted covariance.
 
     Parameters
@@ -683,8 +599,44 @@ def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> dict[str, Any]:
     return {"upars": upars_new, "shift": shift + correction, "mapping": mapping}
 
 
+def _compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
+    """Compute log likelihood for observation i.
+
+    Parameters
+    ----------
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    i : int
+        Index of the observation
+
+    Returns
+    -------
+    np.ndarray
+        Log likelihood values for observation i across all samples
+    """
+    log_liki = wrapper.log_likelihood_i(i, wrapper.idata)
+    log_liki = log_liki.stack(__sample__=("chain", "draw"))
+    return log_liki.values.flatten()
+
+
 def _compute_log_prob(wrapper: PyMCWrapper, upars: np.ndarray) -> np.ndarray:
-    """Compute log probability for parameters."""
+    """Compute log probability for parameters.
+
+    This function converts unconstrained parameters to constrained space and
+    computes the log probability for each parameter set.
+
+    Parameters
+    ----------
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance that provides access to model variables and transformations
+    upars : np.ndarray
+        Unconstrained parameters matrix with shape (n_samples, n_parameters)
+
+    Returns
+    -------
+    np.ndarray
+        Log probability for each parameter set, shape (n_samples,)
+    """
     constrained_params = {}
     param_names = list(wrapper.get_unconstrained_parameters().keys())
     for j, name in enumerate(param_names):
@@ -706,23 +658,249 @@ def _compute_log_prob(wrapper: PyMCWrapper, upars: np.ndarray) -> np.ndarray:
     return log_prob
 
 
-def _compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
-    """Compute log likelihood for observation i."""
-    log_liki = wrapper.log_likelihood_i(i, wrapper.idata)
-    log_liki = log_liki.stack(__sample__=("chain", "draw"))
-    return log_liki.values.flatten()
+def _compute_split_log_probs(
+    wrapper: PyMCWrapper,
+    upars_trans_half: np.ndarray,
+    upars_trans_half_inv: np.ndarray,
+    total_scaling: np.ndarray,
+    total_mapping: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute log probabilities for transformed and inverse transformed parameters.
+
+    This function calculates the log probabilities for both the transformed and
+    inverse transformed parameter sets in the split transformation approach. It
+    also adjusts the inverse transformed log probabilities by the Jacobian determinant
+    of the transformation to maintain proper probability densities.
+
+    Parameters
+    ----------
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    upars_trans_half : np.ndarray
+        Transformed parameters for half of the samples, shape (n_samples_half, n_parameters)
+    upars_trans_half_inv : np.ndarray
+        Inverse transformed parameters for half of the samples, shape (n_samples_half, n_parameters)
+    total_scaling : np.ndarray
+        Scaling vector used in the transformation, shape (n_parameters,)
+    total_mapping : np.ndarray
+        Mapping matrix used in the transformation, shape (n_parameters, n_parameters)
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - log_prob_half_trans: Log probabilities for transformed parameters, shape (n_samples_half,)
+        - log_prob_half_trans_inv: Log probabilities for inverse transformed parameters
+          (adjusted by Jacobian), shape (n_samples_half,)
+    """
+    param_names = list(wrapper.get_unconstrained_parameters().keys())
+    S = upars_trans_half.shape[0]
+
+    # Prepare constrained parameters for transformed set
+    constrained_params = {}
+    for j, name in enumerate(param_names):
+        constrained_params[name] = xr.DataArray(
+            upars_trans_half[:, j],
+            dims=["sample"],
+            coords={"sample": np.arange(S)},
+        )
+    constrained_trans = wrapper.constrain_parameters(constrained_params)
+
+    # Prepare constrained parameters for inverse transformed set
+    constrained_params = {}
+    for j, name in enumerate(param_names):
+        constrained_params[name] = xr.DataArray(
+            upars_trans_half_inv[:, j],
+            dims=["sample"],
+            coords={"sample": np.arange(S)},
+        )
+    constrained_trans_inv = wrapper.constrain_parameters(constrained_params)
+
+    # Compute log probabilities
+    log_prob_half_trans = np.zeros(S)
+    log_prob_half_trans_inv = np.zeros(S)
+
+    for name in param_names:
+        var = wrapper.get_variable(name)
+        if var is not None and hasattr(var, "logp"):
+            # Transformed parameters
+            param_trans = constrained_trans[name]
+            if isinstance(param_trans, xr.DataArray):
+                param_trans = param_trans.values
+            log_prob_trans = var.logp(param_trans).eval()
+            log_prob_half_trans += log_prob_trans
+
+            # Inverse transformed parameters
+            param_inv = constrained_trans_inv[name]
+            if isinstance(param_inv, xr.DataArray):
+                param_inv = param_inv.values
+            log_prob_inv = var.logp(param_inv).eval()
+            log_prob_half_trans_inv += log_prob_inv
+
+    # Adjust for transformation Jacobian
+    log_prob_half_trans_inv = (
+        log_prob_half_trans_inv
+        - np.sum(np.log(total_scaling))
+        - np.log(np.abs(np.linalg.det(total_mapping)))
+    )
+
+    return log_prob_half_trans, log_prob_half_trans_inv
+
+
+def _compute_updated_r_eff(
+    wrapper: PyMCWrapper,
+    i: int,
+    log_liki_half: np.ndarray,
+    S_half: int,
+    r_eff_i: float,
+) -> float:
+    """Compute updated relative effective sample size.
+
+    Parameters
+    ----------
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    i : int
+        Index of the observation
+    log_liki_half : np.ndarray
+        Log likelihood values for observation i, shape (n_samples,)
+    S_half : int
+        Half the number of samples
+    r_eff_i : float
+        Current relative effective sample size for observation i
+
+    Returns
+    -------
+    float
+        Updated relative effective sample size (min of the two halves)
+    """
+    log_liki_half_1 = log_liki_half[S_half:]
+    log_liki_half_2 = log_liki_half[:S_half]
+
+    r_eff_i1 = r_eff_i2 = r_eff_i
+
+    posterior = wrapper.idata.posterior
+    n_chains = len(posterior.chain)
+
+    if n_chains <= 1:
+        r_eff_i1 = r_eff_i2 = 1.0
+    else:
+        try:
+            log_liki_chains = _compute_log_likelihood(wrapper, i)
+            n_draws = posterior.draw.size
+            log_liki_chains = log_liki_chains.reshape(n_chains, n_draws)
+
+            # Calculate ESS for first half
+            if log_liki_chains[:, S_half:].size > 0:
+                ess_i1 = ess(log_liki_chains[:, S_half:], method="mean")
+                if isinstance(ess_i1, xr.DataArray):
+                    ess_i1 = ess_i1.values
+                if ess_i1.size > 0:
+                    r_eff_i1 = float(ess_i1 / max(1, len(log_liki_half_1)))
+
+            # Calculate ESS for second half
+            if log_liki_chains[:, :S_half].size > 0:
+                ess_i2 = ess(log_liki_chains[:, :S_half], method="mean")
+                if isinstance(ess_i2, xr.DataArray):
+                    ess_i2 = ess_i2.values
+                if ess_i2.size > 0:
+                    r_eff_i2 = float(ess_i2 / max(1, len(log_liki_half_2)))
+        except Exception as e:
+            # If ESS calculation fails, use the original r_eff_i
+            warnings.warn(
+                f"Error calculating ESS for observation {i}, using original"
+                f" r_eff_i: {e}",
+                stacklevel=2,
+            )
+            return r_eff_i
+
+    return min(r_eff_i1, r_eff_i2)
 
 
 def _compute_weights(lwi: np.ndarray) -> np.ndarray:
-    """Compute normalized weights from log weights with numerical stability."""
+    """Compute normalized weights from log weights with numerical stability.
+
+    Parameters
+    ----------
+    lwi : np.ndarray
+        Log weights array, shape (n_samples,)
+
+    Returns
+    -------
+    np.ndarray
+        Normalized weights that sum to 1, shape (n_samples,)
+    """
     weights = np.exp(lwi - np.max(lwi))  # Numerical stability
     return weights / np.sum(weights)
+
+
+def _compute_split_stable_weights(
+    log_liki_half: np.ndarray,
+    log_prob_half_trans: np.ndarray,
+    log_prob_half_trans_inv: np.ndarray,
+) -> np.ndarray:
+    """Compute importance weights with numerical stability for split transformation.
+
+    Parameters
+    ----------
+    log_liki_half : np.ndarray
+        Log likelihood for half of the samples, shape (n_samples_half,)
+    log_prob_half_trans : np.ndarray
+        Log probability for transformed half of the samples, shape (n_samples_half,)
+    log_prob_half_trans_inv : np.ndarray
+        Log probability for inverse transformed half of the samples, shape (n_samples_half,)
+
+    Returns
+    -------
+    np.ndarray
+        Log importance weights for the split transformation, shape (n_samples_half,)
+    """
+    stable_S = log_prob_half_trans > log_prob_half_trans_inv
+    lwi_half = -log_liki_half + log_prob_half_trans
+
+    # For numerically stable regions
+    lwi_half[stable_S] = lwi_half[stable_S] - (
+        log_prob_half_trans[stable_S]
+        + np.log1p(
+            np.exp(log_prob_half_trans_inv[stable_S] - log_prob_half_trans[stable_S])
+        )
+    )
+
+    # For numerically unstable regions
+    lwi_half[~stable_S] = lwi_half[~stable_S] - (
+        log_prob_half_trans_inv[~stable_S]
+        + np.log1p(
+            np.exp(log_prob_half_trans[~stable_S] - log_prob_half_trans_inv[~stable_S])
+        )
+    )
+
+    return lwi_half
 
 
 def _compute_means(
     upars: np.ndarray, weights: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Compute weighted and original means of parameters."""
+    """Compute weighted and original means of parameters.
+
+    Parameters
+    ----------
+    upars : np.ndarray
+        Parameter matrix with shape (n_samples, n_parameters)
+    weights : np.ndarray
+        Normalized weights with shape (n_samples,)
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - mean_weighted: Weighted mean of parameters, shape (n_parameters,)
+        - mean_original: Original unweighted mean of parameters, shape (n_parameters,)
+
+    Raises
+    ------
+    ValueError
+        If the length of weights doesn't match the first dimension of upars
+    """
     # Ensure weights and upars have compatible shapes
     if len(weights) != upars.shape[0]:
         raise ValueError(
@@ -734,10 +912,81 @@ def _compute_means(
     return mean_weighted, mean_original
 
 
+def _apply_transformations(
+    upars: np.ndarray,
+    mean_original: np.ndarray,
+    total_shift: np.ndarray,
+    total_scaling: np.ndarray,
+    total_mapping: np.ndarray,
+    cov: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply forward and inverse transformations to parameters.
+
+    Parameters
+    ----------
+    upars : np.ndarray
+        Original parameter matrix, shape (n_samples, n_parameters)
+    mean_original : np.ndarray
+        Original mean of parameters, shape (n_parameters,)
+    total_shift : np.ndarray
+        Accumulated shift vector, shape (n_parameters,)
+    total_scaling : np.ndarray
+        Accumulated scaling vector, shape (n_parameters,)
+    total_mapping : np.ndarray
+        Accumulated mapping matrix, shape (n_parameters, n_parameters)
+    cov : bool
+        Whether to apply covariance transformation
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - upars_trans: Forward transformed parameters, shape (n_samples, n_parameters)
+        - upars_trans_inv: Inverse transformed parameters, shape (n_samples, n_parameters)
+    """
+    # Forward transformation
+    upars_trans = upars - mean_original
+    upars_trans = upars_trans * total_scaling[None, :]
+    if cov:
+        upars_trans = upars_trans @ total_mapping.T
+    upars_trans = upars_trans + total_shift[None, :] + mean_original
+
+    # Inverse transformation
+    upars_trans_inv = upars - mean_original
+    if cov:
+        upars_trans_inv = upars_trans_inv @ np.linalg.inv(total_mapping).T
+    upars_trans_inv = upars_trans_inv / total_scaling[None, :]
+    upars_trans_inv = upars_trans_inv + mean_original - total_shift[None, :]
+
+    return upars_trans, upars_trans_inv
+
+
 def _apply_correction(
     upars_new: np.ndarray, weights: np.ndarray, mean_weighted: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Apply mean correction to transformed parameters."""
+    """Apply mean correction to transformed parameters.
+
+    Parameters
+    ----------
+    upars_new : np.ndarray
+        Transformed parameter matrix, shape (n_samples, n_parameters)
+    weights : np.ndarray
+        Normalized weights, shape (n_samples,)
+    mean_weighted : np.ndarray
+        Target weighted mean to match, shape (n_parameters,)
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - Corrected parameter matrix, shape (n_samples, n_parameters)
+        - Correction vector that was applied, shape (n_parameters,)
+    """
     mean_weighted_new = np.sum(weights[:, None] * upars_new, axis=0)
     correction = mean_weighted - mean_weighted_new
     return upars_new + correction[None, :], correction
+
+
+def _initialize_array(arr, default_func, dim):
+    """Initialize array with default values if shape doesn't match."""
+    return arr if arr.shape[0] == dim else default_func(dim)
