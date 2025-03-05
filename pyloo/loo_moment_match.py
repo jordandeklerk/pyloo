@@ -93,6 +93,16 @@ def loo_moment_match(
     ELPDData
         Updated loo object with improved estimates
 
+    Notes
+    -----
+    Moment matching can fail to improve LOO estimates for several reasons such as very high-dimensional
+    parameter spaces, multi-modality, weight instability, and insufficient sample size.
+    Split moment matching can be used to improve the estimates by transforming only half of the draws
+    and using multiple importance sampling to combine them with untransformed draws. This strategy
+    provides more stability than transforming all draws, particularly in cases where the transformation
+    itself might be imperfect. However, split moment matching is not guaranteed to improve the estimates
+    either.
+
     Examples
     --------
     When we have many Pareto k estimates above the threshold, we can use moment matching to improve the estimates
@@ -339,12 +349,62 @@ def loo_moment_match_split(
     r_eff_i: float,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
 ) -> SplitMomentMatchResult:
-    """Split moment matching for efficient approximate leave-one-out cross-validation.
+    r"""Split moment matching for efficient approximate leave-one-out cross-validation.
 
     Instead of transforming all posterior draws, we apply transformations to only half of
     them while leaving the other half unchanged. This creates two different but complementary
     approximations of the leave-one-out posterior. When we combine these halves using multiple
     importance sampling, we get more reliable estimates while maintaining computational efficiency.
+
+    The split moment matching approach works as follows:
+
+    Let :math:`S` be the total number of posterior draws and :math:`S_{half} = S/2`. The approach applies
+    transformations :math:`T` to only the first half of draws while leaving the other half unchanged
+
+    .. math::
+        \\begin{align}
+        \\text{For } s = 1 \\text{ to } S_{half}: & \\quad \\theta^*_s = T(\\theta_s) \\\\
+        \\text{For } s = S_{half}+1 \\text{ to } S: & \\quad \\theta^*_s = \\theta_s
+        \\end{align}
+
+    The transformation :math:`T` is a composition of simpler transformations that match moments
+
+    .. math::
+        \\begin{align}
+        T_1(\\theta) &= \\theta - \\bar{\\theta} + \\bar{\\theta}_w \\quad \\text{(match means)}, \\\\
+        T_2(\\theta) &= v^{1/2}_w \\circ v^{-1/2} \\circ (\\theta - \\bar{\\theta}) + \\bar{\\theta}_w
+        \\quad \\text{(match marginal variances)}, \\\\
+        T_3(\\theta) &= L_w L^{-1} (\\theta - \\bar{\\theta}) + \\bar{\\theta}_w
+        \\quad \\text{(match covariance)},
+        \\end{align}
+
+    where :math:`\\bar{\\theta}` is the sample mean, :math:`\\bar{\\theta}_w` is the weighted mean,
+    :math:`v` and :math:`v_w` are the sample and weighted variances, and :math:`L` comes from the
+    Cholesky decomposition of the covariance matrix (:math:`LL^T = \\Sigma`) and :math:`L_w` from
+    the weighted covariance (:math:`L_w L^T_w = \\Sigma_w`).
+
+    For the inverse transformation, we apply :math:`T^{-1}` to the second half
+
+    .. math::
+        \\begin{align}
+        \\text{For } s = 1 \\text{ to } S_{half}: & \\quad \\theta^*_{inv,s} = \\theta_s, \\\\
+        \\text{For } s = S_{half}+1 \\text{ to } S: & \\quad \\theta^*_{inv,s} = T^{-1}(\\theta_s).
+        \\end{align}
+
+    The importance weights are then computed using a deterministic mixture distribution
+
+    .. math::
+        w^{(s)}_{mix} = \\frac{p(\\theta^*_s | y_{-i})}{g_{mix}(\\theta^*_s)}
+
+    where :math:`g_{mix}(\\theta)` is the implicit mixture
+
+    .. math::
+        g_{mix}(\\theta) \\propto p(\\theta | y) + |J_T|^{-1} p(T^{-1}(\\theta) | y)
+
+    and :math:`|J_T|` is the determinant of the Jacobian of transformation :math:`T`.
+
+    This approach effectively creates a split proposal that better approximates the target
+    leave-one-out posterior distribution while maintaining stability.
 
     Parameters
     ----------
