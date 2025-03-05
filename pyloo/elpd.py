@@ -1,4 +1,4 @@
-"""Expected Log Pointwise Predictive Density (ELPD) data container."""
+"""Expected Log Pointwise Predictive Density (ELPD) data container modified from Arviz."""
 
 from copy import copy as _copy
 from copy import deepcopy as _deepcopy
