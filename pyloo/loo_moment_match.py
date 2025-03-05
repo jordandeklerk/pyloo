@@ -21,7 +21,7 @@ def loo_moment_match(
     cov: bool = True,
     method: ISMethod = ISMethod.PSIS,
 ) -> Any:
-    """Moment matching algorithm for updating a loo object when Pareto k estimates are large.
+    r"""Moment matching algorithm for updating a loo object when Pareto k estimates are large.
 
     Parameters
     ----------
@@ -44,6 +44,48 @@ def loo_moment_match(
     -------
     Any
         Updated loo object with improved estimates
+
+    Examples
+    --------
+    When we have many Pareto k estimates above the threshold, we can use moment matching to improve the estimates
+    and avoid the computational cost of refitting the model :math:`k` times.
+
+    .. code-block:: python
+
+        import pyloo as pl
+        import arviz as az
+
+        data = az.load_arviz_data("centered_eight")
+
+        with pm.Model() as model:
+            mu = pm.Normal('mu', mu=0, sigma=10)
+            sigma = pm.HalfNormal('sigma', sigma=10)
+            likelihood = pm.Normal('y', mu=mu, sigma=sigma, observed=data.y)
+            idata = pm.sample(1000, tune=1000, idata_kwargs={"log_likelihood": True})
+
+        wrapper = pl.PyMCWrapper(model, idata)
+
+    We can first check the Pareto k estimates.
+
+    .. code-block:: python
+
+        loo_orig = pl.loo(wrapper, pointwise=True)
+        print(loo_orig.pareto_k)
+
+    If there are many Pareto k estimates above the threshold, we can use moment matching to improve the estimates.
+    Moment matching allows us to match the mean and marginal variances of the posterior draws as well as the covariance matrix.
+
+    .. code-block:: python
+
+        loo_new = pl.loo_moment_match(wrapper, loo_orig)
+
+    If we want to use split moment matching, we can do the following. Split moment matching transforms only half of the draws
+    and computes a single elpd using multiple importance sampling.
+
+    .. code-block:: python
+
+        loo_new = pl.loo_moment_match(wrapper, loo_orig, split=True)
+
     """
     unconstrained = wrapper.get_unconstrained_parameters()
     param_names = list(unconstrained.keys())
