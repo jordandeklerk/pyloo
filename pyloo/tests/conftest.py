@@ -551,7 +551,7 @@ def problematic_k_model():
     """Create a model that generates problematic pareto k values for LOO-CV testing."""
     rng = np.random.default_rng(42)
 
-    n_obs = 200
+    n_obs = 2000
     true_alpha = 1.0
     true_beta = 2.0
     true_sigma = 0.1

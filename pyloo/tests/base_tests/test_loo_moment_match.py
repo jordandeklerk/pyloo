@@ -39,7 +39,7 @@ def test_loo_moment_match_basic(problematic_model):
     loo_mm = loo_moment_match(
         problematic_model,
         loo_orig,
-        max_iters=500,
+        max_iters=1,
         k_threshold=0.7,
         split=True,
         cov=True,
@@ -47,6 +47,15 @@ def test_loo_moment_match_basic(problematic_model):
 
     print(loo_orig)
     print(loo_mm)
+
+    print("\nBad Pareto k values (original vs moment matching):")
+    print("Observation | Original k | MM k")
+    print("-" * 40)
+
+    for idx in high_k_indices:
+        orig_k = loo_orig.pareto_k[idx]
+        mm_k = loo_mm.pareto_k[idx]
+        print(f"{idx:10d} | {orig_k:.4f} | {mm_k:.4f}")
 
     assert np.any(loo_mm.pareto_k[high_k_indices] <= loo_orig.pareto_k[high_k_indices])
     assert loo_mm.elpd_loo >= loo_orig.elpd_loo - 1e-10
