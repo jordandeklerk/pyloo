@@ -240,6 +240,8 @@ def loo_moment_match(
                     stacklevel=2,
                 )
 
+            improved = False
+
             # Match means
             trans = shift(uparsi, lwi)
             quantities_i = update_quantities_i(
@@ -254,6 +256,7 @@ def loo_moment_match(
                 kfi = quantities_i["kfi"]
                 log_liki = quantities_i["log_liki"]
                 iterind += 1
+                improved = True
                 continue
 
             # Match means and marginal variances
@@ -271,10 +274,11 @@ def loo_moment_match(
                 kfi = quantities_i["kfi"]
                 log_liki = quantities_i["log_liki"]
                 iterind += 1
+                improved = True
                 continue
 
             # Match means and covariances
-            if cov:
+            if cov and not improved:
                 trans = shift_and_cov(uparsi, lwi)
                 quantities_i = update_quantities_i(
                     wrapper, trans["upars"], i, orig_log_prob, r_eff_i, method
@@ -289,13 +293,15 @@ def loo_moment_match(
                     kfi = quantities_i["kfi"]
                     log_liki = quantities_i["log_liki"]
                     iterind += 1
+                    improved = True
                     continue
 
-            # None of the transformations improved khat
-            _log.info(
-                f"Observation {i}: No further improvement after {iterind} iterations"
-            )
-            break
+            if not improved:
+                _log.info(
+                    f"Observation {i}: No further improvement after"
+                    f" {iterind} iterations"
+                )
+                break
 
         if max_iters == 1:
             warnings.warn(
@@ -322,8 +328,7 @@ def loo_moment_match(
             lwi = split_result["lwi"]
             r_eff_i = split_result["r_eff_i"]
 
-        # Update loo
-        loo_data.loo_i[i] = _logsumexp(log_liki + lwi)
+        loo_data.elpd_loo = _logsumexp(log_liki + lwi)
         if hasattr(loo_data, "pareto_k"):
             loo_data.pareto_k[i] = ki
         kfs[i] = kfi
@@ -457,33 +462,32 @@ def loo_moment_match_split(
     total_scaling = _initialize_array(total_scaling, np.ones, dim)
     total_mapping = _initialize_array(total_mapping, np.eye, dim)
 
-    # Apply forward and inverse transformations
     # Forward transformation
-    upars_trans = upars - mean_original
+    upars_trans = upars - mean_original[None, :]
     upars_trans = upars_trans * total_scaling[None, :]
     if cov:
         upars_trans = upars_trans @ total_mapping.T
-    upars_trans = upars_trans + total_shift[None, :] + mean_original
+    upars_trans = upars_trans + (total_shift + mean_original)[None, :]
 
     # Inverse transformation
-    upars_trans_inv = upars - mean_original
+    upars_trans_inv = upars - mean_original[None, :]
     if cov:
         upars_trans_inv = upars_trans_inv @ np.linalg.inv(total_mapping).T
     upars_trans_inv = upars_trans_inv / total_scaling[None, :]
-    upars_trans_inv = upars_trans_inv + mean_original - total_shift[None, :]
+    upars_trans_inv = upars_trans_inv + (mean_original - total_shift)[None, :]
 
+    # Split transformations - first half gets forward transform
     upars_trans_half = upars.copy()
     upars_trans_half[:S_half] = upars_trans[:S_half]
 
+    # Second half gets inverse transform
     upars_trans_half_inv = upars.copy()
     upars_trans_half_inv[S_half:] = upars_trans_inv[S_half:]
 
-    # Compute log probabilities for transformed and inverse transformed parameters
     try:
-        # Get parameter names
         param_names = list(wrapper.get_unconstrained_parameters().keys())
 
-        # Prepare constrained parameters for transformed set
+        # Constrained parameters for transformed set
         constrained_params = {}
         for j, name in enumerate(param_names):
             constrained_params[name] = xr.DataArray(
@@ -493,7 +497,7 @@ def loo_moment_match_split(
             )
         constrained_trans = wrapper.constrain_parameters(constrained_params)
 
-        # Prepare constrained parameters for inverse transformed set
+        # Constrained parameters for inverse transformed set
         constrained_params = {}
         for j, name in enumerate(param_names):
             constrained_params[name] = xr.DataArray(
@@ -523,7 +527,7 @@ def loo_moment_match_split(
                 log_prob_inv = var.logp(param_inv).eval()
                 log_prob_half_trans_inv += log_prob_inv
 
-        # Adjust for transformation Jacobian
+        # Adjust for Jacobian
         log_prob_half_trans_inv = (
             log_prob_half_trans_inv
             - np.sum(np.log(total_scaling))
@@ -539,10 +543,16 @@ def loo_moment_match_split(
     except Exception as e:
         raise ValueError(f"Error computing log likelihood for observation {i}") from e
 
+    log_prob_half_trans_inv = (
+        log_prob_half_trans_inv
+        - np.sum(np.log(np.abs(total_scaling)))
+        - np.log(np.abs(np.linalg.det(total_mapping)))
+    )
+
+    # Determine stable regions for computation
     stable_S = log_prob_half_trans > log_prob_half_trans_inv
     lwi_half = -log_liki_half + log_prob_half_trans
 
-    # For numerically stable regions
     lwi_half[stable_S] = lwi_half[stable_S] - (
         log_prob_half_trans[stable_S]
         + np.log1p(
@@ -550,7 +560,6 @@ def loo_moment_match_split(
         )
     )
 
-    # For numerically unstable regions
     lwi_half[~stable_S] = lwi_half[~stable_S] - (
         log_prob_half_trans_inv[~stable_S]
         + np.log1p(
@@ -558,15 +567,14 @@ def loo_moment_match_split(
         )
     )
 
-    lr = lwi_half.copy()
-    lr[np.isnan(lr)] = -np.inf
+    lwi_half[np.isnan(lwi_half)] = -np.inf
+    lwi_half[np.isinf(lwi_half) & (lwi_half > 0)] = -np.inf
 
-    is_obj_half = compute_importance_weights(lr, method=method, reff=r_eff_i)
+    is_obj_half = compute_importance_weights(lwi_half, method=method, reff=r_eff_i)
     lwi_half, _ = is_obj_half
 
-    # Compute weights for the integrand
     lr = lwi_half + log_liki_half
-    lr[np.isnan(lr)] = -np.inf
+    lr[np.isnan(lr) | (np.isinf(lr) & (lr > 0))] = -np.inf
     is_obj_f_half = compute_importance_weights(lr, method=method, reff=r_eff_i)
     lwfi_half, _ = is_obj_f_half
 
@@ -621,13 +629,23 @@ def update_quantities_i(
     except Exception as e:
         raise ValueError(f"Error computing log likelihood for observation {i}") from e
 
-    lr = -log_liki_new + log_prob_new - orig_log_prob
-    lr[np.isnan(lr)] = -np.inf
+    lr = log_prob_new - orig_log_prob
+    stable_mask = log_prob_new > orig_log_prob
 
-    lwi_new, ki_new = compute_importance_weights(lr, method=method, reff=r_eff_i)
-    lwfi_new, kfi_new = compute_importance_weights(
-        log_prob_new - orig_log_prob, method=method, reff=r_eff_i
+    lwi = -log_liki_new + log_prob_new
+
+    lwi[stable_mask] = lwi[stable_mask] - (
+        log_prob_new[stable_mask]
+        + np.log1p(np.exp(orig_log_prob[stable_mask] - log_prob_new[stable_mask]))
     )
+    lwi[~stable_mask] = lwi[~stable_mask] - (
+        orig_log_prob[~stable_mask]
+        + np.log1p(np.exp(log_prob_new[~stable_mask] - orig_log_prob[~stable_mask]))
+    )
+
+    lwi[np.isnan(lwi)] = -np.inf
+    lwi_new, ki_new = compute_importance_weights(lwi, method=method, reff=r_eff_i)
+    lwfi_new, kfi_new = compute_importance_weights(lr, method=method, reff=r_eff_i)
 
     return {
         "lwi": lwi_new,
@@ -655,14 +673,13 @@ def shift(upars: np.ndarray, lwi: np.ndarray) -> ShiftResult:
         - upars: The transformed parameter matrix
         - shift: The shift that was performed
     """
-    weights = _compute_weights(lwi)
-    mean_weighted, mean_original = _compute_means(upars, weights)
+    mean_original = np.mean(upars, axis=0)
+    mean_weighted = np.sum(np.exp(lwi)[:, None] * upars, axis=0)
     shift = mean_weighted - mean_original
 
-    upars_new = upars + shift
-    upars_new, correction = _apply_correction(upars_new, weights, mean_weighted)
+    upars_new = upars + shift[None, :]
 
-    return {"upars": upars_new, "shift": shift + correction}
+    return {"upars": upars_new, "shift": shift}
 
 
 def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndScaleResult:
@@ -683,36 +700,20 @@ def shift_and_scale(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndScaleResult:
         - shift: The shift that was performed
         - scaling: The scaling that was performed
     """
-    weights = _compute_weights(lwi)
-    mean_weighted, mean_original = _compute_means(upars, weights)
+    S = upars.shape[0]
+    mean_original = np.mean(upars, axis=0)
+    mean_weighted = np.sum(np.exp(lwi)[:, None] * upars, axis=0)
     shift = mean_weighted - mean_original
+    mii = np.exp(lwi)[:, None] * upars**2
+    mii = np.sum(mii, axis=0) - mean_weighted**2
+    mii = mii * S / (S - 1)
+    scaling = np.sqrt(mii / np.var(upars, axis=0))
 
-    centered_upars = upars - mean_weighted[None, :]
-    var_weighted_orig = np.sum(weights[:, None] * centered_upars**2, axis=0)
-    var_original = np.var(upars, axis=0)
+    upars_new = upars - mean_original[None, :]
+    upars_new = upars_new * scaling[None, :]
+    upars_new = upars_new + mean_weighted[None, :]
 
-    # Handle zero variance
-    var_original = np.where(var_original == 0, 1.0, var_original)
-    scaling = np.sqrt(var_weighted_orig / var_original)
-
-    # Apply transformation
-    upars_new = (upars - mean_original[None, :]) * scaling[None, :] + mean_weighted[
-        None, :
-    ]
-    upars_new, correction = _apply_correction(upars_new, weights, mean_weighted)
-
-    # Correct scaling
-    centered_upars_new = upars_new - mean_weighted[None, :]
-    var_weighted_new = np.sum(weights[:, None] * centered_upars_new**2, axis=0)
-
-    # Handle zero variance
-    var_weighted_new = np.where(var_weighted_new == 0, 1.0, var_weighted_new)
-    scaling_correction = np.sqrt(var_weighted_orig / var_weighted_new)
-    upars_new = (
-        mean_weighted[None, :] + centered_upars_new * scaling_correction[None, :]
-    )
-
-    return {"upars": upars_new, "shift": shift + correction, "scaling": scaling}
+    return {"upars": upars_new, "shift": shift, "scaling": scaling}
 
 
 def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndCovResult:
@@ -733,27 +734,25 @@ def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndCovResult:
         - shift: The shift that was performed
         - mapping: The mapping matrix that was used
     """
-    weights = _compute_weights(lwi)
-    mean_weighted, mean_original = _compute_means(upars, weights)
+    mean_original = np.mean(upars, axis=0)
+    mean_weighted = np.sum(np.exp(lwi)[:, None] * upars, axis=0)
     shift = mean_weighted - mean_original
 
-    # Compute covariance mapping
-    centered_upars = upars - mean_weighted[None, :]
-    cov_weighted_orig = np.cov(centered_upars, rowvar=False, aweights=weights)
-    cov_original = np.cov(upars - mean_original[None, :], rowvar=False)
+    covv = np.cov(upars, rowvar=False)
+    wcovv = np.cov(upars, rowvar=False, aweights=np.exp(lwi))
 
     try:
-        chol1 = np.linalg.cholesky(cov_weighted_orig)
-        chol2 = np.linalg.cholesky(cov_original)
+        chol1 = np.linalg.cholesky(wcovv)
+        chol2 = np.linalg.cholesky(covv)
         mapping = chol1.T @ np.linalg.inv(chol2.T)
     except np.linalg.LinAlgError:
         mapping = np.eye(len(mean_original))
 
-    # Apply transformation
-    upars_new = (upars - mean_original[None, :]) @ mapping.T + mean_weighted[None, :]
-    upars_new, correction = _apply_correction(upars_new, weights, mean_weighted)
+    upars_new = upars - mean_original[None, :]
+    upars_new = upars_new @ mapping.T
+    upars_new = upars_new + mean_weighted[None, :]
 
-    return {"upars": upars_new, "shift": shift + correction, "mapping": mapping}
+    return {"upars": upars_new, "shift": shift, "mapping": mapping}
 
 
 def _compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
@@ -773,6 +772,7 @@ def _compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
     """
     log_liki = wrapper.log_likelihood_i(i, wrapper.idata)
     log_liki = log_liki.stack(__sample__=("chain", "draw"))
+
     return log_liki.values.flatten()
 
 
@@ -812,6 +812,7 @@ def _compute_log_prob(wrapper: PyMCWrapper, upars: np.ndarray) -> np.ndarray:
                 param = param.values
             log_prob_part = var.logp(param).eval()
             log_prob += log_prob_part
+
     return log_prob
 
 
@@ -874,7 +875,6 @@ def _compute_updated_r_eff(
                 if ess_i2.size > 0:
                     r_eff_i2 = float(ess_i2 / max(1, len(log_liki_half_2)))
         except Exception as e:
-            # If ESS calculation fails, use the original r_eff_i
             warnings.warn(
                 f"Error calculating ESS for observation {i}, using original"
                 f" r_eff_i: {e}",
@@ -883,84 +883,6 @@ def _compute_updated_r_eff(
             return r_eff_i
 
     return min(r_eff_i1, r_eff_i2)
-
-
-def _compute_weights(lwi: np.ndarray) -> np.ndarray:
-    """Compute normalized weights from log weights with numerical stability.
-
-    Parameters
-    ----------
-    lwi : np.ndarray
-        Log weights array, shape (n_samples,)
-
-    Returns
-    -------
-    np.ndarray
-        Normalized weights that sum to 1, shape (n_samples,)
-    """
-    weights = np.exp(lwi - np.max(lwi))  # Numerical stability
-    return weights / np.sum(weights)
-
-
-def _compute_means(
-    upars: np.ndarray, weights: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute weighted and original means of parameters.
-
-    Parameters
-    ----------
-    upars : np.ndarray
-        Parameter matrix with shape (n_samples, n_parameters)
-    weights : np.ndarray
-        Normalized weights with shape (n_samples,)
-
-    Returns
-    -------
-    tuple
-        A tuple containing:
-        - mean_weighted: Weighted mean of parameters, shape (n_parameters,)
-        - mean_original: Original unweighted mean of parameters, shape (n_parameters,)
-
-    Raises
-    ------
-    ValueError
-        If the length of weights doesn't match the first dimension of upars
-    """
-    # Ensure weights and upars have compatible shapes
-    if len(weights) != upars.shape[0]:
-        raise ValueError(
-            f"Weights length ({len(weights)}) must match first dimension of upars"
-            f" ({upars.shape[0]})"
-        )
-    mean_weighted = np.sum(weights[:, None] * upars, axis=0)
-    mean_original = np.mean(upars, axis=0)
-    return mean_weighted, mean_original
-
-
-def _apply_correction(
-    upars_new: np.ndarray, weights: np.ndarray, mean_weighted: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Apply mean correction to transformed parameters.
-
-    Parameters
-    ----------
-    upars_new : np.ndarray
-        Transformed parameter matrix, shape (n_samples, n_parameters)
-    weights : np.ndarray
-        Normalized weights, shape (n_samples,)
-    mean_weighted : np.ndarray
-        Target weighted mean to match, shape (n_parameters,)
-
-    Returns
-    -------
-    tuple
-        A tuple containing:
-        - Corrected parameter matrix, shape (n_samples, n_parameters)
-        - Correction vector that was applied, shape (n_parameters,)
-    """
-    mean_weighted_new = np.sum(weights[:, None] * upars_new, axis=0)
-    correction = mean_weighted - mean_weighted_new
-    return upars_new + correction[None, :], correction
 
 
 def _initialize_array(arr, default_func, dim):

@@ -16,6 +16,14 @@ p_loo       {p_loo:<8.2f}        -
 looic      {looic:<8.2f}    {looic_se:<.2f}
 {pareto_msg}"""
 
+# Custom format for LOO output without looic line
+CUSTOM_LOO_FMT = """
+Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
+
+         Estimate       SE
+elpd_loo   {elpd:<8.2f}    {se:<.2f}
+p_loo       {p_loo:<8.2f}        -"""
+
 # Format for k-fold cross-validation output
 KFOLD_BASE_FMT = """
 Computed from {n_samples} posterior samples using {K}-fold cross-validation
@@ -111,6 +119,12 @@ class ELPDData(pd.Series):
                 stratify_msg=stratify_msg,
             )
 
+            if self.warning:
+                base += (
+                    "\n\nThere has been a warning during the calculation. Please check"
+                    " the results."
+                )
+
             return base
 
         elif is_subsampled:
@@ -172,6 +186,14 @@ class ELPDData(pd.Series):
                 pareto_msg=pareto_msg,
                 r_eff=self.get("r_eff", 1.0),
             )
+
+            if self.warning:
+                base += (
+                    "\n\nThere has been a warning during the calculation. Please check"
+                    " the results."
+                )
+
+            return base
         else:
             method = getattr(self, "method", "psis")
             default_good_k = 0.7
@@ -213,28 +235,27 @@ class ELPDData(pd.Series):
 
             elpd_loo = self["elpd_loo"]
             se = self["se"]
-            looic = -2 * elpd_loo
-            looic_se = 2 * se
 
-            base = STD_BASE_FMT.format(
+            # Use custom format without looic line
+            base = CUSTOM_LOO_FMT.format(
                 n_samples=self.n_samples,
                 n_points=self.n_data_points,
                 elpd=elpd_loo,
                 se=se,
                 p_loo=self["p_loo"],
-                looic=looic,
-                looic_se=looic_se,
-                pareto_msg=pareto_msg,
-                r_eff=self.get("r_eff", 1.0),
             )
 
-        if self.warning:
-            base += (
-                "\nThere has been a warning during the calculation. Please check the"
-                " results."
-            )
+            # Add warning immediately after the main stats if needed
+            if self.warning:
+                base += (
+                    "\n\nThere has been a warning during the calculation. Please check"
+                    " the results."
+                )
 
-        return base
+            # Add pareto diagnostics after main stats and warning
+            base += pareto_msg
+
+            return base
 
     def __repr__(self):
         """Return string representation."""
