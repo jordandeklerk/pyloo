@@ -61,7 +61,7 @@ class ShiftAndCovResult(TypedDict):
 
 
 def log_lik_i_upars(model, upars: dict[str, xr.DataArray], pointwise: bool = False):
-    """Compute log likelihood for unconstrained parameters by converting to InferenceData.
+    """Compute log likelihood for unconstrained parameters.
 
     Parameters
     ----------
