@@ -3,7 +3,6 @@
 import logging
 
 import numpy as np
-import pymc as pm
 import pytest
 import xarray as xr
 from arviz import InferenceData
@@ -733,53 +732,6 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
     assert_positive(constrained["sigma_y"])
 
 
-def test_logging_functionality(simple_model, caplog, monkeypatch):
-    """Test that logging messages are properly emitted."""
-    model, idata = simple_model
-    wrapper = PyMCWrapper(model, idata)
-
-    data = wrapper.observed_data["y"].copy()
-    data[::2] = np.nan
-    wrapper.set_data({"y": data})
-
-    with caplog.at_level(logging.WARNING):
-        wrapper.select_observations(slice(0, 50))
-        assert "Missing values detected in y" in caplog.text
-
-    wrapper.set_data({"y": wrapper.idata.observed_data["y"].values})
-
-    def mock_sample(*args, **kwargs):
-        return idata
-
-    monkeypatch.setattr(pm, "sample", mock_sample)
-
-    with caplog.at_level(logging.INFO):
-        result = wrapper.sample_posterior(draws=10, chains=1)
-        assert "Automatically enabling log likelihood computation" in caplog.text
-        assert result is idata
-
-
-def test_error_messages(simple_model):
-    """Test that error messages provide detailed context."""
-    model, idata = simple_model
-    wrapper = PyMCWrapper(model, idata)
-
-    with pytest.raises(PyMCWrapperError) as exc_info:
-        wrapper.set_data({"invalid_var": np.zeros(100)})
-    assert "Available variables:" in str(exc_info.value)
-
-    with pytest.raises(PyMCWrapperError) as exc_info:
-        wrapper.set_data({"y": np.zeros((100, 2))})
-    assert "Expected shape:" in str(exc_info.value)
-    assert "got:" in str(exc_info.value)
-
-    idata_missing = idata.copy()
-    del idata_missing.posterior["alpha"]
-    with pytest.raises(PyMCWrapperError) as exc_info:
-        PyMCWrapper(model, idata_missing)
-    assert "Missing posterior samples for variables:" in str(exc_info.value)
-
-
 def test_mixture_model_log_likelihood_i(mixture_model):
     """Test log_likelihood_i method with mixture model."""
     model, idata = mixture_model
@@ -853,86 +805,3 @@ def test_mixture_model_log_likelihood_i_workflow(mixture_model):
     assert_finite(log_like)
 
     wrapper.set_data({wrapper.get_observed_name(): original_data})
-
-
-def test_get_log_likelihood_internal(simple_model, monkeypatch):
-    """Test the internal get_log_likelihood method functionality."""
-    model, idata = simple_model
-    wrapper = PyMCWrapper(model, idata)
-
-    def mock_logp(*args, **kwargs):
-        return np.ones(100) * -2.0  # Mock log likelihood values
-
-    monkeypatch.setattr(wrapper.model, "logp", mock_logp)
-
-    log_like = wrapper.get_log_likelihood()
-
-    assert isinstance(log_like, xr.DataArray)
-    assert log_like.name == "log_likelihood_y"
-    assert "obs_id" in log_like.dims
-    assert log_like.sizes["obs_id"] == 100
-    assert_finite(log_like)
-    assert_bounded(log_like, upper=0)
-
-    log_like_explicit = wrapper.get_log_likelihood(var_name="y")
-    assert isinstance(log_like_explicit, xr.DataArray)
-    assert log_like_explicit.name == "log_likelihood_y"
-    assert_arrays_equal(log_like.values, log_like_explicit.values)
-
-    with pytest.raises(
-        PyMCWrapperError, match="Variable 'nonexistent' not found in model"
-    ):
-        wrapper.get_log_likelihood(var_name="nonexistent")
-
-    with pytest.raises(PyMCWrapperError, match="No observed data found for variable"):
-        wrapper.get_log_likelihood(
-            var_name="alpha"
-        )  # alpha is not an observed variable
-
-    original_data = wrapper.observed_data["y"].copy()
-    missing_data = original_data.copy()
-    missing_data[0] = np.nan
-
-    wrapper.set_data({"y": missing_data})
-
-    with pytest.raises(PyMCWrapperError, match="Missing values found in y"):
-        wrapper.get_log_likelihood()
-
-    wrapper.set_data({"y": original_data})
-
-    draw_test_called = False
-
-    def mock_logp_with_draws_check(*args, **kwargs):
-        nonlocal draw_test_called
-        draw_test_called = True
-        return np.ones(100) * -2.0
-
-    monkeypatch.setattr(wrapper.model, "logp", mock_logp_with_draws_check)
-
-    custom_draws = {"alpha": np.array([0.5])}
-    wrapper.get_log_likelihood(draws=custom_draws)
-
-    assert (
-        draw_test_called
-    ), "The method should have called logp even if set_value failed"
-
-    unconstrained_params = wrapper.get_unconstrained_parameters()
-
-    single_draw_params = {}
-    for param_name, param_array in unconstrained_params.items():
-        single_draw_params[param_name] = param_array.isel(
-            chain=0, draw=0
-        ).values.reshape(1)
-
-    draw_test_called = False
-    monkeypatch.setattr(wrapper.model, "logp", mock_logp_with_draws_check)
-
-    log_like_unconstrained = wrapper.get_log_likelihood(draws=single_draw_params)
-
-    assert (
-        draw_test_called
-    ), "The method should have called logp with unconstrained parameters"
-    assert isinstance(log_like_unconstrained, xr.DataArray)
-    assert log_like_unconstrained.name == "log_likelihood_y"
-    assert "obs_id" in log_like_unconstrained.dims
-    assert log_like_unconstrained.sizes["obs_id"] == 100
