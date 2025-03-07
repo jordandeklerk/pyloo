@@ -1,6 +1,6 @@
 """Utility functions for moment matching."""
 
-from typing import TypedDict
+from typing import Dict, TypedDict
 
 import numpy as np
 import xarray as xr
@@ -8,8 +8,8 @@ import xarray as xr
 from .wrapper.pymc_wrapper import PyMCWrapper
 
 __all__ = [
-    "_compute_log_likelihood",
-    "_compute_log_prob",
+    "compute_log_likelihood",
+    "compute_log_prob",
     "_initialize_array",
     "ShiftResult",
     "ShiftAndScaleResult",
@@ -60,7 +60,7 @@ class ShiftAndCovResult(TypedDict):
     mapping: np.ndarray
 
 
-def _compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
+def compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
     """Compute log likelihood for observation i.
 
     Parameters
@@ -81,44 +81,61 @@ def _compute_log_likelihood(wrapper: PyMCWrapper, i: int) -> np.ndarray:
     return log_liki.values.flatten()
 
 
-def _compute_log_prob(wrapper: PyMCWrapper, upars: np.ndarray) -> np.ndarray:
-    """Compute log probability for parameters.
+def compute_log_prob(model, upars: Dict[str, xr.DataArray]) -> np.ndarray:
+    """Compute log probability for unconstrained parameters.
 
-    This function converts unconstrained parameters to constrained space and
-    computes the log probability for each parameter set.
+    This function computes the log probability for each unconstrained parameter
+    directly, without converting to constrained space.
 
     Parameters
     ----------
-    wrapper : PyMCWrapper
-        PyMC model wrapper instance that provides access to model variables and transformations
-    upars : np.ndarray
-        Unconstrained parameters matrix with shape (n_samples, n_parameters)
+    model : PyMC model
+        PyMC model object that provides access to model variables
+    upars : dict of xarray.DataArray
+        Unconstrained parameters from model.get_unconstrained_parameters()
 
     Returns
     -------
     np.ndarray
-        Log probability for each parameter set, shape (n_samples,)
+        Matrix of log probability values with shape (n_samples, n_variables)
+        where n_samples = n_chains * n_draws and n_variables is the number of
+        parameters in upars
     """
-    constrained_params = {}
-    param_names = list(wrapper.get_unconstrained_parameters().keys())
-    for j, name in enumerate(param_names):
-        constrained_params[name] = xr.DataArray(
-            upars[:, j],
-            dims=["sample"],
-            coords={"sample": np.arange(len(upars))},
-        )
-    constrained = wrapper.constrain_parameters(constrained_params)
+    var_names = list(upars.keys())
+    first_var = upars[var_names[0]]
+    n_samples = first_var.shape[0] * first_var.shape[1]
 
-    log_prob = np.zeros(len(upars))
-    for name, param in constrained.items():
-        var = wrapper.get_variable(name)
-        if var is not None and hasattr(var, "logp"):
-            if isinstance(param, xr.DataArray):
-                param = param.values
-            log_prob_part = var.logp(param).eval()
-            log_prob += log_prob_part
+    result_matrix = np.zeros((n_samples, len(var_names)))
 
-    return log_prob
+    for i, name in enumerate(var_names):
+        # Stack chains and draws
+        param = upars[name].stack(__sample__=("chain", "draw"))
+
+        # Get variable and its transformed name
+        with model:
+            var = model[name]
+            value_var = model.rvs_to_values.get(var)
+
+            if value_var is None:
+                result_matrix[:, i] = np.nan
+                continue
+
+            # Compile logp function once for this variable
+            logp_fn = model.compile_fn(model.logp(vars=var, sum=True, jacobian=True))
+
+        # Calculate logp for all samples of this variable
+        for j in range(len(param.__sample__)):
+            try:
+                value = (
+                    param.isel(__sample__=j).values
+                    if len(upars[name].shape) > 2
+                    else param.isel(__sample__=j).item()
+                )
+                result_matrix[j, i] = logp_fn({value_var.name: value})
+            except Exception:
+                result_matrix[j, i] = np.nan
+
+    return result_matrix
 
 
 def _initialize_array(arr, default_func, dim):
