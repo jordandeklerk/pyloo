@@ -399,7 +399,7 @@ class PyMCWrapper:
         if self.get_variable(var_name) is None:
             raise PyMCWrapperError(
                 f"Variable '{var_name}' not found in model. Available variables: "
-                f"{list(self._untransformed_model.named_vars.keys())}"
+                f"{list(self.model.named_vars.keys())}"
             )
 
         if var_name not in self.observed_data:
@@ -439,7 +439,7 @@ class PyMCWrapper:
             log_like = pm.compute_log_likelihood(
                 idata,
                 var_names=[var_name],
-                model=self._untransformed_model,
+                model=self.model,
                 extend_inferencedata=False,
             )
 
@@ -1393,15 +1393,23 @@ class PyMCWrapper:
                     self.observed_dims[var_name] = data_array.dims
 
         self.constant_data = {}
-        for data_var in self._untransformed_model.data_vars:
+        for data_var in self.model.data_vars:
             data_name = data_var.name
             if hasattr(data_var, "get_value"):
                 self.constant_data[data_name] = data_var.get_value()
 
-        self.free_vars = [rv.name for rv in self._untransformed_model.free_RVs]
-        self.deterministic_vars = [
-            det.name for det in self._untransformed_model.deterministics
+        self.free_vars = [rv.name for rv in self.model.free_RVs]
+        self.deterministic_vars = [det.name for det in self.model.deterministics]
+        self.value_vars = [rv.name for rv in self.model.value_vars]
+        self.unobserved_value_vars = [
+            rv.name for rv in self.model.unobserved_value_vars
         ]
+        self.basic_RVs = [rv.name for rv in self.model.basic_RVs]
+        self.unobserved_vars = [rv.name for rv in self.model.unobserved_RVs]
+        self.continuous_value_vars = [
+            rv.name for rv in self.model.continuous_value_vars
+        ]
+        self.discrete_value_vars = [rv.name for rv in self.model.discrete_value_vars]
 
     def _get_coords(self, var_name: str) -> dict[str, Sequence[int]] | None:
         """Get the coordinates for a variable."""

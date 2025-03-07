@@ -595,3 +595,35 @@ def problematic_k_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def roaches_model():
+    """Create a model for the roaches dataset."""
+    data = pd.read_csv("./data/roaches.csv")
+    data["roach1"] = np.sqrt(data["roach1"])
+
+    X = data[["roach1", "treatment", "senior"]].values
+    y = data["y"].values
+    offset = np.log(data["exposure2"]).values
+    K = X.shape[1]
+
+    beta_prior_scale = 2.5
+    alpha_prior_scale = 5.0
+
+    with pm.Model() as model:
+        beta = pm.Normal("beta", mu=0, sigma=beta_prior_scale, shape=K)
+        intercept = pm.Normal("intercept", mu=0, sigma=alpha_prior_scale)
+        eta = pm.math.dot(X, beta) + intercept + offset
+        pm.Poisson("y", mu=pm.math.exp(eta), observed=y)
+
+        idata = pm.sample(
+            chains=4,
+            draws=1000,
+            tune=1000,
+            target_accept=0.9,
+            random_seed=42,
+            idata_kwargs={"log_likelihood": True},
+        )
+
+    return model, idata

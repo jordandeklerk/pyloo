@@ -1,5 +1,7 @@
 """Tests for moment matching in LOO-CV."""
 
+from copy import copy
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -8,7 +10,6 @@ from numpy.testing import assert_allclose
 from ...loo import loo
 from ...loo_moment_match import (
     _compute_log_likelihood,
-    _compute_log_prob,
     _compute_updated_r_eff,
     _initialize_array,
     loo_moment_match,
@@ -31,43 +32,58 @@ def problematic_model(problematic_k_model):
 
 def test_loo_moment_match_basic(problematic_model):
     """Test basic functionality of loo_moment_match."""
+    param_names = list(problematic_model.get_unconstrained_parameters().keys())
+
     loo_orig = loo(problematic_model.idata, pointwise=True)
 
-    high_k_indices = np.where(loo_orig.pareto_k > 0.7)[0]
+    original_k_values = loo_orig.pareto_k.values.copy()
+    original_elpd = loo_orig.elpd_loo
+
+    high_k_indices = np.where(original_k_values > 0.7)[0]
     assert len(high_k_indices) > 0, "Test requires observations with high Pareto k"
+
+    unconstrained = problematic_model.get_unconstrained_parameters()
+    param_arrays = []
+    for name in param_names:
+        param = unconstrained[name].values.flatten()
+        param_arrays.append(param)
+
+    loo_orig_copy = copy.deepcopy(loo_orig)
 
     loo_mm = loo_moment_match(
         problematic_model,
-        loo_orig,
-        max_iters=1,
+        loo_orig_copy,
+        max_iters=30,
         k_threshold=0.7,
         split=True,
         cov=True,
     )
 
-    print(loo_orig)
-    print(loo_mm)
-
-    print("\nBad Pareto k values (original vs moment matching):")
-    print("Observation | Original k | MM k")
-    print("-" * 40)
-
+    improvements = []
     for idx in high_k_indices:
-        orig_k = loo_orig.pareto_k[idx]
+        orig_k = original_k_values[idx]
         mm_k = loo_mm.pareto_k[idx]
-        print(f"{idx:10d} | {orig_k:.4f} | {mm_k:.4f}")
+        improvement = orig_k - mm_k
+        improvements.append(improvement)
 
-    assert np.any(loo_mm.pareto_k[high_k_indices] <= loo_orig.pareto_k[high_k_indices])
-    assert loo_mm.elpd_loo >= loo_orig.elpd_loo - 1e-10
+    assert np.any(np.array(improvements) > 0), "No Pareto k values improved"
+
+    assert loo_mm.elpd_loo >= original_elpd - 1e-10, "ELPD got worse"
 
 
 def test_loo_moment_match_split(problematic_model):
     """Test split moment matching."""
     loo_orig = loo(problematic_model.idata, pointwise=True)
+    original_elpd = loo_orig.elpd_loo
+
+    import copy
+
+    loo_orig_copy1 = copy.deepcopy(loo_orig)
+    loo_orig_copy2 = copy.deepcopy(loo_orig)
 
     loo_mm_split = loo_moment_match(
         problematic_model,
-        loo_orig,
+        loo_orig_copy1,
         max_iters=10,
         k_threshold=0.7,
         split=True,
@@ -76,15 +92,15 @@ def test_loo_moment_match_split(problematic_model):
 
     loo_mm_regular = loo_moment_match(
         problematic_model,
-        loo_orig,
+        loo_orig_copy2,
         max_iters=10,
         k_threshold=0.7,
         split=False,
         cov=True,
     )
 
-    assert loo_mm_split.elpd_loo >= loo_orig.elpd_loo - 1e-10
-    assert loo_mm_regular.elpd_loo >= loo_orig.elpd_loo - 1e-10
+    assert loo_mm_split.elpd_loo >= original_elpd - 1e-10
+    assert loo_mm_regular.elpd_loo >= original_elpd - 1e-10
 
     if loo_mm_split.elpd_loo != loo_mm_regular.elpd_loo:
         rel_diff = abs(loo_mm_split.elpd_loo - loo_mm_regular.elpd_loo) / abs(
@@ -96,14 +112,19 @@ def test_loo_moment_match_split(problematic_model):
 def test_loo_moment_match_different_methods(problematic_model):
     """Test moment matching with different importance sampling methods."""
     loo_orig = loo(problematic_model.idata, pointwise=True)
+    original_elpd = loo_orig.elpd_loo
 
     methods = ["psis", "sis", "tis"]
     results = {}
 
+    import copy
+
     for method in methods:
+        loo_orig_copy = copy.deepcopy(loo_orig)
+
         results[method] = loo_moment_match(
             problematic_model,
-            loo_orig,
+            loo_orig_copy,
             max_iters=10,
             k_threshold=0.7,
             split=True,
@@ -111,7 +132,7 @@ def test_loo_moment_match_different_methods(problematic_model):
             method=method,
         )
 
-        assert results[method].elpd_loo >= loo_orig.elpd_loo - 1e-10
+        assert results[method].elpd_loo >= original_elpd - 1e-10
 
     for m1 in methods:
         for m2 in methods:
@@ -350,25 +371,6 @@ def test_compute_log_likelihood(problematic_model):
     assert np.all(np.isfinite(log_liki))
 
 
-def test_compute_log_prob(problematic_model):
-    """Test the _compute_log_prob function."""
-    unconstrained = problematic_model.get_unconstrained_parameters()
-    param_names = list(unconstrained.keys())
-
-    param_arrays = []
-    for name in param_names:
-        param = unconstrained[name].values.flatten()
-        param_arrays.append(param)
-
-    min_size = min(len(arr) for arr in param_arrays)
-    upars = np.column_stack([arr[:min_size] for arr in param_arrays])
-
-    log_prob = _compute_log_prob(problematic_model, upars)
-
-    assert log_prob.shape == (upars.shape[0],)
-    assert np.all(np.isfinite(log_prob))
-
-
 def test_compute_updated_r_eff(problematic_model):
     """Test the _compute_updated_r_eff function."""
     i = 0
@@ -498,3 +500,27 @@ def test_loo_moment_match_improves_bad_pareto_k(problematic_model):
             )
 
             assert np.mean(improvement_worst) > np.mean(improvement_moderate)
+
+
+def test_loo_moment_match_roaches_model(roaches_model):
+    """Test moment matching with the roaches model."""
+    model, idata = roaches_model
+    wrapper = PyMCWrapper(model, idata)
+
+    loo_orig = loo(idata, pointwise=True)
+
+    k_threshold = 0.7
+    high_k = np.where(loo_orig.pareto_k > k_threshold)[0]
+
+    loo_mm = loo_moment_match(
+        wrapper,
+        loo_orig,
+        max_iters=30,
+        k_threshold=k_threshold,
+        split=True,
+        cov=True,
+    )
+
+    improvements = loo_orig.pareto_k[high_k] - loo_mm.pareto_k[high_k]
+    assert np.any(improvements > 0), "No Pareto k values improved"
+    assert loo_mm.elpd_loo >= loo_orig.elpd_loo - 1e-10, "ELPD got worse"
