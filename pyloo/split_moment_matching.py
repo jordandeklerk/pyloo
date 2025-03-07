@@ -8,11 +8,7 @@ import xarray as xr
 from arviz.stats.diagnostics import ess
 
 from .importance_sampling import ISMethod, compute_importance_weights
-from .utils_moment_matching import (
-    SplitMomentMatchResult,
-    _initialize_array,
-    compute_log_likelihood,
-)
+from .utils_moment_matching import SplitMomentMatchResult, _initialize_array
 from .wrapper.pymc_wrapper import PyMCWrapper
 
 __all__ = ["loo_moment_match_split"]
@@ -207,7 +203,8 @@ def loo_moment_match_split(
         ) from e
 
     try:
-        log_liki_half = compute_log_likelihood(wrapper, i)
+        # TODO: Placeholder for now, will be replaced with actual log likelihood computation
+        log_liki_half = wrapper.log_likelihood_i(wrapper, i)
     except Exception as e:
         raise ValueError(f"Error computing log likelihood for observation {i}") from e
 
@@ -295,7 +292,8 @@ def _compute_updated_r_eff(
         r_eff_i1 = r_eff_i2 = 1.0
     else:
         try:
-            log_liki_chains = compute_log_likelihood(wrapper, i)
+            # TODO: Placeholder for now, will be replaced with actual log likelihood computation
+            log_liki_chains = wrapper.log_likelihood_i(wrapper, i)
             n_draws = posterior.draw.size
             log_liki_chains = log_liki_chains.reshape(n_chains, n_draws)
 

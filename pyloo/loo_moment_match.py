@@ -17,8 +17,7 @@ from .utils_moment_matching import (
     ShiftAndScaleResult,
     ShiftResult,
     UpdateQuantitiesResult,
-    compute_log_likelihood,
-    compute_log_prob,
+    log_prob_upars,
 )
 from .wrapper.pymc_wrapper import PyMCWrapper
 
@@ -173,7 +172,8 @@ def loo_moment_match(
         kfi = 0
 
         try:
-            log_liki = compute_log_likelihood(wrapper, i)
+            # TODO: Placeholder for now, will be replaced with actual log likelihood computation
+            log_liki = wrapper.log_likelihood_i(wrapper, i)
         except Exception as e:
             raise ValueError(
                 f"Error computing log likelihood for observation {i}"
@@ -352,9 +352,10 @@ def update_quantities_i(
         - kfi: New Pareto k value for full distribution
         - log_liki: New log likelihood values
     """
-    log_prob_new = compute_log_prob(wrapper, upars)
+    log_prob_new = log_prob_upars(wrapper, upars)
     try:
-        log_liki_new = compute_log_likelihood(wrapper, i)
+        # TODO: Placeholder for now, will be replaced with actual log likelihood computation
+        log_liki_new = wrapper.log_likelihood_i(wrapper, i)
     except Exception as e:
         raise ValueError(f"Error computing log likelihood for observation {i}") from e
 
