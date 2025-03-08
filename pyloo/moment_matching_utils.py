@@ -1,11 +1,15 @@
 """Utility functions for moment matching."""
 
+import warnings
 from typing import TypedDict
 
 import arviz as az
 import numpy as np
 import pymc as pm
 import xarray as xr
+from arviz.stats.diagnostics import ess
+
+from .wrapper.pymc_wrapper import PyMCWrapper
 
 __all__ = [
     "log_lik_i_upars",
@@ -15,6 +19,7 @@ __all__ = [
     "ShiftAndScaleResult",
     "ShiftAndCovResult",
     "UpdateQuantitiesResult",
+    "compute_updated_r_eff",
 ]
 
 
@@ -163,6 +168,76 @@ def log_prob_upars(model, upars: dict[str, xr.DataArray]) -> np.ndarray:
                 result_matrix[j, i] = np.nan
 
     return result_matrix
+
+
+def compute_updated_r_eff(
+    wrapper: PyMCWrapper,
+    i: int,
+    log_liki_half: np.ndarray,
+    S_half: int,
+    r_eff_i: float,
+) -> float:
+    """Compute updated relative effective sample size.
+
+    Parameters
+    ----------
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    i : int
+        Index of the observation
+    log_liki_half : np.ndarray
+        Log likelihood values for observation i, shape (n_samples,)
+    S_half : int
+        Half the number of samples
+    r_eff_i : float
+        Current relative effective sample size for observation i
+
+    Returns
+    -------
+    float
+        Updated relative effective sample size (min of the two halves)
+    """
+    log_liki_half_1 = log_liki_half[S_half:]
+    log_liki_half_2 = log_liki_half[:S_half]
+
+    r_eff_i1 = r_eff_i2 = r_eff_i
+
+    posterior = wrapper.idata.posterior
+    n_chains = len(posterior.chain)
+
+    if n_chains <= 1:
+        r_eff_i1 = r_eff_i2 = 1.0
+    else:
+        try:
+            # TODO: Placeholder for now, will be replaced with actual log likelihood computation
+            log_liki_chains = wrapper.log_likelihood_i(wrapper, i)
+            n_draws = posterior.draw.size
+            log_liki_chains = log_liki_chains.reshape(n_chains, n_draws)
+
+            # Calculate ESS for first half
+            if log_liki_chains[:, S_half:].size > 0:
+                ess_i1 = ess(log_liki_chains[:, S_half:], method="mean")
+                if isinstance(ess_i1, xr.DataArray):
+                    ess_i1 = ess_i1.values
+                if ess_i1.size > 0:
+                    r_eff_i1 = float(ess_i1 / max(1, len(log_liki_half_1)))
+
+            # Calculate ESS for second half
+            if log_liki_chains[:, :S_half].size > 0:
+                ess_i2 = ess(log_liki_chains[:, :S_half], method="mean")
+                if isinstance(ess_i2, xr.DataArray):
+                    ess_i2 = ess_i2.values
+                if ess_i2.size > 0:
+                    r_eff_i2 = float(ess_i2 / max(1, len(log_liki_half_2)))
+        except Exception as e:
+            warnings.warn(
+                f"Error calculating ESS for observation {i}, using original"
+                f" r_eff_i: {e}",
+                stacklevel=2,
+            )
+            return r_eff_i
+
+    return min(r_eff_i1, r_eff_i2)
 
 
 def _initialize_array(arr, default_func, dim):

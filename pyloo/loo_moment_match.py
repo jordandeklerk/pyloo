@@ -10,15 +10,15 @@ from arviz.stats.diagnostics import ess
 
 from .elpd import ELPDData
 from .importance_sampling import ISMethod, compute_importance_weights
-from .split_moment_matching import loo_moment_match_split
-from .utils import _logsumexp
-from .utils_moment_matching import (
+from .moment_matching_utils import (
     ShiftAndCovResult,
     ShiftAndScaleResult,
     ShiftResult,
     UpdateQuantitiesResult,
     log_prob_upars,
 )
+from .split_moment_matching import loo_moment_match_split
+from .utils import _logsumexp
 from .wrapper.pymc_wrapper import PyMCWrapper
 
 __all__ = ["loo_moment_match"]
