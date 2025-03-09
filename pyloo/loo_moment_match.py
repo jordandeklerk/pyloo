@@ -11,10 +11,13 @@ from arviz.stats.diagnostics import ess
 from .elpd import ELPDData
 from .importance_sampling import ISMethod, compute_importance_weights
 from .moment_matching_utils import (
+    ParameterConverter,
     ShiftAndCovResult,
     ShiftAndScaleResult,
     ShiftResult,
     UpdateQuantitiesResult,
+    extract_log_likelihood_for_observation,
+    log_lik_i_upars,
     log_prob_upars,
 )
 from .split_moment_matching import loo_moment_match_split
@@ -132,30 +135,16 @@ def loo_moment_match(
     reloo : Exact LOO-CV computation for PyMC models
     loo_kfold : K-fold cross-validation
     """
+    converter = ParameterConverter(wrapper)
+
     unconstrained = wrapper.get_unconstrained_parameters()
-    param_names = list(unconstrained.keys())
-
-    param_arrays = []
-    for name in param_names:
-        param = unconstrained[name].values.flatten()
-        param_arrays.append(param)
-
-    min_size = min(len(arr) for arr in param_arrays)
-    upars = np.column_stack([arr[:min_size] for arr in param_arrays])
+    upars = converter.dict_to_matrix(unconstrained)
     S = upars.shape[0]
 
     if k_threshold is None:
         k_threshold = min(1 - 1 / np.log10(S), 0.7)
 
-    # Compute original log probabilities
-    orig_log_prob = np.zeros(S)
-    for name, param in unconstrained.items():
-        var = wrapper.get_variable(name)
-        if var is not None and hasattr(var, "logp"):
-            if isinstance(param, xr.DataArray):
-                param = param.values
-            log_prob_part = var.logp(param).eval()
-            orig_log_prob += log_prob_part
+    orig_log_prob = log_prob_upars(wrapper, unconstrained)
 
     if hasattr(loo_data, "pareto_k"):
         ks = loo_data.pareto_k
@@ -172,11 +161,12 @@ def loo_moment_match(
         kfi = 0
 
         try:
-            # TODO: Placeholder for now, will be replaced with actual log likelihood computation
-            log_liki = wrapper.log_likelihood_i(wrapper, i)
+            log_lik_result = log_lik_i_upars(wrapper, unconstrained, pointwise=True)
+
+            log_liki = extract_log_likelihood_for_observation(log_lik_result, i)
         except Exception as e:
             raise ValueError(
-                f"Error computing log likelihood for observation {i}"
+                f"Error computing log likelihood for observation {i}: {e}"
             ) from e
 
         posterior = wrapper.idata.posterior
@@ -212,7 +202,13 @@ def loo_moment_match(
             # Match means
             trans = shift(uparsi, lwi)
             quantities_i = update_quantities_i(
-                wrapper, trans["upars"], i, orig_log_prob, r_eff_i, method
+                wrapper,
+                trans["upars"],
+                i,
+                orig_log_prob,
+                r_eff_i,
+                converter,
+                method,
             )
 
             if quantities_i["ki"] < ki:
@@ -229,7 +225,13 @@ def loo_moment_match(
             # Match means and marginal variances
             trans = shift_and_scale(uparsi, lwi)
             quantities_i = update_quantities_i(
-                wrapper, trans["upars"], i, orig_log_prob, r_eff_i, method
+                wrapper,
+                trans["upars"],
+                i,
+                orig_log_prob,
+                r_eff_i,
+                converter,
+                method,
             )
 
             if quantities_i["ki"] < ki:
@@ -248,7 +250,13 @@ def loo_moment_match(
             if cov and not improved:
                 trans = shift_and_cov(uparsi, lwi)
                 quantities_i = update_quantities_i(
-                    wrapper, trans["upars"], i, orig_log_prob, r_eff_i, method
+                    wrapper,
+                    trans["upars"],
+                    i,
+                    orig_log_prob,
+                    r_eff_i,
+                    converter,
+                    method,
                 )
 
                 if quantities_i["ki"] < ki:
@@ -323,6 +331,7 @@ def update_quantities_i(
     i: int,
     orig_log_prob: np.ndarray,
     r_eff_i: float,
+    converter: ParameterConverter,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
 ) -> UpdateQuantitiesResult:
     """Update the importance weights, Pareto diagnostic and log-likelihood for observation i.
@@ -339,6 +348,8 @@ def update_quantities_i(
         Log probability densities of the original draws
     r_eff_i : float
         MCMC effective sample size divided by total sample size
+    converter : ParameterConverter
+        Parameter converter instance for efficient format conversions.
     method : ISMethod
         Importance sampling method to use
 
@@ -352,16 +363,20 @@ def update_quantities_i(
         - kfi: New Pareto k value for full distribution
         - log_liki: New log likelihood values
     """
-    log_prob_new = log_prob_upars(wrapper, upars)
+    upars_dict = converter.matrix_to_dict(upars)
+    log_prob_new = log_prob_upars(wrapper, upars_dict)
+
     try:
-        # TODO: Placeholder for now, will be replaced with actual log likelihood computation
-        log_liki_new = wrapper.log_likelihood_i(wrapper, i)
+        log_lik_result = log_lik_i_upars(wrapper, upars_dict, pointwise=True)
+        log_liki_new = extract_log_likelihood_for_observation(log_lik_result, i)
     except Exception as e:
-        raise ValueError(f"Error computing log likelihood for observation {i}") from e
+        raise ValueError(
+            f"Error computing log likelihood for observation {i}: {e}"
+        ) from e
 
-    lr = log_prob_new - orig_log_prob
+    lr = -log_liki_new + log_prob_new - orig_log_prob
+    lr[np.isnan(lr)] = -np.inf
     stable_mask = log_prob_new > orig_log_prob
-
     lwi = -log_liki_new + log_prob_new
 
     lwi[stable_mask] = lwi[stable_mask] - (
@@ -406,7 +421,6 @@ def shift(upars: np.ndarray, lwi: np.ndarray) -> ShiftResult:
     mean_original = np.mean(upars, axis=0)
     mean_weighted = np.sum(np.exp(lwi)[:, None] * upars, axis=0)
     shift = mean_weighted - mean_original
-
     upars_new = upars + shift[None, :]
 
     return {"upars": upars_new, "shift": shift}

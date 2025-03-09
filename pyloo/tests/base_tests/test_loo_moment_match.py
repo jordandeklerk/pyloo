@@ -9,15 +9,19 @@ from numpy.testing import assert_allclose
 
 from ...loo import loo
 from ...loo_moment_match import (
-    _compute_log_likelihood,
-    _compute_updated_r_eff,
-    _initialize_array,
     loo_moment_match,
     loo_moment_match_split,
     shift,
     shift_and_cov,
     shift_and_scale,
     update_quantities_i,
+)
+from ...moment_matching_utils import (
+    ParameterConverter,
+    _initialize_array,
+    compute_updated_r_eff,
+    log_lik_i_upars,
+    log_prob_upars,
 )
 from ...wrapper.pymc_wrapper import PyMCWrapper
 
@@ -362,7 +366,7 @@ def test_loo_moment_match_split_function(problematic_model):
 def test_compute_log_likelihood(problematic_model):
     """Test the _compute_log_likelihood function."""
     i = 0
-    log_liki = _compute_log_likelihood(problematic_model, i)
+    log_liki = log_lik_i_upars(problematic_model, i)
 
     assert log_liki.shape == (
         problematic_model.idata.posterior.chain.size
@@ -374,12 +378,12 @@ def test_compute_log_likelihood(problematic_model):
 def test_compute_updated_r_eff(problematic_model):
     """Test the _compute_updated_r_eff function."""
     i = 0
-    log_liki = _compute_log_likelihood(problematic_model, i)
+    log_liki = log_lik_i_upars(problematic_model, i)
 
     S_half = len(log_liki) // 2
     r_eff_i = 0.9
 
-    updated_r_eff = _compute_updated_r_eff(
+    updated_r_eff = compute_updated_r_eff(
         problematic_model,
         i,
         log_liki,
@@ -524,3 +528,238 @@ def test_loo_moment_match_roaches_model(roaches_model):
     improvements = loo_orig.pareto_k[high_k] - loo_mm.pareto_k[high_k]
     assert np.any(improvements > 0), "No Pareto k values improved"
     assert loo_mm.elpd_loo >= loo_orig.elpd_loo - 1e-10, "ELPD got worse"
+
+
+def test_parameter_converter_initialization(mmm_model):
+    """Test initialization of ParameterConverter."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    assert len(converter.param_names) > 0
+    assert converter.total_size > 0
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+    for name in unconstrained:
+        info = converter.get_param_info(name)
+        assert info.name == name
+        assert info.flattened_size > 0
+        assert info.end_idx > info.start_idx
+
+
+def test_dict_to_matrix_conversion(mmm_model):
+    """Test conversion from dictionary to matrix format."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    matrix = converter.dict_to_matrix(unconstrained)
+
+    n_samples = (
+        unconstrained[converter.param_names[0]].shape[0]
+        * unconstrained[converter.param_names[0]].shape[1]
+    )
+    assert matrix.shape == (n_samples, converter.total_size)
+
+    for name in converter.param_names:
+        info = converter.get_param_info(name)
+        param_values = unconstrained[name].values
+        if param_values.ndim > 2:
+            param_values = param_values.reshape(
+                param_values.shape[0], param_values.shape[1], -1
+            )
+        param_values = param_values.reshape(-1, info.flattened_size)
+        np.testing.assert_array_equal(
+            matrix[:, info.start_idx : info.end_idx], param_values
+        )
+
+
+def test_matrix_to_dict_conversion(mmm_model):
+    """Test conversion from matrix to dictionary format."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+    matrix = converter.dict_to_matrix(unconstrained)
+
+    result = converter.matrix_to_dict(matrix)
+
+    assert set(result.keys()) == set(unconstrained.keys())
+
+    for name in unconstrained:
+        assert result[name].shape == unconstrained[name].shape
+        np.testing.assert_array_equal(result[name].values, unconstrained[name].values)
+
+
+def test_multidimensional_parameters(mmm_model):
+    """Test handling of multi-dimensional parameters."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    multidim_params = {
+        name: param for name, param in unconstrained.items() if param.values.ndim > 2
+    }
+
+    if not multidim_params:
+        pytest.skip("No multi-dimensional parameters found in test model")
+
+    for name, param in multidim_params.items():
+        single_param = {name: param}
+
+        matrix = converter.dict_to_matrix(single_param)
+        result = converter.matrix_to_dict(matrix)
+
+        assert result[name].shape == param.shape
+        np.testing.assert_array_equal(result[name].values, param.values)
+
+
+def test_parameter_info_consistency(mmm_model):
+    """Test consistency of parameter info with actual data."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    total_size = 0
+    for name in converter.param_names:
+        info = converter.get_param_info(name)
+        param = unconstrained[name]
+
+        expected_size = np.prod(
+            [size for dim, size in param.sizes.items() if dim not in ("chain", "draw")]
+        ).astype(int)
+        assert info.flattened_size == expected_size
+
+        assert info.start_idx == total_size
+        assert info.end_idx == total_size + info.flattened_size
+        total_size += info.flattened_size
+
+    assert converter.total_size == total_size
+
+
+def test_roundtrip_conversion(mmm_model):
+    """Test that converting to matrix and back preserves all information."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    original = wrapper.get_unconstrained_parameters()
+
+    matrix = converter.dict_to_matrix(original)
+    result = converter.matrix_to_dict(matrix)
+
+    for name in original:
+        xr.testing.assert_equal(result[name], original[name])
+
+
+def test_error_handling(mmm_model):
+    """Test error handling in ParameterConverter."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    with pytest.raises(KeyError):
+        converter.get_param_info("nonexistent_parameter")
+
+    invalid_matrix = np.random.randn(100, converter.total_size + 1)
+    with pytest.raises(ValueError):
+        converter.matrix_to_dict(invalid_matrix)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+    invalid_dict = {
+        name: unconstrained[name] for name in list(unconstrained.keys())[:-1]
+    }
+    matrix = converter.dict_to_matrix(invalid_dict)
+    assert matrix.shape[1] == converter.total_size
+
+
+def test_parameter_ordering(mmm_model):
+    """Test that parameter ordering is consistent."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    matrix = converter.dict_to_matrix(unconstrained)
+
+    for name in converter.param_names:
+        info = converter.get_param_info(name)
+        param_values = unconstrained[name].values
+        if param_values.ndim > 2:
+            param_values = param_values.reshape(
+                param_values.shape[0], param_values.shape[1], -1
+            )
+        param_values = param_values.reshape(-1, info.flattened_size)
+
+        np.testing.assert_array_equal(
+            matrix[:, info.start_idx : info.end_idx], param_values
+        )
+
+
+def test_converter_with_log_prob_upars(mmm_model):
+    """Test that ParameterConverter works correctly with log_prob_upars."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+    original_log_prob = log_prob_upars(wrapper, unconstrained)
+
+    matrix = converter.dict_to_matrix(unconstrained)
+    converted = converter.matrix_to_dict(matrix)
+
+    converted_log_prob = log_prob_upars(wrapper, converted)
+
+    np.testing.assert_allclose(original_log_prob, converted_log_prob)
+
+
+def test_converter_with_log_lik_i_upars(mmm_model):
+    """Test that ParameterConverter works correctly with log_lik_i_upars."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+    original_log_lik = log_lik_i_upars(wrapper, unconstrained, pointwise=True)
+
+    matrix = converter.dict_to_matrix(unconstrained)
+    converted = converter.matrix_to_dict(matrix)
+
+    converted_log_lik = log_lik_i_upars(wrapper, converted, pointwise=True)
+
+    xr.testing.assert_allclose(original_log_lik, converted_log_lik)
+
+
+def test_converter_with_multidim_log_lik(mmm_model):
+    """Test ParameterConverter with multi-dimensional log likelihood."""
+    model, idata = mmm_model
+    wrapper = PyMCWrapper(model, idata)
+    converter = ParameterConverter(wrapper)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+    original_log_lik = log_lik_i_upars(wrapper, unconstrained, pointwise=False)
+
+    matrix = converter.dict_to_matrix(unconstrained)
+    converted = converter.matrix_to_dict(matrix)
+
+    converted_log_lik = log_lik_i_upars(wrapper, converted, pointwise=False)
+
+    assert set(original_log_lik.log_likelihood.dims) == set(
+        converted_log_lik.log_likelihood.dims
+    )
+
+    for group in original_log_lik.log_likelihood.data_vars:
+        orig_ll = original_log_lik.log_likelihood[group]
+        conv_ll = converted_log_lik.log_likelihood[group]
+
+        assert set(orig_ll.dims) == set(conv_ll.dims)
+
+        xr.testing.assert_allclose(orig_ll, conv_ll)

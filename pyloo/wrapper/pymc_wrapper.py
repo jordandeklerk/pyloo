@@ -1068,23 +1068,73 @@ class PyMCWrapper:
         """
         return self._untransformed_model.named_vars.get(var_name)
 
-    def get_dims(self) -> tuple[str, ...] | None:
+    # def get_dims(self) -> tuple[str, ...] | None:
+    #     """Get the dimension names for a variable.
+
+    #     Parameters
+    #     ----------
+    #     var_name : str
+    #         Name of the variable
+
+    #     Returns
+    #     -------
+    #     tuple[str, ...] | None
+    #         Tuple of dimension names or None if variable not found
+    #     """
+    #     if hasattr(self.idata, "observed_data"):
+    #         dims = self.idata.observed_data[self.get_observed_name()].dims
+    #         if dims:
+    #             return tuple(dims)
+    #     return None
+
+    def get_dims(self, var_name: str = None) -> tuple[str, ...] | None:
         """Get the dimension names for a variable.
 
         Parameters
         ----------
-        var_name : str
-            Name of the variable
+        var_name : str, optional
+            Name of the variable. If None, returns dimensions for the first observed variable.
 
         Returns
         -------
         tuple[str, ...] | None
             Tuple of dimension names or None if variable not found
         """
-        if hasattr(self.idata, "observed_data"):
-            dims = self.idata.observed_data[self.get_observed_name()].dims
+        # Handle default case (first observed variable)
+        if var_name is None:
+            try:
+                var_name = self.get_observed_name()
+            except PyMCWrapperError:
+                return None
+
+        # Check in observed data first (for observed variables)
+        if (
+            hasattr(self.idata, "observed_data")
+            and var_name in self.idata.observed_data
+        ):
+            dims = self.idata.observed_data[var_name].dims
             if dims:
                 return tuple(dims)
+
+        # Check in posterior (for model parameters)
+        if hasattr(self.idata, "posterior") and var_name in self.idata.posterior:
+            dims = self.idata.posterior[var_name].dims
+            # Filter out sampling dimensions (chain and draw)
+            param_dims = tuple(d for d in dims if d not in ("chain", "draw"))
+            if param_dims:
+                return param_dims
+
+        # Try to get from model's dims_map
+        if hasattr(self.model, "named_vars_to_dims") and self.model.named_vars_to_dims:
+            if var_name in self.model.named_vars_to_dims:
+                return tuple(self.model.named_vars_to_dims[var_name])
+
+        # Check shape and create generic dimension names if needed
+        shape = self.get_shape(var_name)
+        if shape is not None and len(shape) > 0:
+            # Create default dimension names based on variable name and shape
+            return tuple(f"{var_name}_dim_{i}" for i in range(len(shape)))
+
         return None
 
     def get_shape(self, var_name: str) -> tuple[int, ...] | None:

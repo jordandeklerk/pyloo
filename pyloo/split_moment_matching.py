@@ -3,13 +3,16 @@
 from typing import Literal
 
 import numpy as np
-import xarray as xr
 
 from .importance_sampling import ISMethod, compute_importance_weights
 from .moment_matching_utils import (
+    ParameterConverter,
     SplitMomentMatchResult,
     _initialize_array,
     compute_updated_r_eff,
+    extract_log_likelihood_for_observation,
+    log_lik_i_upars,
+    log_prob_upars,
 )
 from .wrapper.pymc_wrapper import PyMCWrapper
 
@@ -150,48 +153,17 @@ def loo_moment_match_split(
     upars_trans_half_inv = upars.copy()
     upars_trans_half_inv[S_half:] = upars_trans_inv[S_half:]
 
+    # Create parameter converter once for efficiency
+    converter = ParameterConverter(wrapper)
+
+    # Convert unconstrained parameters to dictionaries for log_prob_upars
+    upars_trans_half_dict = converter.matrix_to_dict(upars_trans_half)
+    upars_trans_half_inv_dict = converter.matrix_to_dict(upars_trans_half_inv)
+
     try:
-        param_names = list(wrapper.get_unconstrained_parameters().keys())
-
-        # Constrained parameters for transformed set
-        constrained_params = {}
-        for j, name in enumerate(param_names):
-            constrained_params[name] = xr.DataArray(
-                upars_trans_half[:, j],
-                dims=["sample"],
-                coords={"sample": np.arange(S)},
-            )
-        constrained_trans = wrapper.constrain_parameters(constrained_params)
-
-        # Constrained parameters for inverse transformed set
-        constrained_params = {}
-        for j, name in enumerate(param_names):
-            constrained_params[name] = xr.DataArray(
-                upars_trans_half_inv[:, j],
-                dims=["sample"],
-                coords={"sample": np.arange(S)},
-            )
-        constrained_trans_inv = wrapper.constrain_parameters(constrained_params)
-
-        log_prob_half_trans = np.zeros(S)
-        log_prob_half_trans_inv = np.zeros(S)
-
-        for name in param_names:
-            var = wrapper.get_variable(name)
-            if var is not None and hasattr(var, "logp"):
-                # Transformed parameters
-                param_trans = constrained_trans[name]
-                if isinstance(param_trans, xr.DataArray):
-                    param_trans = param_trans.values
-                log_prob_trans = var.logp(param_trans).eval()
-                log_prob_half_trans += log_prob_trans
-
-                # Inverse transformed parameters
-                param_inv = constrained_trans_inv[name]
-                if isinstance(param_inv, xr.DataArray):
-                    param_inv = param_inv.values
-                log_prob_inv = var.logp(param_inv).eval()
-                log_prob_half_trans_inv += log_prob_inv
+        # Compute log probabilities using log_prob_upars (automatically summed across parameters)
+        log_prob_half_trans = log_prob_upars(wrapper, upars_trans_half_dict)
+        log_prob_half_trans_inv = log_prob_upars(wrapper, upars_trans_half_inv_dict)
 
         # Adjust for Jacobian
         log_prob_half_trans_inv = (
@@ -201,22 +173,18 @@ def loo_moment_match_split(
         )
     except Exception as e:
         raise ValueError(
-            f"Error computing log probabilities for transformed parameters {e}"
+            f"Error computing log probabilities for transformed parameters: {e}"
         ) from e
 
     try:
-        # TODO: Placeholder for now, will be replaced with actual log likelihood computation
-        log_liki_half = wrapper.log_likelihood_i(wrapper, i)
+        log_lik_result = log_lik_i_upars(wrapper, upars_trans_half_dict, pointwise=True)
+
+        log_liki_half = extract_log_likelihood_for_observation(log_lik_result, i)
     except Exception as e:
-        raise ValueError(f"Error computing log likelihood for observation {i}") from e
+        raise ValueError(
+            f"Error computing log likelihood for observation {i}: {e}"
+        ) from e
 
-    log_prob_half_trans_inv = (
-        log_prob_half_trans_inv
-        - np.sum(np.log(np.abs(total_scaling)))
-        - np.log(np.abs(np.linalg.det(total_mapping)))
-    )
-
-    # Determine stable regions for computation
     stable_S = log_prob_half_trans > log_prob_half_trans_inv
     lwi_half = -log_liki_half + log_prob_half_trans
 

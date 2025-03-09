@@ -1,6 +1,7 @@
 """Utility functions for moment matching."""
 
 import warnings
+from dataclasses import dataclass
 from typing import TypedDict
 
 import arviz as az
@@ -20,6 +21,8 @@ __all__ = [
     "ShiftAndCovResult",
     "UpdateQuantitiesResult",
     "compute_updated_r_eff",
+    "extract_log_likelihood_for_observation",
+    "ParameterConverter",
 ]
 
 
@@ -63,6 +66,173 @@ class ShiftAndCovResult(TypedDict):
     upars: np.ndarray
     shift: np.ndarray
     mapping: np.ndarray
+
+
+@dataclass
+class ParameterInfo:
+    """Information about a parameter's shape and dimensions."""
+
+    name: str
+    original_shape: tuple[int, ...]
+    flattened_size: int
+    start_idx: int
+    end_idx: int
+    dims: list[str]
+    coords: dict[str, np.ndarray]
+
+
+class ParameterConverter:
+    """Handle conversions between matrix and dictionary parameter formats.
+
+    Parameters
+    ----------
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance containing parameter information
+    """
+
+    def __init__(self, wrapper: PyMCWrapper):
+        """Initialize converter with parameter information from wrapper."""
+        self.wrapper = wrapper
+        self._param_info = {}
+        self._total_size = 0
+
+        unconstrained = wrapper.get_unconstrained_parameters()
+
+        current_idx = 0
+        for name, param in unconstrained.items():
+            param_dims = [d for d in param.dims if d not in ("chain", "draw")]
+            param_coords = {d: param.coords[d].values for d in param_dims}
+
+            if param_dims:
+                original_shape = tuple(param.sizes[d] for d in param_dims)
+            else:
+                original_shape = ()
+                param_dims = []
+                param_coords = {}
+
+            flattened_size = int(np.prod(original_shape)) if original_shape else 1
+            end_idx = current_idx + flattened_size
+
+            self._param_info[name] = ParameterInfo(
+                name=name,
+                original_shape=original_shape,
+                flattened_size=flattened_size,
+                start_idx=current_idx,
+                end_idx=end_idx,
+                dims=param_dims,
+                coords=param_coords,
+            )
+            current_idx = end_idx
+
+        self._total_size = current_idx
+        self._param_names = list(self._param_info.keys())
+
+    def dict_to_matrix(self, params_dict: dict[str, xr.DataArray]) -> np.ndarray:
+        """Convert dictionary of parameters to matrix format.
+
+        Parameters
+        ----------
+        params_dict : dict[str, xr.DataArray]
+            Dictionary mapping parameter names to their values
+
+        Returns
+        -------
+        np.ndarray
+            Matrix of shape (n_samples, total_params) containing flattened parameters
+        """
+        first_param = next(iter(params_dict.values()))
+        n_samples = first_param.shape[0] * first_param.shape[1]
+
+        result = np.zeros((n_samples, self._total_size))
+
+        for name, param in params_dict.items():
+            if name not in self._param_info:
+                continue
+
+            info = self._param_info[name]
+            values = param.values
+
+            if values.ndim > 2:
+                values = values.reshape(values.shape[0], values.shape[1], -1)
+            values = values.reshape(-1, info.flattened_size)
+
+            result[:, info.start_idx : info.end_idx] = values
+
+        return result
+
+    def matrix_to_dict(self, matrix: np.ndarray) -> dict[str, xr.DataArray]:
+        """Convert matrix of parameters to dictionary format.
+
+        Parameters
+        ----------
+        matrix : np.ndarray
+            Matrix of shape (n_samples, total_params) containing flattened parameters
+
+        Returns
+        -------
+        dict[str, xr.DataArray]
+            Dictionary mapping parameter names to their reshaped values
+
+        Raises
+        ------
+        ValueError
+            If matrix has incorrect number of columns
+        """
+        if matrix.shape[1] != self._total_size:
+            raise ValueError(
+                f"Matrix has {matrix.shape[1]} columns but expected {self._total_size}"
+            )
+
+        first_param = next(iter(self.wrapper.get_unconstrained_parameters().values()))
+        n_chains = first_param.shape[0]
+        n_draws = first_param.shape[1]
+
+        result = {}
+        for name in self._param_names:
+            info = self._param_info[name]
+            values = matrix[:, info.start_idx : info.end_idx]
+
+            if info.original_shape:
+                values = values.reshape(n_chains, n_draws, *info.original_shape)
+            else:
+                values = values.reshape(n_chains, n_draws)
+
+            dims = ["chain", "draw"] + info.dims
+
+            coords = {
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_draws),
+                **info.coords,
+            }
+
+            result[name] = xr.DataArray(values, dims=dims, coords=coords)
+
+        return result
+
+    @property
+    def param_names(self) -> list[str]:
+        """Get list of parameter names in order."""
+        return self._param_names
+
+    @property
+    def total_size(self) -> int:
+        """Get total number of parameters when flattened."""
+        return self._total_size
+
+    def get_param_info(self, name: str) -> ParameterInfo:
+        """Get information about a specific parameter.
+
+        Parameters
+        ----------
+        name : str
+            Name of the parameter
+
+        Returns
+        -------
+        ParameterInfo
+            Information about the parameter's shape and position in matrix
+        """
+        return self._param_info[name]
 
 
 def log_lik_i_upars(model, upars: dict[str, xr.DataArray], pointwise: bool = False):
@@ -112,11 +282,10 @@ def log_lik_i_upars(model, upars: dict[str, xr.DataArray], pointwise: bool = Fal
         return var_loglik.rename({obs_dims[0]: "__obs__"})
 
 
-def log_prob_upars(model, upars: dict[str, xr.DataArray]) -> np.ndarray:
+def log_prob_upars(
+    model, upars: dict[str, xr.DataArray], sum_params: bool = True
+) -> np.ndarray:
     """Compute log probability for unconstrained parameters.
-
-    This function computes the log probability for each unconstrained parameter
-    directly, without converting to constrained space.
 
     Parameters
     ----------
@@ -124,13 +293,16 @@ def log_prob_upars(model, upars: dict[str, xr.DataArray]) -> np.ndarray:
         PyMC model object that provides access to model variables
     upars : dict of xarray.DataArray
         Unconstrained parameters from model.get_unconstrained_parameters()
+    sum_params : bool, default True
+        If True, returns the sum of log probabilities across parameters for each sample.
+        If False, returns the matrix of log probabilities for each parameter and sample.
 
     Returns
     -------
     np.ndarray
-        Matrix of log probability values with shape (n_samples, n_variables)
-        where n_samples = n_chains * n_draws and n_variables is the number of
-        parameters in upars
+        If sum_params=True, returns a vector of summed log probability values with shape (n_samples,)
+        If sum_params=False, returns a matrix of log probability values with shape (n_samples, n_variables)
+        where n_samples = n_chains * n_draws and n_variables is the number of parameters in upars
     """
     model = getattr(model, "model", model)
     var_names = list(upars.keys())
@@ -140,10 +312,8 @@ def log_prob_upars(model, upars: dict[str, xr.DataArray]) -> np.ndarray:
     result_matrix = np.zeros((n_samples, len(var_names)))
 
     for i, name in enumerate(var_names):
-        # Stack chains and draws
         param = upars[name].stack(__sample__=("chain", "draw"))
 
-        # Get variable and its transformed name
         with model:
             var = model[name]
             value_var = model.rvs_to_values.get(var)
@@ -152,7 +322,6 @@ def log_prob_upars(model, upars: dict[str, xr.DataArray]) -> np.ndarray:
                 result_matrix[:, i] = np.nan
                 continue
 
-            # Compile logp function once for this variable
             logp_fn = model.compile_fn(model.logp(vars=var, sum=True, jacobian=True))
 
         # Calculate logp for all samples of this variable
@@ -167,7 +336,10 @@ def log_prob_upars(model, upars: dict[str, xr.DataArray]) -> np.ndarray:
             except Exception:
                 result_matrix[j, i] = np.nan
 
-    return result_matrix
+    if sum_params:
+        return np.sum(result_matrix, axis=1)
+    else:
+        return result_matrix
 
 
 def compute_updated_r_eff(
@@ -209,26 +381,40 @@ def compute_updated_r_eff(
         r_eff_i1 = r_eff_i2 = 1.0
     else:
         try:
-            # TODO: Placeholder for now, will be replaced with actual log likelihood computation
-            log_liki_chains = wrapper.log_likelihood_i(wrapper, i)
-            n_draws = posterior.draw.size
-            log_liki_chains = log_liki_chains.reshape(n_chains, n_draws)
+            upars_dict = wrapper.get_unconstrained_parameters()
+            log_lik_result = log_lik_i_upars(wrapper, upars_dict, pointwise=True)
 
-            # Calculate ESS for first half
-            if log_liki_chains[:, S_half:].size > 0:
-                ess_i1 = ess(log_liki_chains[:, S_half:], method="mean")
-                if isinstance(ess_i1, xr.DataArray):
-                    ess_i1 = ess_i1.values
-                if ess_i1.size > 0:
-                    r_eff_i1 = float(ess_i1 / max(1, len(log_liki_half_1)))
+            # Extract the log likelihood for observation i and reshape to chains and draws
+            if isinstance(log_lik_result, xr.DataArray):
+                log_liki_chains = extract_log_likelihood_for_observation(
+                    log_lik_result, i
+                )
 
-            # Calculate ESS for second half
-            if log_liki_chains[:, :S_half].size > 0:
-                ess_i2 = ess(log_liki_chains[:, :S_half], method="mean")
-                if isinstance(ess_i2, xr.DataArray):
-                    ess_i2 = ess_i2.values
-                if ess_i2.size > 0:
-                    r_eff_i2 = float(ess_i2 / max(1, len(log_liki_half_2)))
+                n_draws = posterior.draw.size
+                log_liki_chains = log_liki_chains.reshape(n_chains, n_draws)
+
+                # Calculate ESS for first half
+                if log_liki_chains[:, S_half:].size > 0:
+                    ess_i1 = ess(log_liki_chains[:, S_half:], method="mean")
+                    if isinstance(ess_i1, xr.DataArray):
+                        ess_i1 = ess_i1.values
+                    if ess_i1.size > 0:
+                        r_eff_i1 = float(ess_i1 / max(1, len(log_liki_half_1)))
+
+                # Calculate ESS for second half
+                if log_liki_chains[:, :S_half].size > 0:
+                    ess_i2 = ess(log_liki_chains[:, :S_half], method="mean")
+                    if isinstance(ess_i2, xr.DataArray):
+                        ess_i2 = ess_i2.values
+                    if ess_i2.size > 0:
+                        r_eff_i2 = float(ess_i2 / max(1, len(log_liki_half_2)))
+            else:
+                # Handle case where log_lik_result is not a DataArray
+                warnings.warn(
+                    "Expected xarray.DataArray from log_lik_i_upars for"
+                    f" observation {i}",
+                    stacklevel=2,
+                )
         except Exception as e:
             warnings.warn(
                 f"Error calculating ESS for observation {i}, using original"
@@ -238,6 +424,37 @@ def compute_updated_r_eff(
             return r_eff_i
 
     return min(r_eff_i1, r_eff_i2)
+
+
+def extract_log_likelihood_for_observation(
+    log_lik_result: xr.DataArray, i: int
+) -> np.ndarray:
+    """Extract log likelihood values for a specific observation.
+
+    Parameters
+    ----------
+    log_lik_result : xr.DataArray
+        Log likelihood values from log_lik_i_upars
+    i : int
+        Observation index
+
+    Returns
+    -------
+    np.ndarray
+        Log likelihood values for observation i
+
+    Raises
+    ------
+    ValueError
+        If log_lik_result is not a DataArray or if the observation index is invalid
+    """
+    if not isinstance(log_lik_result, xr.DataArray):
+        raise ValueError("Expected xarray.DataArray from log_lik_i_upars")
+
+    if "__obs__" in log_lik_result.dims:
+        return log_lik_result.sel(__obs__=i).values.flatten()
+    else:
+        return log_lik_result.values.flatten()
 
 
 def _initialize_array(arr, default_func, dim):
