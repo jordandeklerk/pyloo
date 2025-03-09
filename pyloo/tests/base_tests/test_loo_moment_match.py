@@ -525,6 +525,12 @@ def test_loo_moment_match_roaches_model(roaches_model):
         cov=True,
     )
 
+    print(loo_orig)
+    print(loo_mm)
+
+    print(min(loo_orig.pareto_k), min(loo_mm.pareto_k))
+    print(max(loo_orig.pareto_k), max(loo_mm.pareto_k))
+
     improvements = loo_orig.pareto_k[high_k] - loo_mm.pareto_k[high_k]
     assert np.any(improvements > 0), "No Pareto k values improved"
     assert loo_mm.elpd_loo >= loo_orig.elpd_loo - 1e-10, "ELPD got worse"
