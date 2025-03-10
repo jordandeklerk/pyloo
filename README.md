@@ -106,7 +106,7 @@ All Pareto k estimates are good (k < 0.7)
 We provide several advanced features beyond the core capabilities for PyMC models.
 
 ### Reloo Example
-For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations:
+For observations where PSIS-LOO approximation fails, pyloo can perform exact LOO-CV by refitting the model without those observations:
 
 ```python
 import pyloo as pl
