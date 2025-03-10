@@ -19,7 +19,7 @@ class HansenHurwitzEstimator(EstimatorProtocol[HHEstimate]):
     """Implementation of the weighted Hansen-Hurwitz estimator."""
 
     def estimate(self, **kwargs: Any) -> HHEstimate:
-        """Compute the weighted Hansen-Hurwitz estimator.
+        r"""Compute the weighted Hansen-Hurwitz estimator.
 
         Parameters
         ----------
@@ -37,10 +37,15 @@ class HansenHurwitzEstimator(EstimatorProtocol[HHEstimate]):
 
         Notes
         -----
-        The estimator is computed as:
-            y_hat = (1/m) * sum(m_i * (y_i/z_i))
-        where:
-            m = sum(m_i)
+        The estimator is computed as
+
+        .. math::
+            \hat{y} = \frac{1}{m} \sum_{i} m_i \frac{y_i}{z_i}
+
+        where
+
+        .. math::
+            m = \sum_{i} m_i
 
         The variance estimator accounts for the PPS sampling design and includes
         a finite population correction factor.
@@ -66,6 +71,7 @@ class HansenHurwitzEstimator(EstimatorProtocol[HHEstimate]):
         y_hat = np.sum(m_i * (y / z)) / m
         v_y_hat = (np.sum(m_i * ((y / z - y_hat) ** 2)) / m) / (m - 1)
         hat_v_y = (np.sum(m_i * (y**2 / z)) / m) + v_y_hat / N - y_hat**2 / N
+
         return HHEstimate(
             y_hat=y_hat,
             v_y_hat=v_y_hat,
@@ -90,12 +96,6 @@ def compute_sampling_probabilities(
     -------
     np.ndarray
         Normalized sampling probabilities that sum to 1
-
-    Notes
-    -----
-    This follows the R implementation in loo_subsample.R which uses:
-        pi_values = abs(elpd_loo_approximation)
-        pi_values = pi_values/sum(pi_values)
     """
     pi_values = np.abs(elpd_loo_approximation)
 
@@ -134,6 +134,7 @@ def hansen_hurwitz_estimate(
         The estimated values and their variance
     """
     estimator = HansenHurwitzEstimator()
+
     return estimator.estimate(z=z, m_i=m_i, y=y, N=N)
 
 
