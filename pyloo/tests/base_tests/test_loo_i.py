@@ -6,10 +6,10 @@ import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
-from numpy.testing import assert_allclose
 
 from ...loo import loo
 from ...loo_i import loo_i
+from ..helpers import assert_allclose
 
 
 @pytest.fixture(scope="session")

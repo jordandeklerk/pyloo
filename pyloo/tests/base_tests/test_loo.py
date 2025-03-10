@@ -6,11 +6,11 @@ import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
-from numpy.testing import assert_allclose, assert_array_almost_equal
 
 from ...loo import loo
 from ...psis import psislw
 from ...wrapper.pymc_wrapper import PyMCWrapper
+from ..helpers import assert_allclose, assert_array_almost_equal
 
 
 @pytest.fixture(scope="session")

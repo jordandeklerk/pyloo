@@ -1,9 +1,9 @@
 import arviz as az
 import numpy as np
 import pytest
-from numpy.testing import assert_allclose
 
 from ...waic import waic
+from ..helpers import assert_allclose
 
 
 @pytest.fixture(scope="session")

@@ -6,7 +6,6 @@ from copy import deepcopy
 import numpy as np
 import pytest
 import xarray as xr
-from numpy.testing import assert_array_almost_equal
 
 from ...loo import loo
 from ...loo_subsample import (
@@ -15,7 +14,7 @@ from ...loo_subsample import (
     loo_subsample,
     update_subsample,
 )
-from ..helpers import create_large_model
+from ..helpers import assert_array_almost_equal, create_large_model
 
 
 @pytest.fixture(scope="session")
