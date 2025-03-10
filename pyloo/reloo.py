@@ -159,6 +159,8 @@ def reloo(
     loo : Compute LOO-CV using importance sampling
     loo_i : Pointwise LOO-CV values
     loo_subsample : Subsampled LOO-CV computation
+    loo_moment_match : Moment matching for problematic observations
+    loo_kfold : K-fold cross-validation
     """
     if not isinstance(wrapper.model, pm.Model):
         raise TypeError(

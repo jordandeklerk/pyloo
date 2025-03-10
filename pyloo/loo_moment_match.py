@@ -142,6 +142,7 @@ def loo_moment_match(
     loo_subsample : Subsampled LOO-CV computation
     reloo : Exact LOO-CV computation for PyMC models
     loo_kfold : K-fold cross-validation
+    waic : Compute WAIC
     """
     converter = ParameterConverter(wrapper)
     loo_data = deepcopy(loo_data)
