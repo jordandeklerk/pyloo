@@ -27,7 +27,13 @@ from .utils import (
 
 __all__ = ["PyMCWrapper"]
 
-logger = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
+
+if not logging.root.handlers:
+    _log.setLevel(logging.INFO)
+    if len(_log.handlers) == 0:
+        handler = logging.StreamHandler()
+        _log.addHandler(handler)
 
 
 class PyMCWrapper:
@@ -87,12 +93,12 @@ class PyMCWrapper:
         try:
             self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
         except KeyError as e:
-            logger.warning(
+            _log.warning(
                 "KeyError during model cloning: %s. Using original model.", str(e)
             )
             self._untransformed_model = model
         except Exception as e:
-            logger.warning("Failed to clone model: %s. Using original model.", str(e))
+            _log.warning("Failed to clone model: %s. Using original model.", str(e))
             self._untransformed_model = model
 
         _validate_model_state(self)
@@ -174,7 +180,7 @@ class PyMCWrapper:
             axis = 0
 
         if np.any(self.get_missing_mask(var_name)):
-            logger.warning(
+            _log.warning(
                 "Missing values detected in %s. This may affect the results.", var_name
             )
 
@@ -546,7 +552,7 @@ class PyMCWrapper:
         idata_kwargs = kwargs.get("idata_kwargs", {})
         if isinstance(idata_kwargs, dict):
             if not idata_kwargs.get("log_likelihood", False):
-                logger.info(
+                _log.info(
                     "Automatically enabling log likelihood computation as it is "
                     "required for LOO-CV."
                 )
@@ -558,7 +564,7 @@ class PyMCWrapper:
         try:
             for var in self.model.free_RVs:
                 if var not in self.model.rvs_to_transforms:
-                    logger.warning(
+                    _log.warning(
                         "Variable %s missing from rvs_to_transforms, adding identity"
                         " transform.",
                         var.name,
@@ -683,7 +689,7 @@ class PyMCWrapper:
                         name=var_name,
                     )
                 except Exception as e:
-                    logger.warning(
+                    _log.warning(
                         "Failed to transform %s: %s. Using original values.",
                         var_name,
                         str(e),
@@ -797,7 +803,7 @@ class PyMCWrapper:
 
             if transform is None:
                 # No transformation needed
-                logger.info(
+                _log.info(
                     "No transform found for variable %s. Using original values.",
                     var_name,
                 )
@@ -815,7 +821,7 @@ class PyMCWrapper:
                         name=var_name,
                     )
                 except Exception as e:
-                    logger.warning(
+                    _log.warning(
                         "Failed to transform %s to constrained space: %s. Using"
                         " original values.",
                         var_name,
@@ -894,7 +900,7 @@ class PyMCWrapper:
                             original_values[param_name] = var.get_value()
                             var.set_value(param_draws)
                         else:
-                            logger.warning(
+                            _log.warning(
                                 f"Could not set value for parameter {param_name}"
                             )
 
