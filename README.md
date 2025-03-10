@@ -311,7 +311,7 @@ pip install -e .
 
 ```bibtex
 @article{vehtari2024practical,
-  title={Practical {B}ayesian model evaluation using leave-one-out cross-validation and {WAIC}},
+  title={Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC},
   author={Vehtari, Aki and Gelman, Andrew and Gabry, Jonah},
   journal={Statistics and Computing},
   volume={27},
