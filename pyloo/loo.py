@@ -7,8 +7,8 @@ import numpy as np
 from arviz.data import InferenceData
 from arviz.stats.diagnostics import ess
 
+from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
-from .importance_sampling import ISMethod, compute_importance_weights
 from .loo_moment_match import loo_moment_match
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc

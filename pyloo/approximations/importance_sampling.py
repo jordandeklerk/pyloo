@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 import xarray as xr
 
-from ..importance_sampling import ISMethod, compute_importance_weights
+from ..base import ISMethod, compute_importance_weights
 from ..utils import _logsumexp, wrap_xarray_ufunc
 from .base import LooApproximation, thin_draws
 

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ...importance_sampling import ISMethod, compute_importance_weights
+from ...base import ISMethod, compute_importance_weights
 from ...psis import psislw
 from ...sis import sislw
 from ...tis import tislw

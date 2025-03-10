@@ -9,8 +9,8 @@ import numpy as np
 import xarray as xr
 from arviz.stats.diagnostics import ess
 
+from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
-from .importance_sampling import ISMethod, compute_importance_weights
 from .moment_match_helpers import (
     ParameterConverter,
     ShiftAndCovResult,

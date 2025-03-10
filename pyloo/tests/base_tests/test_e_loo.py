@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
+from ...base import compute_importance_weights
 from ...e_loo import ExpectationResult, _wmean, _wquant, _wsd, _wvar, e_loo
-from ...importance_sampling import compute_importance_weights
 from ...utils import _logsumexp
 from ..helpers import (
     assert_arrays_allclose,

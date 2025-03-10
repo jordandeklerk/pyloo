@@ -14,11 +14,11 @@ from .approximations import (
     SISApproximation,
     TISApproximation,
 )
+from .base import ISMethod, compute_importance_weights
 from .constants import EstimatorMethod, LooApproximationMethod
 from .elpd import ELPDData
 from .estimators import SubsampleIndices, get_estimator, subsample_indices
 from .estimators.hansen_hurwitz import compute_sampling_probabilities
-from .importance_sampling import ISMethod, compute_importance_weights
 from .loo import loo
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
