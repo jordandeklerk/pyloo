@@ -3,7 +3,7 @@
 import copy
 import logging
 import warnings
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 import numpy as np
 import pymc as pm
@@ -13,17 +13,21 @@ from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
 
-from ..utils import wrap_xarray_ufunc
+from .utils import (
+    PyMCWrapperError,
+    _create_selection_mask,
+    _extract_model_components,
+    _format_log_likelihood_result,
+    _get_coords,
+    _process_and_validate_indices,
+    _transform_to_constrained,
+    _transform_to_unconstrained,
+    _validate_model_state,
+)
 
 __all__ = ["PyMCWrapper"]
 
 logger = logging.getLogger(__name__)
-
-
-class PyMCWrapperError(Exception):
-    """Base exception class for PyMC wrapper errors."""
-
-    pass
 
 
 class PyMCWrapper:
@@ -55,7 +59,17 @@ class PyMCWrapper:
         Mapping of observed variable names to their data
     constant_data : dict[str, np.ndarray]
         Mapping of constant data names to their values
+    observed_dims : dict[str, tuple[str, ...]]
+        Mapping of observed variable names to their dimension names
     """
+
+    model: Model
+    idata: InferenceData
+    var_names: list[str] | None
+    observed_data: dict[str, np.ndarray]
+    constant_data: dict[str, np.ndarray]
+    observed_dims: dict[str, tuple[str, ...]]
+    _untransformed_model: Model
 
     def __init__(
         self,
@@ -66,6 +80,9 @@ class PyMCWrapper:
         self.model = model
         self.idata = idata
         self.var_names = list(var_names) if var_names is not None else None
+        self.observed_data = {}
+        self.constant_data = {}
+        self.observed_dims = {}
 
         try:
             self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
@@ -78,8 +95,8 @@ class PyMCWrapper:
             logger.warning("Failed to clone model: %s. Using original model.", str(e))
             self._untransformed_model = model
 
-        self._validate_model_state()
-        self._extract_model_components()
+        _validate_model_state(self)
+        _extract_model_components(self)
 
         for var_name, data in self.observed_data.items():
             if isinstance(data, np.ndarray):
@@ -162,7 +179,7 @@ class PyMCWrapper:
             )
 
         try:
-            mask = self._create_selection_mask(indices, data.shape[axis], axis)
+            mask = _create_selection_mask(indices, data.shape[axis], axis)
             idx = [slice(None)] * data.ndim
 
             # Select observations
@@ -399,7 +416,7 @@ class PyMCWrapper:
         if self.get_variable(var_name) is None:
             raise PyMCWrapperError(
                 f"Variable '{var_name}' not found in model. Available variables: "
-                f"{list(self._untransformed_model.named_vars.keys())}"
+                f"{list(self.model.named_vars.keys())}"
             )
 
         if var_name not in self.observed_data:
@@ -425,21 +442,21 @@ class PyMCWrapper:
         original_data = None
         orig_coords = None
 
-        indices, single_idx = self._process_and_validate_indices(idx, n_obs)
+        indices, single_idx = _process_and_validate_indices(idx, n_obs)
 
         try:
             original_data = self.observed_data[var_name].copy()
             holdout_data, _ = self.select_observations(indices, var_name=var_name)
 
             if hasattr(self, "observed_dims") and var_name in self.observed_dims:
-                orig_coords = self._get_coords(var_name)
+                orig_coords = _get_coords(self, var_name)
 
             self.observed_data[var_name] = holdout_data
 
             log_like = pm.compute_log_likelihood(
                 idata,
                 var_names=[var_name],
-                model=self._untransformed_model,
+                model=self.model,
                 extend_inferencedata=False,
             )
 
@@ -450,8 +467,15 @@ class PyMCWrapper:
                 )
 
             log_like_i = log_like[var_name]
-            log_like_i = self._format_log_likelihood_result(
-                log_like_i, indices, single_idx, idx, holdout_data, n_obs, var_name
+            log_like_i = _format_log_likelihood_result(
+                self,
+                log_like_i,
+                indices,
+                single_idx,
+                idx,
+                holdout_data,
+                n_obs,
+                var_name,
             )
 
             return log_like_i
@@ -571,7 +595,7 @@ class PyMCWrapper:
             p(\theta') = p(\theta) \left| \frac{d}{d\theta'} g^{-1}(\theta') \right|
 
         The mathematical transformations applied depend on the parameter's domain constraints.
-        For positive variables (e.g., HalfNormal, Gamma), a logarithmic transformation is applied:
+        For example, for positive variables (e.g., HalfNormal, Gamma), a logarithmic transformation is applied:
 
         .. math::
             \theta' = g(\theta) = \log(\theta), \quad \theta \in (0, \infty) \mapsto
@@ -581,32 +605,7 @@ class PyMCWrapper:
 
         .. math::
             \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| =
-            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
-
-        For example, if :math:`\theta \sim \text{HalfNormal}(0, \sigma)`, then after transformation:
-
-        .. math::
-            p(\theta') &= p(\theta) \cdot \exp(\theta') \\
-            &= \frac{\sqrt{2}}{\sigma\sqrt{\pi}} \exp\left(-\frac{\theta^2}{2\sigma^2}\right) \cdot \exp(\theta') \\
-            &= \frac{\sqrt{2}}{\sigma\sqrt{\pi}} \exp\left(-\frac{\exp(2\theta')}{2\sigma^2}\right) \cdot \exp(\theta')
-
-        For variables restricted to the unit interval (e.g., Beta), a logit transformation is used:
-
-        .. math::
-            \theta' = g(\theta) = \log\left(\frac{\theta}{1-\theta}\right), \quad \theta \in (0, 1) \mapsto
-            \theta' \in (-\infty, \infty)
-
-        For variables with an unbounded domain (e.g., Normal), no transformation is necessary:
-
-        .. math::
-            \theta' = g(\theta) = \theta, \quad \theta \in (-\infty, \infty) \mapsto
-            \theta' \in (-\infty, \infty)
-
-        For simplex variables (e.g., Dirichlet), a stick-breaking transformation is applied:
-
-        .. math::
-            \theta'_i = g_i(\theta) = \log\left(\frac{\theta_i}{\sum_{j=i+1}^K \theta_j}\right),
-            \quad i = 1, \ldots, K-1
+            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta').
 
         Returns
         -------
@@ -673,7 +672,9 @@ class PyMCWrapper:
                 try:
                     # Apply transformation
                     data = self.idata.posterior[var_name].values
-                    transformed_data = self._transform_to_unconstrained(data, transform)
+                    transformed_data = _transform_to_unconstrained(
+                        self, data, transform
+                    )
 
                     unconstrained_samples = xr.DataArray(
                         transformed_data,
@@ -710,7 +711,7 @@ class PyMCWrapper:
             p(\theta') \left| \frac{1}{\frac{d}{d\theta} g(\theta)} \right|
 
         The mathematical inverse transformations applied depend on the parameter's original constraints.
-        For positive variables, the inverse of the logarithmic transform is applied:
+        For example, for positive variables, the inverse of the logarithmic transform is applied:
 
         .. math::
             \theta = g^{-1}(\theta') = \exp(\theta'), \quad \theta' \in (-\infty, \infty) \mapsto
@@ -720,37 +721,7 @@ class PyMCWrapper:
 
         .. math::
             \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| =
-            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta')
-
-        For example, if :math:`\theta' \sim \text{Normal}(\mu, \sigma)` in the unconstrained space,
-        then after transformation to the constrained space:
-
-        .. math::
-            p(\theta) &= p(\theta') \cdot \exp(\theta') \\
-            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\theta' - \mu)^2}{2\sigma^2}\right) \cdot \exp(\theta') \\
-            &= \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(\log(\theta)
-            - \mu)^2}{2\sigma^2}\right) \cdot \exp(\log(\theta))
-
-        For variables restricted to the unit interval, the inverse of the logit transform is used:
-
-        .. math::
-            \theta = g^{-1}(\theta') = \frac{1}{1+\exp(-\theta')}, \quad \theta' \in (-\infty, \infty) \mapsto
-            \theta \in (0, 1)
-
-        For variables with an unbounded domain, no transformation is necessary:
-
-        .. math::
-            \theta = g^{-1}(\theta') = \theta', \quad \theta' \in (-\infty, \infty) \mapsto
-            \theta \in (-\infty, \infty)
-
-        For simplex variables, the inverse of the stick-breaking transformation is applied:
-
-        .. math::
-            \theta_i = g^{-1}_i(\theta') = \frac{\exp(\theta'_i)}{1 + \exp(\theta'_i)}
-            \prod_{j=1}^{i-1} \frac{1}{1 + \exp(\theta'_j)}, \quad i = 1, \ldots, K-1
-
-        .. math::
-            \theta_K = g^{-1}_K(\theta') = \prod_{j=1}^{K-1} \frac{1}{1 + \exp(\theta'_j)}
+            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta').
 
         Parameters
         ----------
@@ -835,7 +806,7 @@ class PyMCWrapper:
                 try:
                     # Apply transformation
                     data = unconstrained.values
-                    transformed_data = self._transform_to_constrained(data, transform)
+                    transformed_data = _transform_to_constrained(self, data, transform)
 
                     constrained = xr.DataArray(
                         transformed_data,
@@ -855,6 +826,136 @@ class PyMCWrapper:
             constrained_params[var_name] = constrained
 
         return constrained_params
+
+    def get_log_likelihood(
+        self,
+        var_name: str | None = None,
+        draws: dict[str, np.ndarray] | None = None,
+    ) -> xr.DataArray:
+        """Compute the log likelihood for a set of posterior draws.
+
+        This method calculates the pointwise log likelihood for an observed variable
+        in the model. It can either use the current parameter values in the model or
+        a specific set of parameter draws.
+
+        Parameters
+        ----------
+        var_name : str | None, default=None
+            Name of the observed variable for which to compute the log likelihood.
+            If None, the method will use the first observed variable in the model,
+            as determined by `get_observed_name()`.
+
+        draws : dict[str, np.ndarray] | None, default=None
+            Optional dictionary mapping parameter names to parameter values.
+            If provided, the method will temporarily set these parameter values
+            in the model before computing the log likelihood. The original values
+            will be restored after computation.
+
+        Returns
+        -------
+        xr.DataArray
+            An xarray DataArray containing the pointwise log likelihood values.
+            The dimensions and coordinates of the DataArray will match those of
+            the observed variable, with the name format "log_likelihood_{var_name}".
+
+        Raises
+        ------
+        PyMCWrapperError
+            If the variable is not found in the model, if no observed data exists
+            for the variable, if the variable contains missing values, or if the
+            log likelihood computation fails for any other reason.
+        """
+        if var_name is None:
+            var_name = self.get_observed_name()
+
+        if self.get_variable(var_name) is None:
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in model. Available variables: "
+                f"{list(self.model.named_vars.keys())}"
+            )
+
+        if var_name not in self.observed_data:
+            raise PyMCWrapperError(
+                f"No observed data found for variable '{var_name}'. "
+                f"Available observed variables: {list(self.observed_data.keys())}"
+            )
+
+        if np.any(self.get_missing_mask(var_name)):
+            raise PyMCWrapperError(f"Missing values found in {var_name}")
+
+        try:
+            # If draws are provided, temporarily set the model's parameters
+            original_values = {}
+            if draws is not None:
+                for param_name, param_draws in draws.items():
+                    if param_name in self.model.named_vars:
+                        var = self.model.named_vars[param_name]
+                        if hasattr(var, "get_value"):
+                            original_values[param_name] = var.get_value()
+                            var.set_value(param_draws)
+                        else:
+                            logger.warning(
+                                f"Could not set value for parameter {param_name}"
+                            )
+
+            observed_rv = None
+            for rv in self.model.observed_RVs:
+                if rv.name == var_name:
+                    observed_rv = rv
+                    break
+
+            if observed_rv is None:
+                raise PyMCWrapperError(f"Could not find observed RV for {var_name}")
+
+            # Compute the pointwise log likelihood
+            elemwise_logp = self.model.logp([observed_rv], sum=False)
+
+            if hasattr(self, "observed_dims") and var_name in self.observed_dims:
+                dims = self.observed_dims[var_name]
+                coords = _get_coords(self, var_name)
+                if coords is None:
+                    coords = {}
+                    for i, dim in enumerate(dims):
+                        if dim is not None:
+                            shape = self.get_shape(var_name)
+                            if shape is not None:
+                                coords[dim] = np.arange(shape[i])
+
+                log_like = xr.DataArray(
+                    elemwise_logp,
+                    dims=dims,
+                    coords=coords,
+                    name=f"log_likelihood_{var_name}",
+                )
+            else:
+                shape = self.get_shape(var_name)
+                if shape is None:
+                    raise PyMCWrapperError(f"Could not determine shape for {var_name}")
+
+                # Fix here: Create a tuple directly instead of a list
+                dims = tuple(f"dim_{i}" for i in range(len(shape)))
+                coords = {dim: np.arange(size) for dim, size in zip(dims, shape)}
+
+                log_like = xr.DataArray(
+                    elemwise_logp,
+                    dims=dims,
+                    coords=coords,
+                    name=f"log_likelihood_{var_name}",
+                )
+
+            return log_like
+
+        except Exception as e:
+            if isinstance(e, PyMCWrapperError):
+                raise
+            raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
+        finally:
+            # Restore original parameter values if they were changed
+            if draws is not None:
+                for param_name, original_value in original_values.items():
+                    var = self.model.named_vars[param_name]
+                    if hasattr(var, "set_value"):
+                        var.set_value(original_value)
 
     def get_draws(self) -> np.ndarray:
         """Get all draws from the posterior.
@@ -967,23 +1068,47 @@ class PyMCWrapper:
         """
         return self._untransformed_model.named_vars.get(var_name)
 
-    def get_dims(self) -> tuple[str, ...] | None:
+    def get_dims(self, var_name: str = None) -> tuple[str, ...] | None:
         """Get the dimension names for a variable.
 
         Parameters
         ----------
-        var_name : str
-            Name of the variable
+        var_name : str, optional
+            Name of the variable. If None, returns dimensions for the first observed variable.
 
         Returns
         -------
         tuple[str, ...] | None
             Tuple of dimension names or None if variable not found
         """
-        if hasattr(self.idata, "observed_data"):
-            dims = self.idata.observed_data[self.get_observed_name()].dims
+        if var_name is None:
+            try:
+                var_name = self.get_observed_name()
+            except PyMCWrapperError:
+                return None
+
+        if (
+            hasattr(self.idata, "observed_data")
+            and var_name in self.idata.observed_data
+        ):
+            dims = self.idata.observed_data[var_name].dims
             if dims:
                 return tuple(dims)
+
+        if hasattr(self.idata, "posterior") and var_name in self.idata.posterior:
+            dims = self.idata.posterior[var_name].dims
+            param_dims = tuple(d for d in dims if d not in ("chain", "draw"))
+            if param_dims:
+                return param_dims
+
+        if hasattr(self.model, "named_vars_to_dims") and self.model.named_vars_to_dims:
+            if var_name in self.model.named_vars_to_dims:
+                return tuple(self.model.named_vars_to_dims[var_name])
+
+        shape = self.get_shape(var_name)
+        if shape is not None and len(shape) > 0:
+            return tuple(f"{var_name}_dim_{i}" for i in range(len(shape)))
+
         return None
 
     def get_shape(self, var_name: str) -> tuple[int, ...] | None:
@@ -1010,365 +1135,3 @@ class PyMCWrapper:
             var = self._untransformed_model.named_vars[var_name]
             return tuple(d.eval() if hasattr(d, "eval") else d for d in var.shape)
         return None
-
-    def _apply_ufunc(
-        self,
-        func: Callable[..., Any],
-        var_name: str | None = None,
-        input_core_dims: list[list[str]] | None = None,
-        output_core_dims: list[list[str]] | None = None,
-        func_kwargs: dict | None = None,
-        **kwargs: Any,
-    ) -> xr.DataArray:
-        """This is a utility method that applies a function to posterior samples using
-        ``wrap_xarray_ufunc``."""
-        if not hasattr(self.idata, "posterior"):
-            raise PyMCWrapperError(
-                "InferenceData object must contain posterior samples. "
-                "The model does not appear to be fitted."
-            )
-
-        if input_core_dims is None:
-            input_core_dims = [["chain", "draw"]]
-        if output_core_dims is None:
-            output_core_dims = [["chain", "draw"]]
-
-        if var_name is not None:
-            if var_name not in self.idata.posterior:
-                raise PyMCWrapperError(
-                    f"Variable '{var_name}' not found in posterior. Available"
-                    f" variables: {list(self.idata.posterior.data_vars.keys())}"
-                )
-            data = self.idata.posterior[var_name]
-        else:
-            input_vars = kwargs.pop("input_vars", None)
-            if input_vars is not None:
-                for var in input_vars:
-                    if var not in self.idata.posterior:
-                        raise PyMCWrapperError(
-                            f"Variable '{var}' not found in posterior. Available"
-                            f" variables: {list(self.idata.posterior.data_vars.keys())}"
-                        )
-                    data = [self.idata.posterior[var] for var in input_vars]
-            else:
-                data = self.idata.posterior
-
-        result = wrap_xarray_ufunc(
-            func,
-            data if isinstance(data, list) else [data],
-            input_core_dims=input_core_dims,
-            output_core_dims=output_core_dims,
-            func_kwargs=func_kwargs,
-            **kwargs,
-        )
-        return result
-
-    def _transform_to_unconstrained(self, values, transform):
-        """Transform values from constrained to unconstrained space."""
-        try:
-            result = transform.backward(values)
-            if hasattr(result, "eval"):
-                result = result.eval()
-            return np.asarray(result)
-        except Exception as e:
-            logger.warning("Backward transform failed: %s", str(e))
-            raise
-
-    def _transform_to_constrained(self, values, transform):
-        """Transform values from unconstrained to constrained space."""
-        try:
-            result = transform.forward(values)
-            if hasattr(result, "eval"):
-                result = result.eval()
-            return np.asarray(result)
-        except Exception as e:
-            logger.warning("Forward transform failed: %s", str(e))
-            raise
-
-    def _process_and_validate_indices(
-        self, idx: int | np.ndarray | slice, n_obs: int
-    ) -> tuple[np.ndarray, bool]:
-        """Process and validate indices for log likelihood computation."""
-        if isinstance(idx, (int, np.integer)):
-            if idx < 0 or idx >= n_obs:
-                raise IndexError(
-                    f"Index {idx} is out of bounds for axis 0 with size {n_obs}"
-                )
-            indices = np.array([idx], dtype=int)
-            single_idx = True
-        elif isinstance(idx, slice):
-            start, stop, step = idx.indices(n_obs)
-
-            if stop > n_obs:
-                warnings.warn(
-                    f"Slice end index {idx.stop} is out of bounds for axis 0 with size"
-                    f" {n_obs}. Only indices up to {n_obs - 1} will be used.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-
-            indices = np.arange(start, min(stop, n_obs), step, dtype=int)
-            single_idx = False
-        elif isinstance(idx, np.ndarray):
-            if idx.dtype == bool:
-                if len(idx) != n_obs:
-                    raise IndexError(
-                        f"Boolean mask length {len(idx)} does not match "
-                        f"data shape {n_obs} along axis 0"
-                    )
-                indices = np.where(idx)[0]
-                single_idx = False
-            else:
-                if len(idx) == 0:
-                    raise IndexError("Empty index array provided")
-
-                invalid_indices = (idx < 0) | (idx >= n_obs)
-                if np.any(invalid_indices):
-                    out_of_bounds = idx[invalid_indices]
-                    warnings.warn(
-                        f"Some indices {out_of_bounds} are out of bounds for axis 0"
-                        f" with size {n_obs}. These indices will be ignored.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                    indices = idx[~invalid_indices].astype(int)
-                    if len(indices) == 0:
-                        raise IndexError(
-                            f"All indices {idx} are out of bounds for axis 0 with size"
-                            f" {n_obs}"
-                        )
-                else:
-                    indices = idx.astype(int)
-
-                single_idx = len(indices) == 1 and isinstance(idx[0], (int, np.integer))
-        else:
-            raise PyMCWrapperError(f"Unsupported index type: {type(idx)}")
-        return indices, single_idx
-
-    def _format_log_likelihood_result(
-        self,
-        log_like_i: xr.DataArray,
-        indices: np.ndarray,
-        single_idx: bool,
-        original_idx: int | np.ndarray | slice,
-        holdout_data: np.ndarray,
-        n_obs: int,
-        var_name: str,
-    ) -> xr.DataArray:
-        """Format log likelihood results based on index type."""
-        if single_idx and isinstance(original_idx, int):
-            obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
-
-            for dim in obs_dims:
-                log_like_i = log_like_i.isel({dim: 0})
-
-            if obs_dims and obs_dims[0] in log_like_i.coords:
-                log_like_i.coords[obs_dims[0]] = original_idx
-
-            log_like_i.attrs["observation_index"] = original_idx
-            return log_like_i
-
-        chains = log_like_i.sizes.get("chain", 1)
-        draws = log_like_i.sizes.get("draw", 1)
-
-        obs_dims = [dim for dim in log_like_i.dims if dim not in ("chain", "draw")]
-
-        if not obs_dims:
-            values = np.zeros((chains, draws, len(indices)))
-
-            for i in range(len(indices)):
-                values[:, :, i] = log_like_i.values
-
-            result = xr.DataArray(
-                values,
-                dims=["chain", "draw", "obs_idx"],
-                coords={
-                    "chain": log_like_i.coords.get("chain", np.arange(chains)),
-                    "draw": log_like_i.coords.get("draw", np.arange(draws)),
-                    "obs_idx": indices,
-                },
-                name=var_name,
-            )
-        else:
-            obs_dim = obs_dims[0]
-            obs_size = log_like_i.sizes[obs_dim]
-            values = np.zeros((chains, draws, len(indices)))
-
-            for i, idx_val in enumerate(indices):
-                if obs_size == len(holdout_data):
-                    index_to_use = min(i, obs_size - 1)
-                elif obs_size == n_obs:
-                    index_to_use = min(idx_val, obs_size - 1)
-                else:
-                    index_to_use = 0
-
-                values[:, :, i] = log_like_i.isel({obs_dim: index_to_use}).values
-
-            result = xr.DataArray(
-                values,
-                dims=["chain", "draw", "obs_idx"],
-                coords={
-                    "chain": log_like_i.coords.get("chain", np.arange(chains)),
-                    "draw": log_like_i.coords.get("draw", np.arange(draws)),
-                    "obs_idx": indices,
-                },
-                name=var_name,
-            )
-
-        result.attrs["observation_indices"] = indices.tolist()
-        return result
-
-    def _create_selection_mask(
-        self, indices: np.ndarray | slice, length: int, axis: int
-    ) -> np.ndarray:
-        """Create a boolean mask for selecting observations."""
-        # Boolean mask input
-        if isinstance(indices, np.ndarray) and indices.dtype == bool:
-            if indices.shape[0] != length:
-                raise PyMCWrapperError(
-                    f"Boolean mask shape {indices.shape[0]} does not match "
-                    f"data shape {length} along axis {axis}"
-                )
-            return indices
-
-        # Slice input
-        if isinstance(indices, slice):
-            mask = np.zeros(length, dtype=bool)
-            idx_range = range(*indices.indices(length))
-            mask[idx_range] = True
-            return mask
-
-        # Integer array input
-        indices = np.asarray(indices, dtype=np.int64)
-
-        if indices.size == 0:
-            raise IndexError("Empty index array provided")
-
-        mask = np.zeros(length, dtype=bool)
-        valid_mask = (indices >= 0) & (indices < length)
-
-        if not np.any(valid_mask):
-            raise IndexError(
-                f"All indices are out of bounds for axis {axis} with size {length}"
-            )
-
-        if not np.all(valid_mask):
-            invalid_indices = indices[~valid_mask]
-            warnings.warn(
-                f"Some indices {invalid_indices} are out of bounds for axis {axis}"
-                f" with size {length}. These indices will be ignored.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        valid_indices = indices[valid_mask]
-        mask[valid_indices] = True
-        return mask
-
-    def _validate_model_state(self) -> None:
-        """Validate that the model is properly fitted and ready for use."""
-        # Check that posterior samples exist
-        if not hasattr(self.idata, "posterior"):
-            raise PyMCWrapperError(
-                "InferenceData object must contain posterior samples. "
-                "The model does not appear to be fitted."
-            )
-
-        # Check that all free variables have posterior samples
-        posterior_vars = set(self.idata.posterior.data_vars.keys())
-        model_vars = {rv.name for rv in self.model.free_RVs}
-        missing_vars = model_vars - posterior_vars
-        if missing_vars:
-            raise PyMCWrapperError(
-                f"Missing posterior samples for variables: {missing_vars}. "
-                "The model may not be fully fitted."
-            )
-
-        # Check that observed data exists for observed variables
-        for obs_rv in self.model.observed_RVs:
-            if not hasattr(obs_rv.tag, "observations"):
-                raise PyMCWrapperError(
-                    f"Missing observed data for variable {obs_rv.name}. "
-                    "The model is not properly initialized."
-                )
-
-        # Validate posterior sample shapes against model structure
-        for var_name in model_vars:
-            var = self.model.named_vars[var_name]
-            expected_shape = tuple(
-                d.eval() if hasattr(d, "eval") else d for d in var.shape
-            )
-            posterior_shape = tuple(self.idata.posterior[var_name].shape[2:])
-            if expected_shape != posterior_shape:
-                raise PyMCWrapperError(
-                    f"Shape mismatch for variable {var_name}. Model expects shape"
-                    f" {expected_shape}, but posterior has shape {posterior_shape}."
-                    " This may indicate an issue with the model specification or"
-                    " fitting process."
-                )
-
-    def _extract_model_components(self) -> None:
-        """Extract and organize the model's components."""
-        self.observed_data = {}
-        self.observed_dims = {}
-
-        if hasattr(self.idata, "observed_data"):
-            for var_name, data_array in self.idata.observed_data.items():
-                if self.var_names is None or var_name in self.var_names:
-                    self.observed_data[var_name] = data_array.values.copy()
-                    self.observed_dims[var_name] = data_array.dims
-
-        self.constant_data = {}
-        for data_var in self._untransformed_model.data_vars:
-            data_name = data_var.name
-            if hasattr(data_var, "get_value"):
-                self.constant_data[data_name] = data_var.get_value()
-
-        self.free_vars = [rv.name for rv in self._untransformed_model.free_RVs]
-        self.deterministic_vars = [
-            det.name for det in self._untransformed_model.deterministics
-        ]
-
-    def _get_coords(self, var_name: str) -> dict[str, Sequence[int]] | None:
-        """Get the coordinates for a variable."""
-        dims = self.get_dims()
-        if dims is None:
-            return None
-
-        shape = self.get_shape(var_name)
-        if shape is None:
-            return None
-
-        coords: dict[str, Sequence[int]] = {}
-        for dim, size in zip(dims, shape):
-            if dim is not None:
-                coords[dim] = list(range(size))
-        return coords
-
-    def _validate_coords(
-        self,
-        var_name: str,
-        coords: dict[str, Sequence],
-    ) -> None:
-        """Validate coordinate values against variable dimensions."""
-        dims = self.get_dims()
-        if dims is None:
-            return
-
-        shape = self.get_shape(var_name)
-        if shape is None:
-            return
-
-        missing_coords = {d for d in dims if d is not None} - set(coords.keys())
-        if missing_coords:
-            raise ValueError(
-                f"Missing coordinates for dimensions {missing_coords} of variable"
-                f" {var_name}"
-            )
-
-        for dim, size in zip(dims, shape):
-            if dim is not None and len(coords[dim]) != size:
-                raise ValueError(
-                    f"Coordinate length {len(coords[dim])} for dimension {dim} "
-                    f"does not match variable shape {size} for {var_name}"
-                )

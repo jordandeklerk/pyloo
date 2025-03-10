@@ -4,8 +4,11 @@ import os
 
 import arviz as az
 import numpy as np
+import pandas as pd
 import pymc as pm
 import pytest
+from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
+from pymc_marketing.prior import Prior
 
 
 @pytest.fixture(scope="session")
@@ -101,6 +104,85 @@ def draws():
 def chains():
     """Share default chain count."""
     return 2
+
+
+@pytest.fixture(scope="session")
+def mmm_model():
+    """Create a media mix model for testing."""
+    rng = np.random.default_rng(42)
+
+    n_weeks = 52 * 3
+
+    x1 = rng.uniform(0, 1, size=n_weeks)
+    x2 = rng.uniform(0, 1, size=n_weeks)
+    x1[x1 > 0.9] *= 2
+    x2[x2 < 0.2] = 0
+
+    t = np.arange(n_weeks)
+    dayofyear = np.linspace(0, 365, n_weeks)
+    seasonality = 0.5 * (
+        np.sin(2 * np.pi * dayofyear / 365) + np.cos(2 * np.pi * dayofyear / 365)
+    )
+
+    event_1 = np.zeros(n_weeks)
+    event_1[20] = 1
+
+    beta_1, beta_2 = 2.0, 1.5
+    trend_coef = 0.02
+    event_effect = 2.0
+
+    y = (
+        1.0
+        + trend_coef * t
+        + seasonality
+        + event_effect * event_1
+        + beta_1 * x1
+        + beta_2 * x2
+        + rng.normal(0, 0.2, size=n_weeks)
+    )
+
+    data = pd.DataFrame({
+        "date_week": pd.date_range(start="2023-01-01", periods=n_weeks, freq="W-MON"),
+        "x1": x1,
+        "x2": x2,
+        "t": t,
+        "event_1": event_1,
+        "y": y,
+    })
+
+    model_config = {
+        "intercept": Prior("Normal", mu=0.0, sigma=1.0),
+        "saturation_beta": Prior("HalfNormal", sigma=[1.0, 1.0]),
+        "gamma_control": Prior("Normal", mu=0, sigma=0.5),
+        "gamma_fourier": Prior("Laplace", mu=0, b=0.2),
+        "likelihood": Prior("Normal", sigma=Prior("HalfNormal", sigma=1.0)),
+    }
+
+    mmm = MMM(
+        model_config=model_config,
+        date_column="date_week",
+        adstock=GeometricAdstock(l_max=4),
+        saturation=LogisticSaturation(),
+        channel_columns=["x1", "x2"],
+        control_columns=["event_1", "t"],
+        yearly_seasonality=1,
+    )
+
+    X = data.drop("y", axis=1)
+    y = data["y"]
+
+    idata = mmm.fit(
+        X=X,
+        y=y,
+        chains=2,
+        draws=500,
+        tune=500,
+        target_accept=0.9,
+        random_seed=42,
+        idata_kwargs={"log_likelihood": True},
+    )
+
+    return mmm.model, idata
 
 
 @pytest.fixture(scope="session")
@@ -455,6 +537,89 @@ def mixture_model():
 
         idata = pm.sample(
             1000,
+            tune=1000,
+            target_accept=0.9,
+            random_seed=42,
+            idata_kwargs={"log_likelihood": True},
+        )
+
+    return model, idata
+
+
+@pytest.fixture(scope="session")
+def problematic_k_model():
+    """Create a model that generates problematic pareto k values for LOO-CV testing."""
+    rng = np.random.default_rng(42)
+
+    n_obs = 2000
+    true_alpha = 1.0
+    true_beta = 2.0
+    true_sigma = 0.1
+    df = 2
+
+    X = rng.normal(0, 1, size=n_obs)
+
+    outlier_indices = np.arange(0, n_obs, 10)
+    X[outlier_indices] = rng.normal(5, 2, size=len(outlier_indices))
+
+    noise = np.zeros(n_obs)
+    regular_indices = np.ones(n_obs, dtype=bool)
+    regular_indices[outlier_indices] = False
+
+    noise[regular_indices] = rng.normal(0, true_sigma, size=regular_indices.sum())
+    noise[outlier_indices] = (
+        rng.standard_t(df, size=len(outlier_indices)) * true_sigma * 10
+    )
+
+    extreme_indices = np.arange(5, n_obs, 50)
+    noise[extreme_indices] = (
+        rng.standard_t(df, size=len(extreme_indices)) * true_sigma * 20
+    )
+
+    y = true_alpha + true_beta * X + noise
+
+    with pm.Model(coords={"obs_id": range(n_obs)}) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=10)
+        beta = pm.Normal("beta", mu=0, sigma=10)
+        sigma = pm.HalfNormal("sigma", sigma=10)
+
+        mu = alpha + beta * X
+        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            1000,
+            tune=2000,
+            target_accept=0.95,
+            random_seed=42,
+            idata_kwargs={"log_likelihood": True},
+        )
+
+    return model, idata
+
+
+@pytest.fixture(scope="session")
+def roaches_model():
+    """Create a model for the roaches dataset."""
+    data = pd.read_csv("./data/roaches.csv")
+    data["roach1"] = np.sqrt(data["roach1"])
+
+    X = data[["roach1", "treatment", "senior"]].values
+    y = data["y"].values
+    offset = np.log(data["exposure2"]).values
+    K = X.shape[1]
+
+    beta_prior_scale = 2.5
+    alpha_prior_scale = 5.0
+
+    with pm.Model() as model:
+        beta = pm.Normal("beta", mu=0, sigma=beta_prior_scale, shape=K)
+        intercept = pm.Normal("intercept", mu=0, sigma=alpha_prior_scale)
+        eta = pm.math.dot(X, beta) + intercept + offset
+        pm.Poisson("y", mu=pm.math.exp(eta), observed=y)
+
+        idata = pm.sample(
+            chains=4,
+            draws=1000,
             tune=1000,
             target_accept=0.9,
             random_seed=42,

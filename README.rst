@@ -41,6 +41,25 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 * Vehtari, A., Gelman, A., and Gabry, J. (2024). `Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC <https://arxiv.org/abs/1507.02646>`_. *Statistics and Computing*. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
 
+Features
+-------
+
+Core
+~~~~
+
+- **LOO-CV Implementation**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
+- **WAIC Implementation**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
+- **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy.
+- **Model Comparison**: Compare models based on their expected log pointwise predictive density (ELPD).
+
+Advanced
+~~~~~~~
+
+- **Universal PyMC Wrapper**: Standardized interface to model components that manages parameter transformations, data manipulation, posterior sampling, and pointwise log-likelihood computations.
+- **Reloo**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
+- **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
+- **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
+
 Usage
 -----
 
@@ -234,6 +253,70 @@ You can also save the fitted models for each fold for further analysis:
 
    # Access the fits for the first fold
    first_fold_idata, first_fold_indices = kfold_with_fits.fits[0]
+
+Moment Matching
+^^^^^^^^^^^^^
+
+When PSIS-LOO approximation fails, moment matching can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
+
+.. code-block:: python
+
+   import pyloo as pl
+   import pymc as pm
+   import numpy as np
+   import arviz as az
+
+   from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+
+   np.random.seed(123)
+   N = 50
+   x = np.random.normal(0, 1, N)
+   y = 2 + 3 * x + np.random.normal(0, 1, N)
+   # Add an outlier
+   y[0] = 10
+
+   with pm.Model() as model:
+       alpha = pm.Normal("alpha", mu=0, sigma=10)
+       beta = pm.Normal("beta", mu=0, sigma=10)
+       sigma = pm.HalfNormal("sigma", sigma=5)
+
+       mu = alpha + beta * x
+       likelihood = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+
+       idata = pm.sample(1000, chains=4, return_inferencedata=True,
+                        idata_kwargs={"log_likelihood": True})
+
+   wrapper = PyMCWrapper(model, idata)
+   loo_orig = pl.loo(idata, pointwise=True)
+
+After computing standard LOO-CV, you can apply moment matching to improve estimates for observations with high Pareto k values:
+
+.. code-block:: python
+
+   loo_improved = pl.loo_moment_match(
+       wrapper,
+       loo_orig,
+       max_iters=30,
+       k_threshold=0.7,
+       split=True,       # Use split moment matching for better stability
+       cov=True,         # Match covariance matrix in addition to means and variances
+       method="psis"
+   )
+
+Alternatively, you can compute LOO-CV with moment matching by setting ``moment_match = True`` in the main ``loo`` function. This method also requires passing the PyMC wrapper to ``loo``:
+
+.. code-block:: python
+
+   loo_direct = pl.loo(
+       idata,
+       pointwise=True,
+       moment_match=True,
+       wrapper=wrapper,    # Required for moment matching
+       k_threshold=0.7,
+       split=True,
+       cov=True,
+       method="psis"
+   )
 
 Installation
 -----------

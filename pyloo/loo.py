@@ -9,6 +9,7 @@ from arviz.stats.diagnostics import ess
 
 from .elpd import ELPDData
 from .importance_sampling import ISMethod, compute_importance_weights
+from .loo_moment_match import loo_moment_match
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
@@ -22,6 +23,8 @@ def loo(
     reff: float | None = None,
     scale: str | None = None,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+    moment_match: bool = False,
+    **kwargs,
 ) -> ELPDData:
     """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
 
@@ -29,6 +32,10 @@ def loo(
     leave-one-out cross-validation. By default, uses Pareto-smoothed importance sampling (PSIS),
     which is the recommended method. Also calculates LOO's standard error and the effective
     number of parameters.
+
+    For observations with high Pareto k diagnostics, moment matching can be used to transform
+    posterior draws to better approximate leave-one-out posteriors. This approach is computationally
+    more efficient than exact refitting ('reloo') while still providing improved estimates.
 
     Parameters
     ----------
@@ -60,27 +67,43 @@ def loo(
 
             A higher log-score (or a lower deviance or negative log_score) indicates a model with
             better predictive accuracy.
+    moment_match: bool, default False
+        Whether to perform moment matching to improve the LOO estimates for observations with
+        high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
+    **kwargs:
+        Additional keyword arguments for moment matching. These include:
+        - wrapper: PyMCWrapper, required if moment_match=True
+            PyMC model wrapper instance
+        - max_iters: int, default 30
+            Maximum number of moment matching iterations
+        - k_threshold: float, optional
+            Threshold value for Pareto k values above which moment matching is used.
+            If None, uses min(1 - 1/log10(n_samples), 0.7)
+        - split: bool, default True
+            Whether to do the split transformation at the end of moment matching
+        - cov: bool, default True
+            Whether to match the covariance matrix of the samples
 
-        Returns
-        -------
-        ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
-        elpd_loo: approximated expected log pointwise predictive density (elpd)
-        se: standard error of the elpd
-        p_loo: effective number of parameters
-        n_samples: number of samples
-        n_data_points: number of data points
-        warning: bool
-            True if using PSIS and the estimated shape parameter of Pareto distribution
-            is greater than ``good_k``.
-        loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
-                only if pointwise=True
-        diagnostic: array of diagnostic values, only if pointwise=True
-            - For PSIS: Pareto shape parameter (pareto_k)
-            - For SIS/TIS: Effective sample size (ess)
-        scale: scale of the elpd
-        good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
+    Returns
+    -------
+    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
+    elpd_loo: approximated expected log pointwise predictive density (elpd)
+    se: standard error of the elpd
+    p_loo: effective number of parameters
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: bool
+        True if using PSIS and the estimated shape parameter of Pareto distribution
+        is greater than ``good_k``.
+    loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+            only if pointwise=True
+    diagnostic: array of diagnostic values, only if pointwise=True
+        - For PSIS: Pareto shape parameter (pareto_k)
+        - For SIS/TIS: Effective sample size (ess)
+    scale: scale of the elpd
+    good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
 
-            The returned object has a custom print method that overrides pd.Series method.
+        The returned object has a custom print method that overrides pd.Series method.
 
         Examples
         --------
@@ -109,11 +132,41 @@ def loo(
             if hasattr(data_loo, "pareto_k"):
                 print(data_loo.pareto_k)
 
-        See Also
-        --------
-        loo_i : Pointwise LOO-CV values
-        loo_subsample : Subsampled LOO-CV computation
-        reloo : Exact LOO-CV computation for PyMC models
+        Calculate LOO with moment matching to improve estimates for observations with high Pareto k values:
+
+        .. code-block:: python
+
+            import pyloo as pl
+            import arviz as az
+            import pymc as pm
+
+            with pm.Model() as model:
+                mu = pm.Normal('mu', mu=0, sigma=10)
+                sigma = pm.HalfNormal('sigma', sigma=10)
+                y = pm.Normal('y', mu=mu, sigma=sigma, observed=data)
+                idata = pm.sample(1000, tune=1000, idata_kwargs={"log_likelihood": True})
+
+            wrapper = pl.PyMCWrapper(model, idata)
+
+            # Calculate LOO with moment matching
+            loo_results = pl.loo(
+                idata,
+                pointwise=True,
+                moment_match=True,
+                wrapper=wrapper,
+                max_iters=30,
+                split=True,
+                cov=True
+            )
+
+            print(loo_results.pareto_k)
+
+    See Also
+    --------
+    loo_subsample : Subsampled LOO-CV computation
+    reloo : Exact LOO-CV computation for PyMC models
+    loo_moment_match : LOO-CV computation using moment matching
+    loo_kfold : K-fold cross-validation
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
@@ -149,7 +202,6 @@ def loo(
             )
 
     has_nan = np.any(np.isnan(log_likelihood.values))
-    has_inf = np.any(np.isinf(log_likelihood.values))
 
     if has_nan:
         warnings.warn(
@@ -159,18 +211,6 @@ def loo(
             stacklevel=2,
         )
         log_likelihood = log_likelihood.where(~np.isnan(log_likelihood), -1e10)
-
-    if has_inf:
-        warnings.warn(
-            "Infinite values detected in log-likelihood. These will be ignored in the"
-            " LOO calculation.",
-            UserWarning,
-            stacklevel=2,
-        )
-        log_likelihood = log_likelihood.where(
-            ~np.isinf(log_likelihood),
-            np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10),
-        )
 
     try:
         method = method if isinstance(method, ISMethod) else ISMethod(method.lower())
@@ -203,19 +243,13 @@ def loo(
 
             warnings.warn(
                 "Estimated shape parameter of Pareto distribution is greater than"
-                f" {good_k:.2f} for {n_high_k} observations. You should consider using"
-                " a more robust model, this is because importance sampling is less"
-                " likely to work well if the marginal posterior and LOO posterior are"
-                " very different. This is more likely to happen with a non-robust"
-                " model and highly influential observations.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-            warnings.warn(
-                f"Found {n_high_k} observations with high Pareto k estimates."
-                " If you're using a PyMC model, consider using pyloo.reloo()"
-                " to compute exact LOO for these problematic observations.",
+                f" {good_k:.2f} for {n_high_k} observations. This indicates that"
+                " importance sampling may be unreliable because the marginal posterior"
+                " and LOO posterior are very different. You should consider using a"
+                " more robust model, especially with highly influential observations."
+                " If you're using a PyMC model, consider using reloo() to compute"
+                " exact LOO for these problematic observations, or moment matching to"
+                " improve the estimates.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -232,13 +266,19 @@ def loo(
                 UserWarning,
                 stacklevel=2,
             )
+
             warn_mg = True
 
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
-    kwargs = {"input_core_dims": [["__sample__"]]}
+    xarray_kwargs = {"input_core_dims": [["__sample__"]]}
+
     loo_lppd_i = scale_value * wrap_xarray_ufunc(
-        _logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **kwargs
+        _logsumexp,
+        log_weights,
+        ufunc_kwargs=ufunc_kwargs,
+        **xarray_kwargs,
     )
+
     loo_lppd = loo_lppd_i.values.sum()
     loo_lppd_se = (n_data_points * np.var(loo_lppd_i.values)) ** 0.5
 
@@ -248,12 +288,11 @@ def loo(
             log_likelihood,
             func_kwargs={"b_inv": n_samples},
             ufunc_kwargs=ufunc_kwargs,
-            **kwargs,
+            **xarray_kwargs,
         ).values
     )
 
     p_loo = lppd - loo_lppd / scale_value
-
     looic = -2 * loo_lppd
     looic_se = 2 * loo_lppd_se
 
@@ -269,7 +308,6 @@ def loo(
             n_data_points,
             warn_mg,
             scale,
-            n_data_points,
             looic,
             looic_se,
         ]
@@ -281,16 +319,28 @@ def loo(
             "n_data_points",
             "warning",
             "scale",
-            "subsample_size",
             "looic",
             "looic_se",
         ]
 
         if method == ISMethod.PSIS:
-            result_data.insert(-2, good_k)  # Insert before looic
-            result_index.insert(-2, "good_k")  # Insert before looic
+            result_data.append(good_k)
+            result_index.append("good_k")
 
-        return ELPDData(data=result_data, index=result_index)
+        # Add subsample_size if needed
+        result_data.append(n_data_points)
+        result_index.append("subsample_size")
+
+        result = ELPDData(data=result_data, index=result_index)
+
+        # We can't do moment matching without pointwise values
+        if moment_match:
+            raise ValueError(
+                "Moment matching requires pointwise LOO results. "
+                "Please set pointwise=True when using moment_match=True."
+            )
+
+        return result
 
     if np.allclose(loo_lppd_i, loo_lppd_i[0]):
         warnings.warn(
@@ -308,7 +358,6 @@ def loo(
         warn_mg,
         loo_lppd_i.rename("loo_i"),
         scale,
-        n_data_points,
         looic,
         looic_se,
     ]
@@ -321,7 +370,6 @@ def loo(
         "warning",
         "loo_i",
         "scale",
-        "subsample_size",
         "looic",
         "looic_se",
     ]
@@ -329,10 +377,34 @@ def loo(
     if method == ISMethod.PSIS:
         result_data.append(diagnostic)
         result_index.append("pareto_k")
-        result_data.insert(-2, good_k)
-        result_index.insert(-2, "good_k")
+        result_data.append(good_k)
+        result_index.append("good_k")
     else:
         result_data.append(diagnostic)
         result_index.append("ess")
 
-    return ELPDData(data=result_data, index=result_index)
+    # Add subsample_size if needed
+    result_data.append(n_data_points)
+    result_index.append("subsample_size")
+
+    result = ELPDData(data=result_data, index=result_index)
+
+    # Moment matching
+    if moment_match:
+        wrapper = kwargs.get("wrapper", None)
+        if wrapper is None:
+            raise ValueError(
+                "PyMC model wrapper must be provided when moment_match=True"
+            )
+
+        mm_kwargs = {
+            "max_iters": kwargs.get("max_iters", 30),
+            "k_threshold": kwargs.get("k_threshold", None),
+            "split": kwargs.get("split", True),
+            "cov": kwargs.get("cov", True),
+            "method": method,
+        }
+
+        result = loo_moment_match(wrapper, result, **mm_kwargs)
+
+    return result

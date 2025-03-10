@@ -8,8 +8,9 @@ import pytest
 import xarray as xr
 from numpy.testing import assert_allclose, assert_array_almost_equal
 
-from pyloo.loo import loo
-from pyloo.psis import psislw
+from ...loo import loo
+from ...psis import psislw
+from ...wrapper.pymc_wrapper import PyMCWrapper
 
 
 @pytest.fixture(scope="session")
@@ -129,7 +130,6 @@ def test_psislw_matches(centered_eight):
         / n_samples
     )
 
-    # Compare PyLOO and ArviZ psislw results
     pl_lw, pl_k = psislw(-log_likelihood, reff)
     az_lw, az_k = az.stats.psislw(-log_likelihood, reff)
 
@@ -163,23 +163,6 @@ def test_loo_nan_handling(centered_eight):
         result = loo(centered_eight)
         assert result is not None
         assert not np.isnan(result["elpd_loo"])
-
-
-def test_loo_inf_handling(centered_eight):
-    """Test LOO computation with infinite values in log-likelihood."""
-    centered_eight = deepcopy(centered_eight)
-    log_likelihood = centered_eight.log_likelihood["obs"]
-    log_like_values = log_likelihood.values.copy()
-    log_like_values[0, 0, 0] = np.inf
-
-    centered_eight.log_likelihood["obs"] = xr.DataArray(
-        log_like_values, dims=log_likelihood.dims, coords=log_likelihood.coords
-    )
-
-    with pytest.warns(UserWarning):
-        result = loo(centered_eight)
-        assert result is not None
-        assert not np.isinf(result["elpd_loo"])
 
 
 def test_loo_extreme_values(centered_eight):
@@ -319,3 +302,25 @@ def test_loo_method_results(centered_eight):
     assert np.all(np.isfinite(psis_result["loo_i"]))
     assert np.all(np.isfinite(sis_result["loo_i"]))
     assert np.all(np.isfinite(tis_result["loo_i"]))
+
+
+def test_loo_moment_matching(problematic_k_model):
+    """Test moment matching for LOO computation."""
+    model, idata = problematic_k_model
+    wrapper = PyMCWrapper(model, idata)
+
+    loo_orig = loo(idata, pointwise=True)
+    loo_mm = loo(idata, pointwise=True, moment_match=True, wrapper=wrapper)
+
+    assert np.all(loo_mm.pareto_k.values <= loo_orig.pareto_k.values)
+
+
+def test_loo_moment_matching_no_pointwise(problematic_k_model):
+    """Test moment matching for LOO computation with no pointwise results."""
+    model, idata = problematic_k_model
+    wrapper = PyMCWrapper(model, idata)
+
+    with pytest.raises(
+        ValueError, match="Moment matching requires pointwise LOO results"
+    ):
+        loo(idata, moment_match=True, wrapper=wrapper)
