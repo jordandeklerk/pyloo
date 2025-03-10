@@ -11,7 +11,7 @@ from arviz.stats.diagnostics import ess
 
 from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
-from .moment_match_helpers import (
+from .helpers import (
     ParameterConverter,
     ShiftAndCovResult,
     ShiftAndScaleResult,

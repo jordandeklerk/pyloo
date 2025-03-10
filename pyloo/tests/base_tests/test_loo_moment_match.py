@@ -7,6 +7,12 @@ import pytest
 import xarray as xr
 from numpy.testing import assert_allclose
 
+from ...helpers import (
+    ParameterConverter,
+    _initialize_array,
+    log_lik_i_upars,
+    log_prob_upars,
+)
 from ...loo import loo
 from ...loo_moment_match import (
     loo_moment_match,
@@ -15,12 +21,6 @@ from ...loo_moment_match import (
     shift_and_cov,
     shift_and_scale,
     update_quantities_i,
-)
-from ...moment_match_helpers import (
-    ParameterConverter,
-    _initialize_array,
-    log_lik_i_upars,
-    log_prob_upars,
 )
 from ...wrapper.pymc_wrapper import PyMCWrapper
 

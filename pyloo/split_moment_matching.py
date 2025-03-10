@@ -5,7 +5,7 @@ from typing import Literal
 import numpy as np
 
 from .base import ISMethod, compute_importance_weights
-from .moment_match_helpers import (
+from .helpers import (
     ParameterConverter,
     SplitMomentMatchResult,
     _initialize_array,

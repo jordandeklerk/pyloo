@@ -1,4 +1,4 @@
-"""Utility functions for moment matching."""
+"""Helper functions for moment matching."""
 
 import warnings
 from dataclasses import dataclass
