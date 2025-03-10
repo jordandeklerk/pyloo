@@ -19,7 +19,7 @@ class DifferenceEstimator(EstimatorProtocol[DiffEstimate]):
     """Implementation of the difference estimator for SRS-WOR sampling."""
 
     def estimate(self, **kwargs: Any) -> DiffEstimate:
-        """Compute the difference estimator for SRS-WOR sampling.
+        r"""Compute the difference estimator for SRS-WOR sampling.
 
         Parameters
         ----------
@@ -36,12 +36,21 @@ class DifferenceEstimator(EstimatorProtocol[DiffEstimate]):
 
         Notes
         -----
-        The difference estimator is computed as:
-            y_hat = t_pi_tilde + t_e
-        where:
-            t_pi_tilde = sum(y_approx)  # Population total of approximations
-            t_e = N * mean(e_i)  # Estimated total of differences
-            e_i = y - y_approx_m  # Differences for sampled observations
+        The difference estimator is computed as
+
+        .. math::
+            \hat{y} = t_{\pi,\tilde{y}} + t_e
+
+        where
+
+        .. math::
+            t_{\pi,\tilde{y}} = \sum_{i=1}^N \tilde{y}_i  \quad \text{(Population total of approximations)}
+
+        .. math::
+            t_e = N \cdot \frac{1}{m}\sum_{i \in s} e_i  \quad \text{(Estimated total of differences)}
+
+        .. math::
+            e_i = y_i - \tilde{y}_i  \quad \text{(Differences for sampled observations)}
 
         References
         ----------
@@ -123,6 +132,7 @@ def diff_srs_estimate(
         The estimated ELPD and its variance
     """
     estimator = DifferenceEstimator()
+
     return estimator.estimate(
         y_approx=elpd_loo_approximation, y=elpd_loo_i, y_idx=sample_indices
     )
