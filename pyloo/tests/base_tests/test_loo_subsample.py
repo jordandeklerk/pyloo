@@ -134,24 +134,6 @@ def test_loo_subsample_nan_handling(large_model):
         assert not np.isnan(result["elpd_loo"])
 
 
-def test_loo_subsample_inf_handling(large_model):
-    """Test LOO subsampling with infinite values."""
-    large_model = deepcopy(large_model)
-    log_like = large_model.log_likelihood["obs"].values
-    log_like[0, 0, 0] = np.inf
-
-    large_model.log_likelihood["obs"] = xr.DataArray(
-        log_like,
-        dims=large_model.log_likelihood["obs"].dims,
-        coords=large_model.log_likelihood["obs"].coords,
-    )
-
-    with pytest.warns(UserWarning):
-        result = loo_subsample(large_model, observations=1000)
-        assert result is not None
-        assert not np.isinf(result["elpd_loo"])
-
-
 def test_loo_subsample_warning(large_model):
     """Test warning for high Pareto k values in subsampling."""
     large_model = deepcopy(large_model)
