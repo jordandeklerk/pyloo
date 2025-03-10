@@ -171,6 +171,8 @@ def loo_compare(
     loo_subsample : Compute approximate LOO-CV using subsampling.
     waic : Compute the widely applicable information criterion (WAIC).
     kfold : Compute K-fold cross-validation for PyMC models.
+    loo_moment_match : Moment matching for problematic observations.
+    reloo : Compute exact LOO-CV for PyMC models.
     """
     if not isinstance(compare_dict, dict):
         raise TypeError("compare_dict must be a dictionary")
