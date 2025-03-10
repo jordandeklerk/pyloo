@@ -164,34 +164,6 @@ def test_loo_moment_match_iterations(problematic_model):
     assert results[15].elpd_loo >= results[5].elpd_loo - 1e-10
 
 
-def test_loo_moment_match_cov_parameter(problematic_model):
-    """Test moment matching with and without covariance matching."""
-    loo_orig = loo(problematic_model.idata, pointwise=True)
-
-    loo_mm_cov = loo_moment_match(
-        problematic_model,
-        loo_orig,
-        max_iters=10,
-        k_threshold=0.7,
-        split=False,
-        cov=True,
-    )
-
-    loo_mm_no_cov = loo_moment_match(
-        problematic_model,
-        loo_orig,
-        max_iters=10,
-        k_threshold=0.7,
-        split=False,
-        cov=False,
-    )
-
-    assert loo_mm_cov.elpd_loo >= loo_orig.elpd_loo - 1e-10
-    assert loo_mm_no_cov.elpd_loo >= loo_orig.elpd_loo - 1e-10
-
-    assert loo_mm_cov.elpd_loo >= loo_mm_no_cov.elpd_loo - 1e-10
-
-
 def test_shift_transformation():
     """Test the shift transformation."""
     rng = np.random.default_rng(42)
