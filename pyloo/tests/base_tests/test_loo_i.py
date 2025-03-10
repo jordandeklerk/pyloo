@@ -8,8 +8,8 @@ import pytest
 import xarray as xr
 from numpy.testing import assert_allclose
 
-from pyloo.loo import loo
-from pyloo.loo_i import loo_i
+from ...loo import loo
+from ...loo_i import loo_i
 
 
 @pytest.fixture(scope="session")
