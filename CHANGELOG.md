@@ -6,7 +6,7 @@ PyLoo is a comprehensive toolkit for model comparison and validation in Bayesian
 
 ### Core Functionality
 
-We've built a flexible foundation for model assessment that works with any probabilistic programming language through ArviZ's InferenceData format:
+We've built a flexible foundation based on similar implementations in Arviz for model assessment that works with any probabilistic programming language through ArviZ's InferenceData format:
 
 - **LOO-CV Implementation**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
 - **WAIC Implementation**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
