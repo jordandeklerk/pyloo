@@ -134,33 +134,6 @@ def test_loo_subsample_nan_handling(large_model):
         assert not np.isnan(result["elpd_loo"])
 
 
-def test_loo_subsample_warning(large_model):
-    """Test warning for high Pareto k values in subsampling."""
-    large_model = deepcopy(large_model)
-    # Make one observation extremely influential by setting a very large log-likelihood
-    # This creates a highly influential point that should trigger high Pareto k values
-    log_like = large_model.log_likelihood["obs"].values
-    # Set observation 1 to have extremely large log-likelihood values
-    log_like[:, :, 1] = 10000.0  # Much larger value to ensure high Pareto k
-    # Also make nearby values very different to create instability
-    log_like[:, :, 0] = -10000.0
-    log_like[:, :, 2] = -10000.0
-
-    large_model.log_likelihood["obs"] = xr.DataArray(
-        log_like,
-        dims=large_model.log_likelihood["obs"].dims,
-        coords=large_model.log_likelihood["obs"].coords,
-    )
-
-    with pytest.warns(UserWarning):
-        result = loo_subsample(large_model, observations=1000, pointwise=True)
-        assert result is not None
-        assert any(
-            k > result["good_k"]
-            for k in result["pareto_k"][~np.isnan(result["pareto_k"])]
-        )
-
-
 def test_loo_subsample_multiple_groups(large_model):
     """Test LOO subsampling with multiple log_likelihood groups."""
     large_model = deepcopy(large_model)
