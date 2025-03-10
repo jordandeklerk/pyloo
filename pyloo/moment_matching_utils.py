@@ -2,7 +2,7 @@
 
 import warnings
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import arviz as az
 import numpy as np
@@ -384,7 +384,6 @@ def compute_updated_r_eff(
             upars_dict = wrapper.get_unconstrained_parameters()
             log_lik_result = log_lik_i_upars(wrapper, upars_dict, pointwise=True)
 
-            # Extract the log likelihood for observation i and reshape to chains and draws
             if isinstance(log_lik_result, xr.DataArray):
                 log_liki_chains = extract_log_likelihood_for_observation(
                     log_lik_result, i
@@ -409,7 +408,6 @@ def compute_updated_r_eff(
                     if ess_i2.size > 0:
                         r_eff_i2 = float(ess_i2 / max(1, len(log_liki_half_2)))
             else:
-                # Handle case where log_lik_result is not a DataArray
                 warnings.warn(
                     "Expected xarray.DataArray from log_lik_i_upars for"
                     f" observation {i}",
@@ -427,7 +425,7 @@ def compute_updated_r_eff(
 
 
 def extract_log_likelihood_for_observation(
-    log_lik_result: xr.DataArray, i: int
+    log_lik_result: xr.DataArray, i: int | Any
 ) -> np.ndarray:
     """Extract log likelihood values for a specific observation.
 
@@ -435,8 +433,10 @@ def extract_log_likelihood_for_observation(
     ----------
     log_lik_result : xr.DataArray
         Log likelihood values from log_lik_i_upars
-    i : int
-        Observation index
+    i : Union[int, Any]
+        Observation index, which is treated as:
+        - An integer position when i is an integer
+        - A direct coordinate value when i is any other type
 
     Returns
     -------
@@ -446,15 +446,44 @@ def extract_log_likelihood_for_observation(
     Raises
     ------
     ValueError
-        If log_lik_result is not a DataArray or if the observation index is invalid
+        If log_lik_result is not a DataArray
+    IndexError
+        If the integer index is out of bounds or no observation dimension is found
     """
-    if not isinstance(log_lik_result, xr.DataArray):
-        raise ValueError("Expected xarray.DataArray from log_lik_i_upars")
+    non_obs_dims = {"chain", "draw", "__sample__"}
+    obs_dims = [dim for dim in log_lik_result.dims if dim not in non_obs_dims]
 
-    if "__obs__" in log_lik_result.dims:
-        return log_lik_result.sel(__obs__=i).values.flatten()
-    else:
+    if not obs_dims:
         return log_lik_result.values.flatten()
+
+    # Try __obs__ first if it exists
+    if "__obs__" in obs_dims:
+        obs_dim = "__obs__"
+    else:
+        obs_dim = obs_dims[0]
+
+    num_obs = log_lik_result.sizes[obs_dim]
+
+    # Integer index
+    if isinstance(i, (int, np.integer)):
+        i_pos = int(i)
+
+        if i_pos < 0 or i_pos >= num_obs:
+            raise IndexError(
+                f"Observation index {i_pos} out of bounds [0, {num_obs - 1}] for"
+                f" dimension '{obs_dim}'"
+            )
+
+        return log_lik_result.isel({obs_dim: i_pos}).values.flatten()
+
+    # Non-integer index
+    try:
+        return log_lik_result.sel({obs_dim: i}).values.flatten()
+    except (KeyError, ValueError):
+        raise ValueError(
+            f"Observation {i} not found in dimension '{obs_dim}'. For positional"
+            f" access, use an integer index between 0 and {num_obs - 1}."
+        )
 
 
 def _initialize_array(arr, default_func, dim):

@@ -153,19 +153,15 @@ def loo_moment_match_split(
     upars_trans_half_inv = upars.copy()
     upars_trans_half_inv[S_half:] = upars_trans_inv[S_half:]
 
-    # Create parameter converter once for efficiency
     converter = ParameterConverter(wrapper)
-
-    # Convert unconstrained parameters to dictionaries for log_prob_upars
     upars_trans_half_dict = converter.matrix_to_dict(upars_trans_half)
     upars_trans_half_inv_dict = converter.matrix_to_dict(upars_trans_half_inv)
 
     try:
-        # Compute log probabilities using log_prob_upars (automatically summed across parameters)
         log_prob_half_trans = log_prob_upars(wrapper, upars_trans_half_dict)
         log_prob_half_trans_inv = log_prob_upars(wrapper, upars_trans_half_inv_dict)
 
-        # Adjust for Jacobian
+        # Jacobian adjustment
         log_prob_half_trans_inv = (
             log_prob_half_trans_inv
             - np.sum(np.log(total_scaling))
@@ -178,7 +174,6 @@ def loo_moment_match_split(
 
     try:
         log_lik_result = log_lik_i_upars(wrapper, upars_trans_half_dict, pointwise=True)
-
         log_liki_half = extract_log_likelihood_for_observation(log_lik_result, i)
     except Exception as e:
         raise ValueError(

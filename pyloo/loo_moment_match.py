@@ -2,6 +2,7 @@
 
 import logging
 import warnings
+from copy import deepcopy
 from typing import Literal
 
 import numpy as np
@@ -21,12 +22,18 @@ from .moment_matching_utils import (
     log_prob_upars,
 )
 from .split_moment_matching import loo_moment_match_split
-from .utils import _logsumexp
+from .utils import _logsumexp, wrap_xarray_ufunc
 from .wrapper.pymc_wrapper import PyMCWrapper
 
 __all__ = ["loo_moment_match"]
 
 _log = logging.getLogger(__name__)
+
+if not logging.root.handlers:
+    _log.setLevel(logging.INFO)
+    if len(_log.handlers) == 0:
+        handler = logging.StreamHandler()
+        _log.addHandler(handler)
 
 
 def loo_moment_match(
@@ -136,6 +143,7 @@ def loo_moment_match(
     loo_kfold : K-fold cross-validation
     """
     converter = ParameterConverter(wrapper)
+    loo_data = deepcopy(loo_data)
 
     unconstrained = wrapper.get_unconstrained_parameters()
     upars = converter.dict_to_matrix(unconstrained)
@@ -162,7 +170,6 @@ def loo_moment_match(
 
         try:
             log_lik_result = log_lik_i_upars(wrapper, unconstrained, pointwise=True)
-
             log_liki = extract_log_likelihood_for_observation(log_lik_result, i)
         except Exception as e:
             raise ValueError(
@@ -180,14 +187,15 @@ def loo_moment_match(
             r_eff_i = float(ess_i / len(log_liki))
 
         is_obj = compute_importance_weights(-log_liki, method=method, reff=r_eff_i)
-        lwi, _ = is_obj
+        lwi, initial_k = is_obj
+        _log.info(f"Observation {i}: Initial Pareto k = {initial_k:.4f}")
 
         total_shift = np.zeros(upars.shape[1])
         total_scaling = np.ones(upars.shape[1])
         total_mapping = np.eye(upars.shape[1])
 
         iterind = 1
-        _log.info(f"Processing observation {i} with Pareto k = {ks[i]}")
+        _log.info(f"Processing observation {i} with Pareto k = {ks[i]:.4f}")
 
         while iterind <= max_iters and ki > k_threshold:
             if iterind == max_iters:
@@ -201,54 +209,7 @@ def loo_moment_match(
 
             # Match means
             trans = shift(uparsi, lwi)
-            quantities_i = update_quantities_i(
-                wrapper,
-                trans["upars"],
-                i,
-                orig_log_prob,
-                r_eff_i,
-                converter,
-                method,
-            )
-
-            if quantities_i["ki"] < ki:
-                uparsi = trans["upars"]
-                total_shift += trans["shift"]
-                lwi = quantities_i["lwi"]
-                ki = quantities_i["ki"]
-                kfi = quantities_i["kfi"]
-                log_liki = quantities_i["log_liki"]
-                iterind += 1
-                improved = True
-                continue
-
-            # Match means and marginal variances
-            trans = shift_and_scale(uparsi, lwi)
-            quantities_i = update_quantities_i(
-                wrapper,
-                trans["upars"],
-                i,
-                orig_log_prob,
-                r_eff_i,
-                converter,
-                method,
-            )
-
-            if quantities_i["ki"] < ki:
-                uparsi = trans["upars"]
-                total_shift += trans["shift"]
-                total_scaling *= trans["scaling"]
-                lwi = quantities_i["lwi"]
-                ki = quantities_i["ki"]
-                kfi = quantities_i["kfi"]
-                log_liki = quantities_i["log_liki"]
-                iterind += 1
-                improved = True
-                continue
-
-            # Match means and covariances
-            if cov and not improved:
-                trans = shift_and_cov(uparsi, lwi)
+            try:
                 quantities_i = update_quantities_i(
                     wrapper,
                     trans["upars"],
@@ -258,19 +219,99 @@ def loo_moment_match(
                     converter,
                     method,
                 )
+            except Exception as e:
+                _log.warning(f"Error computing quantities for observation {i}: {e}")
+                break
 
-                if quantities_i["ki"] < ki:
+            if quantities_i["ki"] < ki:
+                _log.info(
+                    f"Observation {i}: Mean shift improved Pareto k from {ki:.4f} to"
+                    f" {quantities_i['ki']:.4f}"
+                )
+                uparsi = trans["upars"]
+                total_shift += trans["shift"]
+                lwi = quantities_i["lwi"]
+                ki = quantities_i["ki"]
+                kfi = quantities_i["kfi"]
+                log_liki = quantities_i["log_liki"]
+                iterind += 1
+                improved = True
+
+            # Match means and marginal variances
+            trans = shift_and_scale(uparsi, lwi)
+            try:
+                quantities_i_scale = update_quantities_i(
+                    wrapper,
+                    trans["upars"],
+                    i,
+                    orig_log_prob,
+                    r_eff_i,
+                    converter,
+                    method,
+                )
+            except Exception as e:
+                _log.warning(
+                    f"Error computing scale quantities for observation {i}: {e}"
+                )
+                if improved:
+                    continue
+                else:
+                    break
+
+            if quantities_i_scale["ki"] < ki:
+                _log.info(
+                    f"Observation {i}: Mean and scale shift improved Pareto k from"
+                    f" {ki:.4f} to {quantities_i_scale['ki']:.4f}"
+                )
+                uparsi = trans["upars"]
+                total_shift += trans["shift"]
+                total_scaling *= trans["scaling"]
+                lwi = quantities_i_scale["lwi"]
+                ki = quantities_i_scale["ki"]
+                kfi = quantities_i_scale["kfi"]
+                log_liki = quantities_i_scale["log_liki"]
+                iterind += 1
+                improved = True
+
+            # Match means and covariances
+            if cov:
+                trans = shift_and_cov(uparsi, lwi)
+                try:
+                    quantities_i_cov = update_quantities_i(
+                        wrapper,
+                        trans["upars"],
+                        i,
+                        orig_log_prob,
+                        r_eff_i,
+                        converter,
+                        method,
+                    )
+                except Exception as e:
+                    _log.warning(
+                        "Error computing covariance quantities for observation"
+                        f" {i}: {e}"
+                    )
+                    if improved:
+                        continue
+                    else:
+                        break
+
+                if quantities_i_cov["ki"] < ki:
+                    _log.info(
+                        f"Observation {i}: Covariance shift improved Pareto k from"
+                        f" {ki:.4f} to {quantities_i_cov['ki']:.4f}"
+                    )
                     uparsi = trans["upars"]
                     total_shift += trans["shift"]
                     total_mapping = trans["mapping"] @ total_mapping
-                    lwi = quantities_i["lwi"]
-                    ki = quantities_i["ki"]
-                    kfi = quantities_i["kfi"]
-                    log_liki = quantities_i["log_liki"]
+                    lwi = quantities_i_cov["lwi"]
+                    ki = quantities_i_cov["ki"]
+                    kfi = quantities_i_cov["kfi"]
+                    log_liki = quantities_i_cov["log_liki"]
                     iterind += 1
                     improved = True
-                    continue
 
+            # Only break if no transformation improved k
             if not improved:
                 _log.info(
                     f"Observation {i}: No further improvement after"
@@ -303,10 +344,12 @@ def loo_moment_match(
             lwi = split_result["lwi"]
             r_eff_i = split_result["r_eff_i"]
 
-        loo_data.elpd_loo = _logsumexp(log_liki + lwi)
-        if hasattr(loo_data, "pareto_k"):
-            loo_data.pareto_k[i] = ki
-        kfs[i] = kfi
+        new_elpd_i = _logsumexp(log_liki + lwi)
+
+        # Update loo_i data with new estimates
+        update_loo_data_i(loo_data, wrapper, i, new_elpd_i, ki, kfi, kfs)
+
+    summary(loo_data, ks, k_threshold)
 
     if np.any(ks > k_threshold):
         warnings.warn(
@@ -323,6 +366,169 @@ def loo_moment_match(
         )
 
     return loo_data
+
+
+def update_loo_data_i(
+    loo_data: ELPDData,
+    wrapper: PyMCWrapper,
+    i: int,
+    new_elpd_i: float,
+    ki: float,
+    kfi: float,
+    kfs: np.ndarray,
+) -> None:
+    """Update LOO data for a specific observation with new ELPD and k values.
+
+    Parameters
+    ----------
+    loo_data : ELPDData
+        The LOO data object to update
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    i : int
+        Observation index
+    new_elpd_i : float
+        New ELPD value for the observation
+    ki : float
+        New Pareto k value
+    kfi : float
+        New Pareto k value for full distribution
+    kfs : np.ndarray
+        Array to store kfi values
+    """
+    if hasattr(loo_data, "loo_i"):
+        # Multi-observation case
+        old_elpd_i = loo_data.loo_i.values[i]
+        loo_data.loo_i.values[i] = new_elpd_i
+
+        old_elpd_total = loo_data["elpd_loo"]
+        loo_data["elpd_loo"] = loo_data.loo_i.values.sum()
+        new_elpd_total = loo_data["elpd_loo"]
+
+        # Update SE
+        n_data_points = loo_data.n_data_points
+        loo_data["se"] = (n_data_points * np.var(loo_data.loo_i.values)) ** 0.5
+
+        update_stats(loo_data, wrapper)
+
+        _log.info(
+            f"Observation {i}: ELPD changed from {old_elpd_i:.4f} to"
+            f" {new_elpd_i:.4f} (diff: {new_elpd_i - old_elpd_i:.4f})"
+        )
+        _log.info(
+            f"Total ELPD changed from {old_elpd_total:.4f} to"
+            f" {new_elpd_total:.4f} (diff: {new_elpd_total - old_elpd_total:.4f})"
+        )
+    else:
+        # Single observation case
+        old_elpd_total = loo_data["elpd_loo"]
+        loo_data["elpd_loo"] = new_elpd_i
+
+        update_stats(loo_data, wrapper)
+
+        _log.info(
+            f"Total ELPD changed from {old_elpd_total:.4f} to {new_elpd_i:.4f} (diff:"
+            f" {new_elpd_i - old_elpd_total:.4f})"
+        )
+
+    # Update Pareto k
+    if hasattr(loo_data, "pareto_k"):
+        old_k = loo_data.pareto_k.values[i]
+        loo_data.pareto_k.values[i] = ki
+        _log.info(
+            f"Observation {i}: Pareto k changed from {old_k:.4f} to"
+            f" {ki:.4f} (improvement: {old_k - ki:.4f})"
+        )
+
+    kfs[i] = kfi
+
+
+def update_stats(
+    loo_data: ELPDData, wrapper: PyMCWrapper, scale: str | None = None
+) -> None:
+    """Update derived statistics like p_loo and looic in the LOO data.
+
+    Parameters
+    ----------
+    loo_data : ELPDData
+        The LOO data object to update
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    scale : str, optional
+        Output scale for LOO. If None, uses the scale from loo_data.
+    """
+    if hasattr(wrapper.idata, "log_likelihood"):
+        log_likelihood = wrapper.idata.log_likelihood
+        var_name = list(log_likelihood.data_vars)[0]
+        log_likelihood = log_likelihood[var_name].stack(__sample__=("chain", "draw"))
+        n_samples = log_likelihood.shape[-1]
+
+        scale = loo_data.get("scale", "log") if scale is None else scale
+        if scale == "deviance":
+            scale_value = -2
+        elif scale == "log":
+            scale_value = 1
+        elif scale == "negative_log":
+            scale_value = -1
+        else:
+            scale_value = 1  # Default to log scale if unknown
+
+        ufunc_kwargs = {"n_dims": 1, "ravel": False}
+        kwargs = {"input_core_dims": [["__sample__"]]}
+
+        lppd = np.sum(
+            wrap_xarray_ufunc(
+                _logsumexp,
+                log_likelihood,
+                func_kwargs={"b_inv": n_samples},
+                ufunc_kwargs=ufunc_kwargs,
+                **kwargs,
+            ).values
+        )
+
+        loo_data["p_loo"] = lppd - loo_data["elpd_loo"] / scale_value
+
+        if "looic" in loo_data:
+            loo_data["looic"] = -2 * loo_data["elpd_loo"]
+            if "se" in loo_data:
+                loo_data["looic_se"] = 2 * loo_data["se"]
+
+
+def summary(loo_data: ELPDData, original_ks: np.ndarray, k_threshold: float) -> None:
+    """Log a summary of improvements in Pareto k values.
+
+    Parameters
+    ----------
+    loo_data : ELPDData
+        The LOO data object
+    original_ks : np.ndarray
+        Original Pareto k values
+    k_threshold : float
+        Threshold for Pareto k values
+    """
+    if hasattr(loo_data, "pareto_k"):
+        improved_indices = np.where(loo_data.pareto_k.values < original_ks)[0]
+        n_improved = len(improved_indices)
+
+        if n_improved > 0:
+            avg_improvement = np.mean(
+                original_ks[improved_indices]
+                - loo_data.pareto_k.values[improved_indices]
+            )
+            _log.info(
+                f"Improved Pareto k for {n_improved} observations. Average improvement:"
+                f" {avg_improvement:.4f}"
+            )
+        else:
+            _log.info("No improvements in Pareto k values")
+
+        # Observations that still have high Pareto k values
+        high_k_indices = np.where(loo_data.pareto_k.values > k_threshold)[0]
+        if len(high_k_indices) > 0:
+            _log.info(
+                f"{len(high_k_indices)} observations still have Pareto k >"
+                f" {k_threshold}"
+            )
 
 
 def update_quantities_i(
@@ -374,23 +580,18 @@ def update_quantities_i(
             f"Error computing log likelihood for observation {i}: {e}"
         ) from e
 
+    log_liki_new = np.array(log_liki_new, dtype=np.float64)
+    log_prob_new = np.array(log_prob_new, dtype=np.float64)
+    orig_log_prob = np.array(orig_log_prob, dtype=np.float64)
+
     lr = -log_liki_new + log_prob_new - orig_log_prob
     lr[np.isnan(lr)] = -np.inf
-    stable_mask = log_prob_new > orig_log_prob
-    lwi = -log_liki_new + log_prob_new
 
-    lwi[stable_mask] = lwi[stable_mask] - (
-        log_prob_new[stable_mask]
-        + np.log1p(np.exp(orig_log_prob[stable_mask] - log_prob_new[stable_mask]))
-    )
-    lwi[~stable_mask] = lwi[~stable_mask] - (
-        orig_log_prob[~stable_mask]
-        + np.log1p(np.exp(log_prob_new[~stable_mask] - orig_log_prob[~stable_mask]))
-    )
+    lwi_new, ki_new = compute_importance_weights(lr, method=method, reff=r_eff_i)
 
-    lwi[np.isnan(lwi)] = -np.inf
-    lwi_new, ki_new = compute_importance_weights(lwi, method=method, reff=r_eff_i)
-    lwfi_new, kfi_new = compute_importance_weights(lr, method=method, reff=r_eff_i)
+    full_lr = log_prob_new - orig_log_prob
+    full_lr[np.isnan(full_lr)] = -np.inf
+    lwfi_new, kfi_new = compute_importance_weights(full_lr, method=method, reff=r_eff_i)
 
     return {
         "lwi": lwi_new,
