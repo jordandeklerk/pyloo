@@ -154,10 +154,14 @@ def loo_moment_match(
 
     orig_log_prob = log_prob_upars(wrapper, unconstrained)
 
+    # Check if we have pointwise results
     if hasattr(loo_data, "pareto_k"):
-        ks = loo_data.pareto_k
+        ks = loo_data.pareto_k.values
     else:
-        ks = loo_data.diagnostics["pareto_k"]
+        raise ValueError(
+            "Moment matching requires pointwise LOO results with Pareto k values. "
+            "Please recompute LOO with pointwise=True before using moment_match=True."
+        )
 
     bad_obs = np.where(ks > k_threshold)[0]
     _log.info(f"Found {len(bad_obs)} observations with Pareto k > {k_threshold}")

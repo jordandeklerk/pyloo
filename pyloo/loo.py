@@ -157,12 +157,12 @@ def loo(
 
             print(loo_results.pareto_k)
 
-        See Also
-        --------
-        loo_subsample : Subsampled LOO-CV computation
-        reloo : Exact LOO-CV computation for PyMC models
-        loo_moment_match : LOO-CV computation using moment matching
-        loo_kfold : K-fold cross-validation
+    See Also
+    --------
+    loo_subsample : Subsampled LOO-CV computation
+    reloo : Exact LOO-CV computation for PyMC models
+    loo_moment_match : LOO-CV computation using moment matching
+    loo_kfold : K-fold cross-validation
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
@@ -252,19 +252,13 @@ def loo(
 
             warnings.warn(
                 "Estimated shape parameter of Pareto distribution is greater than"
-                f" {good_k:.2f} for {n_high_k} observations. You should consider using"
-                " a more robust model, this is because importance sampling is less"
-                " likely to work well if the marginal posterior and LOO posterior are"
-                " very different. This is more likely to happen with a non-robust"
-                " model and highly influential observations.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-            warnings.warn(
-                f"Found {n_high_k} observations with high Pareto k estimates."
-                " If you're using a PyMC model, consider using pyloo.reloo()"
-                " to compute exact LOO for these problematic observations.",
+                f" {good_k:.2f} for {n_high_k} observations. This indicates that"
+                " importance sampling may be unreliable because the marginal posterior"
+                " and LOO posterior are very different. You should consider using a"
+                " more robust model, especially with highly influential observations."
+                " If you're using a PyMC model, consider using reloo() to compute"
+                " exact LOO for these problematic observations, or moment matching to"
+                " improve the estimates.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -281,13 +275,20 @@ def loo(
                 UserWarning,
                 stacklevel=2,
             )
+
             warn_mg = True
 
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
     xarray_kwargs = {"input_core_dims": [["__sample__"]]}
+
     loo_lppd_i = scale_value * wrap_xarray_ufunc(
-        _logsumexp, log_weights, ufunc_kwargs=ufunc_kwargs, **xarray_kwargs
+        _logsumexp,
+        log_weights,
+        func_kwargs={"b_inv": n_samples},
+        ufunc_kwargs=ufunc_kwargs,
+        **xarray_kwargs,
     )
+
     loo_lppd = loo_lppd_i.values.sum()
     loo_lppd_se = (n_data_points * np.var(loo_lppd_i.values)) ** 0.5
 
@@ -302,7 +303,6 @@ def loo(
     )
 
     p_loo = lppd - loo_lppd / scale_value
-
     looic = -2 * loo_lppd
     looic_se = 2 * loo_lppd_se
 
@@ -341,23 +341,12 @@ def loo(
 
         result = ELPDData(data=result_data, index=result_index)
 
-        # Moment matching
+        # We can't do moment matching without pointwise values
         if moment_match:
-            wrapper = kwargs.get("wrapper", None)
-            if wrapper is None:
-                raise ValueError(
-                    "PyMC model wrapper must be provided when moment_match=True"
-                )
-
-            mm_kwargs = {
-                "max_iters": kwargs.get("max_iters", 30),
-                "k_threshold": kwargs.get("k_threshold", None),
-                "split": kwargs.get("split", True),
-                "cov": kwargs.get("cov", True),
-                "method": method,
-            }
-
-            result = loo_moment_match(wrapper, result, **mm_kwargs)
+            raise ValueError(
+                "Moment matching requires pointwise LOO results. "
+                "Please set pointwise=True when using moment_match=True."
+            )
 
         return result
 
