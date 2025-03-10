@@ -374,169 +374,6 @@ def loo_moment_match(
     return loo_data
 
 
-def update_loo_data_i(
-    loo_data: ELPDData,
-    wrapper: PyMCWrapper,
-    i: int,
-    new_elpd_i: float,
-    ki: float,
-    kfi: float,
-    kfs: np.ndarray,
-) -> None:
-    """Update LOO data for a specific observation with new ELPD and k values.
-
-    Parameters
-    ----------
-    loo_data : ELPDData
-        The LOO data object to update
-    wrapper : PyMCWrapper
-        PyMC model wrapper instance
-    i : int
-        Observation index
-    new_elpd_i : float
-        New ELPD value for the observation
-    ki : float
-        New Pareto k value
-    kfi : float
-        New Pareto k value for full distribution
-    kfs : np.ndarray
-        Array to store kfi values
-    """
-    if hasattr(loo_data, "loo_i"):
-        # Multi-observation case
-        old_elpd_i = loo_data.loo_i.values[i]
-        loo_data.loo_i.values[i] = new_elpd_i
-
-        old_elpd_total = loo_data["elpd_loo"]
-        loo_data["elpd_loo"] = loo_data.loo_i.values.sum()
-        new_elpd_total = loo_data["elpd_loo"]
-
-        # Update SE
-        n_data_points = loo_data.n_data_points
-        loo_data["se"] = (n_data_points * np.var(loo_data.loo_i.values)) ** 0.5
-
-        update_stats(loo_data, wrapper)
-
-        _log.info(
-            f"Observation {i}: ELPD changed from {old_elpd_i:.4f} to"
-            f" {new_elpd_i:.4f} (diff: {new_elpd_i - old_elpd_i:.4f})"
-        )
-        _log.info(
-            f"Total ELPD changed from {old_elpd_total:.4f} to"
-            f" {new_elpd_total:.4f} (diff: {new_elpd_total - old_elpd_total:.4f})"
-        )
-    else:
-        # Single observation case
-        old_elpd_total = loo_data["elpd_loo"]
-        loo_data["elpd_loo"] = new_elpd_i
-
-        update_stats(loo_data, wrapper)
-
-        _log.info(
-            f"Total ELPD changed from {old_elpd_total:.4f} to {new_elpd_i:.4f} (diff:"
-            f" {new_elpd_i - old_elpd_total:.4f})"
-        )
-
-    # Update Pareto k
-    if hasattr(loo_data, "pareto_k"):
-        old_k = loo_data.pareto_k.values[i]
-        loo_data.pareto_k.values[i] = ki
-        _log.info(
-            f"Observation {i}: Pareto k changed from {old_k:.4f} to"
-            f" {ki:.4f} (improvement: {old_k - ki:.4f})"
-        )
-
-    kfs[i] = kfi
-
-
-def update_stats(
-    loo_data: ELPDData, wrapper: PyMCWrapper, scale: str | None = None
-) -> None:
-    """Update derived statistics like p_loo and looic in the LOO data.
-
-    Parameters
-    ----------
-    loo_data : ELPDData
-        The LOO data object to update
-    wrapper : PyMCWrapper
-        PyMC model wrapper instance
-    scale : str, optional
-        Output scale for LOO. If None, uses the scale from loo_data.
-    """
-    if hasattr(wrapper.idata, "log_likelihood"):
-        log_likelihood = wrapper.idata.log_likelihood
-        var_name = list(log_likelihood.data_vars)[0]
-        log_likelihood = log_likelihood[var_name].stack(__sample__=("chain", "draw"))
-        n_samples = log_likelihood.shape[-1]
-
-        scale = loo_data.get("scale", "log") if scale is None else scale
-        if scale == "deviance":
-            scale_value = -2
-        elif scale == "log":
-            scale_value = 1
-        elif scale == "negative_log":
-            scale_value = -1
-        else:
-            scale_value = 1  # Default to log scale if unknown
-
-        ufunc_kwargs = {"n_dims": 1, "ravel": False}
-        kwargs = {"input_core_dims": [["__sample__"]]}
-
-        lppd = np.sum(
-            wrap_xarray_ufunc(
-                _logsumexp,
-                log_likelihood,
-                func_kwargs={"b_inv": n_samples},
-                ufunc_kwargs=ufunc_kwargs,
-                **kwargs,
-            ).values
-        )
-
-        loo_data["p_loo"] = lppd - loo_data["elpd_loo"] / scale_value
-
-        if "looic" in loo_data:
-            loo_data["looic"] = -2 * loo_data["elpd_loo"]
-            if "se" in loo_data:
-                loo_data["looic_se"] = 2 * loo_data["se"]
-
-
-def summary(loo_data: ELPDData, original_ks: np.ndarray, k_threshold: float) -> None:
-    """Log a summary of improvements in Pareto k values.
-
-    Parameters
-    ----------
-    loo_data : ELPDData
-        The LOO data object
-    original_ks : np.ndarray
-        Original Pareto k values
-    k_threshold : float
-        Threshold for Pareto k values
-    """
-    if hasattr(loo_data, "pareto_k"):
-        improved_indices = np.where(loo_data.pareto_k.values < original_ks)[0]
-        n_improved = len(improved_indices)
-
-        if n_improved > 0:
-            avg_improvement = np.mean(
-                original_ks[improved_indices]
-                - loo_data.pareto_k.values[improved_indices]
-            )
-            _log.info(
-                f"Improved Pareto k for {n_improved} observations. Average improvement:"
-                f" {avg_improvement:.4f}"
-            )
-        else:
-            _log.info("No improvements in Pareto k values")
-
-        # Observations that still have high Pareto k values
-        high_k_indices = np.where(loo_data.pareto_k.values > k_threshold)[0]
-        if len(high_k_indices) > 0:
-            _log.info(
-                f"{len(high_k_indices)} observations still have Pareto k >"
-                f" {k_threshold}"
-            )
-
-
 def update_quantities_i(
     wrapper: PyMCWrapper,
     upars: np.ndarray,
@@ -704,3 +541,166 @@ def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndCovResult:
     upars_new = upars_new + mean_weighted[None, :]
 
     return {"upars": upars_new, "shift": shift, "mapping": mapping}
+
+
+def update_loo_data_i(
+    loo_data: ELPDData,
+    wrapper: PyMCWrapper,
+    i: int,
+    new_elpd_i: float,
+    ki: float,
+    kfi: float,
+    kfs: np.ndarray,
+) -> None:
+    """Update LOO data for a specific observation with new ELPD and k values.
+
+    Parameters
+    ----------
+    loo_data : ELPDData
+        The LOO data object to update
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    i : int
+        Observation index
+    new_elpd_i : float
+        New ELPD value for the observation
+    ki : float
+        New Pareto k value
+    kfi : float
+        New Pareto k value for full distribution
+    kfs : np.ndarray
+        Array to store kfi values
+    """
+    if hasattr(loo_data, "loo_i"):
+        # Multi-observation case
+        old_elpd_i = loo_data.loo_i.values[i]
+        loo_data.loo_i.values[i] = new_elpd_i
+
+        old_elpd_total = loo_data["elpd_loo"]
+        loo_data["elpd_loo"] = loo_data.loo_i.values.sum()
+        new_elpd_total = loo_data["elpd_loo"]
+
+        # Update SE
+        n_data_points = loo_data.n_data_points
+        loo_data["se"] = (n_data_points * np.var(loo_data.loo_i.values)) ** 0.5
+
+        update_stats(loo_data, wrapper)
+
+        _log.info(
+            f"Observation {i}: ELPD changed from {old_elpd_i:.4f} to"
+            f" {new_elpd_i:.4f} (diff: {new_elpd_i - old_elpd_i:.4f})"
+        )
+        _log.info(
+            f"Total ELPD changed from {old_elpd_total:.4f} to"
+            f" {new_elpd_total:.4f} (diff: {new_elpd_total - old_elpd_total:.4f})"
+        )
+    else:
+        # Single observation case
+        old_elpd_total = loo_data["elpd_loo"]
+        loo_data["elpd_loo"] = new_elpd_i
+
+        update_stats(loo_data, wrapper)
+
+        _log.info(
+            f"Total ELPD changed from {old_elpd_total:.4f} to {new_elpd_i:.4f} (diff:"
+            f" {new_elpd_i - old_elpd_total:.4f})"
+        )
+
+    # Update Pareto k
+    if hasattr(loo_data, "pareto_k"):
+        old_k = loo_data.pareto_k.values[i]
+        loo_data.pareto_k.values[i] = ki
+        _log.info(
+            f"Observation {i}: Pareto k changed from {old_k:.4f} to"
+            f" {ki:.4f} (improvement: {old_k - ki:.4f})"
+        )
+
+    kfs[i] = kfi
+
+
+def update_stats(
+    loo_data: ELPDData, wrapper: PyMCWrapper, scale: str | None = None
+) -> None:
+    """Update derived statistics like p_loo and looic in the LOO data.
+
+    Parameters
+    ----------
+    loo_data : ELPDData
+        The LOO data object to update
+    wrapper : PyMCWrapper
+        PyMC model wrapper instance
+    scale : str, optional
+        Output scale for LOO. If None, uses the scale from loo_data.
+    """
+    if hasattr(wrapper.idata, "log_likelihood"):
+        log_likelihood = wrapper.idata.log_likelihood
+        var_name = list(log_likelihood.data_vars)[0]
+        log_likelihood = log_likelihood[var_name].stack(__sample__=("chain", "draw"))
+        n_samples = log_likelihood.shape[-1]
+
+        scale = loo_data.get("scale", "log") if scale is None else scale
+        if scale == "deviance":
+            scale_value = -2
+        elif scale == "log":
+            scale_value = 1
+        elif scale == "negative_log":
+            scale_value = -1
+        else:
+            scale_value = 1  # Default to log scale if unknown
+
+        ufunc_kwargs = {"n_dims": 1, "ravel": False}
+        kwargs = {"input_core_dims": [["__sample__"]]}
+
+        lppd = np.sum(
+            wrap_xarray_ufunc(
+                _logsumexp,
+                log_likelihood,
+                func_kwargs={"b_inv": n_samples},
+                ufunc_kwargs=ufunc_kwargs,
+                **kwargs,
+            ).values
+        )
+
+        loo_data["p_loo"] = lppd - loo_data["elpd_loo"] / scale_value
+
+        if "looic" in loo_data:
+            loo_data["looic"] = -2 * loo_data["elpd_loo"]
+            if "se" in loo_data:
+                loo_data["looic_se"] = 2 * loo_data["se"]
+
+
+def summary(loo_data: ELPDData, original_ks: np.ndarray, k_threshold: float) -> None:
+    """Log a summary of improvements in Pareto k values.
+
+    Parameters
+    ----------
+    loo_data : ELPDData
+        The LOO data object
+    original_ks : np.ndarray
+        Original Pareto k values
+    k_threshold : float
+        Threshold for Pareto k values
+    """
+    if hasattr(loo_data, "pareto_k"):
+        improved_indices = np.where(loo_data.pareto_k.values < original_ks)[0]
+        n_improved = len(improved_indices)
+
+        if n_improved > 0:
+            avg_improvement = np.mean(
+                original_ks[improved_indices]
+                - loo_data.pareto_k.values[improved_indices]
+            )
+            _log.info(
+                f"Improved Pareto k for {n_improved} observations. Average improvement:"
+                f" {avg_improvement:.4f}"
+            )
+        else:
+            _log.info("No improvements in Pareto k values")
+
+        # Observations that still have high Pareto k values
+        high_k_indices = np.where(loo_data.pareto_k.values > k_threshold)[0]
+        if len(high_k_indices) > 0:
+            _log.info(
+                f"{len(high_k_indices)} observations still have Pareto k >"
+                f" {k_threshold}"
+            )
