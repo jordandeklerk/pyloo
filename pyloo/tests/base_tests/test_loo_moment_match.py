@@ -16,7 +16,7 @@ from ...loo_moment_match import (
     shift_and_scale,
     update_quantities_i,
 )
-from ...moment_matching_utils import (
+from ...moment_match_helpers import (
     ParameterConverter,
     _initialize_array,
     log_lik_i_upars,
