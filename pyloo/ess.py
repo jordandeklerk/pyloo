@@ -1,7 +1,7 @@
 """ESS functions for pyloo with adaptations from Arviz."""
 
 import multiprocessing as mp
-from typing import Callable, Literal, Optional, Tuple, Union
+from typing import Callable, Literal
 
 import numpy as np
 from scipy import stats
@@ -10,13 +10,13 @@ from .utils import autocov
 
 
 def rel_eff(
-    x: Union[np.ndarray, Callable],
-    chain_id: Optional[np.ndarray] = None,
+    x: np.ndarray | Callable,
+    chain_id: np.ndarray | None = None,
     cores: int = 1,
-    data: Optional[np.ndarray] = None,
-    draws: Optional[np.ndarray] = None,
+    data: np.ndarray | None = None,
+    draws: np.ndarray | None = None,
     method: Literal["bulk", "tail", "mean", "sd", "median", "mad", "local"] = "bulk",
-    prob: Optional[Union[float, Tuple[float, float]]] = None,
+    prob: float | tuple[float, float] | None = None,
 ) -> np.ndarray:
     """Compute the MCMC effective sample size divided by the total sample size.
 
@@ -121,8 +121,8 @@ def rel_eff(
 
 
 def psis_eff_size(
-    w: np.ndarray, r_eff: Optional[Union[float, np.ndarray]] = None
-) -> Union[float, np.ndarray]:
+    w: np.ndarray, r_eff: float | np.ndarray | None = None
+) -> float | np.ndarray:
     """Compute effective sample size for Pareto Smoothed Importance Sampling (PSIS).
 
     Parameters
@@ -182,7 +182,7 @@ def psis_eff_size(
 def mcmc_eff_size(
     sims: np.ndarray,
     method: str = "bulk",
-    prob: Optional[Union[float, Tuple[float, float]]] = None,
+    prob: float | tuple[float, float] | None = None,
 ) -> float:
     """Calculate MCMC effective sample size using various methods.
 
@@ -313,9 +313,7 @@ def _ess_bulk(x: np.ndarray) -> float:
     return min(_ess_raw(z), x.size)
 
 
-def _ess_tail(
-    x: np.ndarray, prob: Optional[Union[float, Tuple[float, float]]] = None
-) -> float:
+def _ess_tail(x: np.ndarray, prob: float | tuple[float, float] | None = None) -> float:
     """Compute tail ESS."""
     if prob is None:
         prob_low, prob_high = 0.05, 0.95
@@ -355,7 +353,7 @@ def _ess_mad(x: np.ndarray) -> float:
     return min(_ess_raw(_split_chains(np.abs(x - median) <= mad)), x.size)
 
 
-def _ess_local(x: np.ndarray, prob: Tuple[float, float]) -> float:
+def _ess_local(x: np.ndarray, prob: tuple[float, float]) -> float:
     """Compute ESS for a specific probability region."""
     lower, upper = prob
     q1 = np.quantile(x, lower)
@@ -421,9 +419,9 @@ def _relative_eff_function(
     chain_id: np.ndarray,
     cores: int,
     data: np.ndarray,
-    draws: Optional[np.ndarray] = None,
+    draws: np.ndarray | None = None,
     method: Literal["bulk", "tail", "mean", "sd", "median", "mad", "local"] = "bulk",
-    prob: Optional[Union[float, Tuple[float, float]]] = None,
+    prob: float | tuple[float, float] | None = None,
 ) -> np.ndarray:
     """Compute relative efficiency for a function that returns likelihood values."""
     if data is None:

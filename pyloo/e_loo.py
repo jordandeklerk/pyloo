@@ -1,7 +1,7 @@
 """Functions for computing weighted expectations using importance sampling."""
 
 from dataclasses import dataclass
-from typing import Optional, Sequence, Union
+from typing import Sequence
 
 import numpy as np
 
@@ -15,28 +15,28 @@ class ExpectationResult:
 
     Attributes
     ----------
-    value : Union[float, np.ndarray]
+    value : float | np.ndarray
         The computed expectation value. For matrix inputs with type="quantile"
         and multiple probabilities, this will be a matrix with shape
         (len(probs), n_cols). Otherwise it will be a scalar or vector.
-    pareto_k : Union[float, np.ndarray]
+    pareto_k : float | np.ndarray
         Function-specific Pareto k diagnostic value(s). For matrix inputs this
         will be a vector with length n_cols, for vector inputs it will be a
         scalar.
     """
 
-    value: Union[float, np.ndarray]
-    pareto_k: Union[float, np.ndarray]
+    value: float | np.ndarray
+    pareto_k: float | np.ndarray
 
 
 def e_loo(
-    x: Union[np.ndarray, Sequence[float]],
+    x: np.ndarray | Sequence[float],
     log_weights: np.ndarray,
     *,
     type: str = "mean",
-    probs: Optional[Union[float, Sequence[float]]] = None,
-    log_ratios: Optional[np.ndarray] = None,
-    pareto_k: Optional[Union[float, np.ndarray]] = None,
+    probs: float | Sequence[float] | None = None,
+    log_ratios: np.ndarray | None = None,
+    pareto_k: float | np.ndarray | None = None,
 ) -> ExpectationResult:
     """Compute weighted expectations using importance sampling weights.
 
@@ -110,8 +110,8 @@ def _validate_inputs(
     x: np.ndarray,
     log_weights: np.ndarray,
     type: str,
-    probs: Optional[Union[float, Sequence[float]]],
-    log_ratios: Optional[np.ndarray],
+    probs: float | Sequence[float] | None,
+    log_ratios: np.ndarray | None,
 ) -> None:
     """Validate input parameters."""
     if x.ndim == 1:
@@ -195,7 +195,7 @@ def _wquant(x: np.ndarray, w: np.ndarray, probs: np.ndarray) -> np.ndarray:
 
 
 def _e_loo_khat(
-    x: Optional[np.ndarray],
+    x: np.ndarray | None,
     log_ratios: np.ndarray,
     tail_len: int = 20,
 ) -> float:
@@ -239,9 +239,9 @@ def _e_loo_vector(
     log_weights: np.ndarray,
     *,
     type: str = "mean",
-    probs: Optional[Union[float, Sequence[float]]] = None,
-    log_ratios: Optional[np.ndarray] = None,
-    pareto_k: Optional[float] = None,
+    probs: float | Sequence[float] | None = None,
+    log_ratios: np.ndarray | None = None,
+    pareto_k: float | None = None,
 ) -> ExpectationResult:
     """Compute expectations for vector inputs."""
     _validate_inputs(x, log_weights, type, probs, log_ratios)
@@ -272,9 +272,9 @@ def _e_loo_matrix(
     log_weights: np.ndarray,
     *,
     type: str = "mean",
-    probs: Optional[Union[float, Sequence[float]]] = None,
-    log_ratios: Optional[np.ndarray] = None,
-    pareto_k: Optional[np.ndarray] = None,
+    probs: float | Sequence[float] | None = None,
+    log_ratios: np.ndarray | None = None,
+    pareto_k: np.ndarray | None = None,
 ) -> ExpectationResult:
     """Compute expectations for matrix inputs."""
     _validate_inputs(x, log_weights, type, probs, log_ratios)
