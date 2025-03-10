@@ -108,7 +108,8 @@ def loo_moment_match(
         print(loo_orig.pareto_k)
 
     If there are many Pareto k estimates above the threshold, we can use moment matching to improve the estimates.
-    Moment matching allows us to match the mean and marginal variances of the posterior draws as well as the covariance matrix.
+    Moment matching allows us to match the mean and marginal variances of the posterior draws as well as the
+    covariance matrix.
 
     .. code-block:: python
 
@@ -121,8 +122,8 @@ def loo_moment_match(
             cov=True,
         )
 
-    If we want to use split moment matching, we can do the following. Split moment matching transforms only half of the draws
-    and computes a single elpd using multiple importance sampling.
+    If we want to use split moment matching, we can do the following. Split moment matching transforms only half
+    of the draws and computes a single elpd using multiple importance sampling.
 
     .. code-block:: python
 
