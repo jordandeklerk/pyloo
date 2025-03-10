@@ -209,7 +209,6 @@ def loo_subsample(
             )
 
     has_nan = np.any(np.isnan(log_likelihood.values))
-    has_inf = np.any(np.isinf(log_likelihood.values))
 
     if has_nan:
         warnings.warn(
@@ -219,18 +218,6 @@ def loo_subsample(
             stacklevel=2,
         )
         log_likelihood = log_likelihood.where(~np.isnan(log_likelihood), -1e10)
-
-    if has_inf:
-        warnings.warn(
-            "Infinite values detected in log-likelihood. These will be ignored in the"
-            " LOO calculation.",
-            UserWarning,
-            stacklevel=2,
-        )
-        log_likelihood = log_likelihood.where(
-            ~np.isinf(log_likelihood),
-            np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10),
-        )
 
     if observations is None:
         return loo(
@@ -375,21 +362,11 @@ def loo_subsample(
 
             warnings.warn(
                 "Estimated shape parameter of Pareto distribution is greater than"
-                f" {good_k:.2f} (k = {max_k:.2f}) for {n_high_k} observations. You"
-                " should consider using a more robust model, this is because"
-                " importance sampling is less likely to work well if the marginal"
-                " posterior and LOO posterior are very different. This is more likely"
-                " to happen with a non-robust model and highly influential"
-                " observations.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-            warnings.warn(
-                f"Found {n_high_k} observations with high Pareto k estimates."
-                " If you're using a PyMC model, consider using pyloo.reloo()"
-                " to compute exact LOO for these problematic observations. reloo"
-                " has functionality for subsampling as well.",
+                f" {good_k:.2f} for {n_high_k} observations. This indicates that"
+                " importance sampling may be unreliable because the marginal posterior"
+                " and LOO posterior are very different. If you're using a PyMC model,"
+                " consider using reloo() to compute exact LOO for these problematic"
+                " observations, or moment matching to improve the estimates.",
                 UserWarning,
                 stacklevel=2,
             )
