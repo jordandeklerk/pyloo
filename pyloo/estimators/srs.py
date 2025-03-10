@@ -19,7 +19,7 @@ class SimpleRandomSamplingEstimator(EstimatorProtocol[SRSEstimate]):
     """Implementation of the simple random sampling estimator."""
 
     def estimate(self, **kwargs: Any) -> SRSEstimate:
-        """Compute the simple random sampling estimator.
+        r"""Compute the simple random sampling estimator.
 
         This implements the standard SRS-WOR estimator for a population total.
         While simpler than the difference estimator, it doesn't leverage auxiliary
@@ -39,8 +39,19 @@ class SimpleRandomSamplingEstimator(EstimatorProtocol[SRSEstimate]):
 
         Notes
         -----
-        The SRS estimator for the population total is:
-            y_hat = N * mean(y)
+        The SRS estimator for the population total is
+
+        .. math::
+            \hat{y} = N \cdot \bar{y}
+
+        where :math:`\bar{y}` is the sample mean.
+
+        The variance of the estimator is
+
+        .. math::
+            V(\hat{y}) = N^2 \cdot (1 - \frac{m}{N}) \cdot \frac{s^2}{m}
+
+        where :math:`s^2` is the sample variance and :math:`m` is the sample size.
 
         The variance estimators include finite population correction factors
         to account for sampling without replacement from a finite population.
@@ -84,6 +95,7 @@ def srs_estimate(
         The estimated values and their variance
     """
     estimator = SimpleRandomSamplingEstimator()
+
     return estimator.estimate(y=y, N=N)
 
 
