@@ -198,7 +198,6 @@ def loo(
             )
 
     has_nan = np.any(np.isnan(log_likelihood.values))
-    has_inf = np.any(np.isinf(log_likelihood.values))
 
     if has_nan:
         warnings.warn(
@@ -208,18 +207,6 @@ def loo(
             stacklevel=2,
         )
         log_likelihood = log_likelihood.where(~np.isnan(log_likelihood), -1e10)
-
-    if has_inf:
-        warnings.warn(
-            "Infinite values detected in log-likelihood. These will be ignored in the"
-            " LOO calculation.",
-            UserWarning,
-            stacklevel=2,
-        )
-        log_likelihood = log_likelihood.where(
-            ~np.isinf(log_likelihood),
-            np.where(np.isinf(log_likelihood) & (log_likelihood > 0), 1e10, -1e10),
-        )
 
     try:
         method = method if isinstance(method, ISMethod) else ISMethod(method.lower())
@@ -284,7 +271,6 @@ def loo(
     loo_lppd_i = scale_value * wrap_xarray_ufunc(
         _logsumexp,
         log_weights,
-        func_kwargs={"b_inv": n_samples},
         ufunc_kwargs=ufunc_kwargs,
         **xarray_kwargs,
     )
@@ -318,7 +304,6 @@ def loo(
             n_data_points,
             warn_mg,
             scale,
-            n_data_points,
             looic,
             looic_se,
         ]
@@ -330,14 +315,17 @@ def loo(
             "n_data_points",
             "warning",
             "scale",
-            "subsample_size",
             "looic",
             "looic_se",
         ]
 
         if method == ISMethod.PSIS:
-            result_data.insert(-2, good_k)  # Insert before looic
-            result_index.insert(-2, "good_k")  # Insert before looic
+            result_data.append(good_k)
+            result_index.append("good_k")
+
+        # Add subsample_size if needed
+        result_data.append(n_data_points)
+        result_index.append("subsample_size")
 
         result = ELPDData(data=result_data, index=result_index)
 
@@ -366,7 +354,6 @@ def loo(
         warn_mg,
         loo_lppd_i.rename("loo_i"),
         scale,
-        n_data_points,
         looic,
         looic_se,
     ]
@@ -379,7 +366,6 @@ def loo(
         "warning",
         "loo_i",
         "scale",
-        "subsample_size",
         "looic",
         "looic_se",
     ]
@@ -387,11 +373,15 @@ def loo(
     if method == ISMethod.PSIS:
         result_data.append(diagnostic)
         result_index.append("pareto_k")
-        result_data.insert(-2, good_k)
-        result_index.insert(-2, "good_k")
+        result_data.append(good_k)
+        result_index.append("good_k")
     else:
         result_data.append(diagnostic)
         result_index.append("ess")
+
+    # Add subsample_size if needed
+    result_data.append(n_data_points)
+    result_index.append("subsample_size")
 
     result = ELPDData(data=result_data, index=result_index)
 
