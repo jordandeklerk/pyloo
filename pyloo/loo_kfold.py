@@ -1,7 +1,7 @@
 """K-fold cross-validation for PyMC models."""
 
-import copy
 import logging
+from copy import deepcopy
 from typing import Any
 
 import numpy as np
@@ -24,7 +24,7 @@ def kfold(
     var_name: str | None = None,
     scale: str | None = None,
     save_fits: bool = False,
-    progressbar: bool = True,
+    progressbar: bool = False,
     stratify: np.ndarray | None = None,
     random_seed: int | None = None,
     **kwargs: Any,
@@ -443,13 +443,13 @@ def _process_fold(
     try:
         train_data = observed_data[train_indices]
 
-        fold_wrapper = copy.deepcopy(wrapper)
+        fold_wrapper = deepcopy(wrapper)
         fold_wrapper.set_data({var_name: train_data})
         idata_k = fold_wrapper.sample_posterior(progressbar=progressbar, **kwargs)
 
         val_data = observed_data[val_indices]
 
-        val_wrapper = copy.deepcopy(fold_wrapper)
+        val_wrapper = deepcopy(fold_wrapper)
         val_wrapper.set_data({var_name: val_data})
         ll_k = pm.compute_log_likelihood(
             idata_k,
