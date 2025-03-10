@@ -17,7 +17,7 @@ class LPDApproximation(LooApproximation):
         log_likelihood: xr.DataArray,
         n_draws: Optional[int] = None,
     ) -> np.ndarray:
-        """Compute LPD approximation of LOO values.
+        r"""Compute LPD approximation of LOO values.
 
         Parameters
         ----------
@@ -35,7 +35,10 @@ class LPDApproximation(LooApproximation):
         Notes
         -----
         The LPD approximation is computed as:
-            log p(y_i | y)
+
+        .. math::
+            \log p(y_i | y)
+
         which is the log predictive density for each observation.
         This method uses all posterior draws to compute the predictive density,
         making it more accurate but computationally more expensive than PLPD.

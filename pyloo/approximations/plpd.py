@@ -31,7 +31,7 @@ class PLPDApproximation(LooApproximation):
         log_likelihood: xr.DataArray,
         n_draws: Optional[int] = None,
     ) -> np.ndarray:
-        """Compute PLPD approximation of LOO values.
+        r"""Compute PLPD approximation of LOO values.
 
         Parameters
         ----------
@@ -48,8 +48,11 @@ class PLPDApproximation(LooApproximation):
         Notes
         -----
         The PLPD approximation is computed as:
-            log p(y_i | E[θ])
-        where E[θ] is the posterior mean of the parameters.
+
+        .. math::
+            \log p(y_i | \mathbb{E}[\theta])
+
+        where :math:`\mathbb{E}[\theta]` is the posterior mean of the parameters.
 
         Raises
         ------
