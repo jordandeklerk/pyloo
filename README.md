@@ -237,8 +237,6 @@ with pm.Model() as model:
                      idata_kwargs={"log_likelihood": True})
 
 wrapper = PyMCWrapper(model, idata)
-
-# First compute standard LOO-CV
 loo_orig = pl.loo(idata, pointwise=True)
 ```
 
