@@ -32,14 +32,6 @@ def compute_importance_weights(
     """
     Unified importance sampling computation that supports multiple methods.
 
-    Notes
-    -----
-    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
-    named ``__sample__`` (recommended) this function will interpret this dimension as samples,
-    and all other dimensions as dimensions of the observed data, looping over them to
-    calculate the importance weights for each observation. If no ``__sample__`` dimension is
-    present or the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
-
     Parameters
     ----------
     log_weights : DataArray or (..., N) array-like
@@ -60,6 +52,14 @@ def compute_importance_weights(
         Method-specific diagnostic value:
         - PSIS: Pareto shape parameter (k)
         - SIS/TIS: Effective sample size (ESS)
+
+    Notes
+    -----
+    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
+    named ``__sample__`` (recommended) this function will interpret this dimension as samples,
+    and all other dimensions as dimensions of the observed data, looping over them to
+    calculate the importance weights for each observation. If no ``__sample__`` dimension is
+    present or the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
 
     See Also
     --------
