@@ -627,3 +627,35 @@ def roaches_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def approximate_posterior_model():
+    """Create a model with an approximate posterior (ADVI) for testing."""
+    rng = np.random.default_rng(42)
+    n_samples = 5000
+
+    X = rng.normal(0, 1, size=n_samples)
+    true_alpha = 0.5
+    true_beta = 1.5
+    true_sigma = 0.8
+    y = true_alpha + true_beta * X + rng.normal(0, true_sigma, size=n_samples)
+
+    with pm.Model(coords={"obs_id": range(n_samples)}) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=2)
+        beta = pm.Normal("beta", mu=0, sigma=2)
+        sigma = pm.HalfNormal("sigma", sigma=2)
+
+        mu = alpha + beta * X
+        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        approx = pm.fit(
+            method="advi",
+            n=1000,
+            random_seed=42,
+        )
+
+        idata = approx.sample(1000, return_inferencedata=True)
+        pm.compute_log_likelihood(idata, model=model, extend_inferencedata=True)
+
+    return model, idata, approx

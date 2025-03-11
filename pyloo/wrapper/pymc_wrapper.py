@@ -3,10 +3,11 @@
 import copy
 import logging
 import warnings
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence, Tuple
 
 import numpy as np
 import pymc as pm
+import pytensor
 import pytensor.tensor as pt
 import xarray as xr
 from arviz import InferenceData
@@ -76,19 +77,36 @@ class PyMCWrapper:
     constant_data: dict[str, np.ndarray]
     observed_dims: dict[str, tuple[str, ...]]
     _untransformed_model: Model
+    approximation: Any | None
 
     def __init__(
         self,
         model: Model,
         idata: InferenceData,
         var_names: Sequence[str] | None = None,
+        approximation: Any = None,
     ):
+        """Initialize a PyMCWrapper.
+
+        Parameters
+        ----------
+        model : Model
+            A fitted PyMC model containing the model structure and relationships
+        idata : InferenceData
+            ArviZ InferenceData object containing the model's posterior samples
+        var_names : Sequence[str] | None
+            Names of specific variables to focus on. If None, all variables are included
+        approximation : Any, optional
+            A PyMC approximation object (e.g., from pm.fit()). If provided, it can be used
+            for approximate posterior calculations without passing it explicitly each time.
+        """
         self.model = model
         self.idata = idata
         self.var_names = list(var_names) if var_names is not None else None
         self.observed_data = {}
         self.constant_data = {}
         self.observed_dims = {}
+        self.approximation = approximation
 
         try:
             self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
@@ -832,6 +850,78 @@ class PyMCWrapper:
             constrained_params[var_name] = constrained
 
         return constrained_params
+
+    def extract_logp_logq(
+        self,
+        approx: Any = None,
+        sample_size: int = 1000,
+        random_seed: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Extract log_p and log_q from a PyMC approximation object.
+
+        This method extracts the log posterior density (``log_p``) and the log approximation
+        density (``log_q``) from a PyMC approximation object, such as those returned by
+        ``pm.fit()`` with ADVI methods.
+
+        Parameters
+        ----------
+        approx : Any, optional
+            A PyMC approximation object (e.g., from pm.fit()). If None, uses the
+            approximation object provided during initialization.
+        sample_size : int, default 1000
+            Number of samples to draw from the approximation
+        random_seed : int, optional
+            Random seed for reproducibility
+
+        Returns
+        -------
+        Tuple[np.ndarray, np.ndarray]
+            A tuple containing (log_p, log_q) arrays, each of length sample_size
+
+        Raises
+        ------
+        PyMCWrapperError
+            If the approximation object is invalid or extraction fails
+
+        Notes
+        -----
+        This method works with PyMC's variational inference approximations,
+        such as those created with 'advi', 'fullrank_advi', etc.
+        """
+        if approx is None:
+            if self.approximation is None:
+                raise PyMCWrapperError(
+                    "No approximation object provided. Either pass an approximation "
+                    "object to this method or provide one during initialization."
+                )
+            approx = self.approximation
+
+        if not hasattr(approx, "set_size_and_deterministic"):
+            raise PyMCWrapperError(
+                "Invalid approximation object. Expected a PyMC approximation "
+                "with set_size_and_deterministic method."
+            )
+
+        try:
+            s = pytensor.tensor.iscalar("sample_size")
+
+            logp_sampled = approx.set_size_and_deterministic(
+                approx.sized_symbolic_logp, s, 0
+            )
+            logq_sampled = approx.set_size_and_deterministic(approx.symbolic_logq, s, 0)
+
+            logp_fn = pm.compile([s], logp_sampled, random_seed=random_seed)
+            logq_fn = pm.compile([s], logq_sampled, random_seed=random_seed)
+
+            pointwise_logp = logp_fn(sample_size)
+            pointwise_logq = logq_fn(sample_size)
+
+            return pointwise_logp, pointwise_logq
+
+        except Exception as e:
+            raise PyMCWrapperError(
+                f"Failed to extract log_p and log_q from approximation: {str(e)}"
+            )
 
     def get_log_likelihood(
         self,
