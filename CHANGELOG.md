@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-PyLoo is a comprehensive toolkit for model comparison and validation in Bayesian inference. Our latest developments focus on both core functionality and advanced features for specific modeling frameworks, specifically PyMC.
+pyloo is a comprehensive toolkit for model comparison and validation in Bayesian inference. Our latest developments focus on both core functionality and advanced features for specific modeling frameworks, specifically PyMC.
 
 ### Core Functionality
 
