@@ -92,7 +92,7 @@ def vi_psis_sampling(
             " include samples from failed paths with non-finite logP or logQ values. It"
             " is recommended to use importance_sampling='psis' for better stability."
         )
-        # Create dummy log weights (zeros) when not using importance sampling
+        # Create dummy log weights if not using importance sampling
         dummy_log_weights = np.zeros((samples.shape[0] * samples.shape[1]))
         return ImportanceSamplingResult(
             samples=samples,
@@ -106,7 +106,6 @@ def vi_psis_sampling(
         logP = logP.ravel()
         logQ = logQ.ravel()
 
-        # Adjust log densities
         log_I = np.log(num_paths)
         logP -= log_I
         logQ -= log_I

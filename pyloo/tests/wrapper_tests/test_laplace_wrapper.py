@@ -37,7 +37,7 @@ def test_laplace_fit(simple_model):
     result = wrapper.fit(
         optimize_method="BFGS",
         chains=2,
-        draws=100,
+        draws=1000,
         progressbar=False,
     )
 
@@ -53,7 +53,7 @@ def test_laplace_fit(simple_model):
     assert "sigma" in posterior
 
     assert posterior.dims["chain"] == 2
-    assert posterior.dims["draw"] == 100
+    assert posterior.dims["draw"] == 1000
 
     fit = result.idata.fit
     assert "mean_vector" in fit
@@ -75,12 +75,12 @@ def test_importance_resample(simple_model):
     wrapper.fit(
         optimize_method="BFGS",
         chains=2,
-        draws=100,
+        draws=1000,
         progressbar=False,
     )
 
     result = wrapper.importance_resample(
-        num_draws=50,
+        num_draws=1000,
         method="psis",
     )
 
@@ -95,7 +95,7 @@ def test_importance_resample(simple_model):
     assert "sigma" in posterior
 
     assert posterior.dims["chain"] == 1
-    assert posterior.dims["draw"] == 50
+    assert posterior.dims["draw"] == 1000
 
     assert result.importance_sampled is True
     assert result.importance_sampling_method == "psis"
@@ -206,7 +206,7 @@ def test_log_probability_comparison(simple_model):
     wrapper.fit(
         optimize_method="BFGS",
         chains=2,
-        draws=100,
+        draws=1000,
         progressbar=False,
     )
 
@@ -354,9 +354,24 @@ def test_laplace_wrapper_with_hierarchical_model(hierarchical_model):
     result = wrapper.fit(
         optimize_method="BFGS",
         chains=2,
-        draws=100,
+        draws=1000,
         progressbar=False,
     )
+
+    result_weights = wrapper.importance_resample(
+        num_draws=1000,
+        method="psis",
+    )
+
+    log_weights = result_weights.log_weights
+    assert log_weights is not None
+    assert log_weights.shape == (2000,)
+    assert_finite(log_weights)
+
+    print(np.mean(log_weights))
+    print(np.std(log_weights))
+    print(np.max(log_weights))
+    print(np.min(log_weights))
 
     assert isinstance(result, LaplaceVIResult)
     assert result.model == model
@@ -371,6 +386,6 @@ def test_laplace_wrapper_with_hierarchical_model(hierarchical_model):
     assert "sigma_y" in posterior
 
     assert posterior.sizes["chain"] == 2
-    assert posterior.sizes["draw"] == 100
+    assert posterior.sizes["draw"] == 1000
     assert "group" in posterior["group_effects_raw"].dims
     assert posterior["group_effects_raw"].sizes["group"] == 8

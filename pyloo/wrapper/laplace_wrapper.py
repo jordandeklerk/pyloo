@@ -149,12 +149,14 @@ class LaplaceWrapper(PyMCWrapper):
         gradient_backend: Literal["pytensor", "jax"] = "pytensor",
         chains: int = 2,
         draws: int = 500,
-        on_bad_cov: Literal["warn", "error", "ignore"] = "ignore",
+        on_bad_cov: Literal["warn", "error", "ignore", "regularize"] = "regularize",
         fit_in_unconstrained_space: bool = False,
         zero_tol: float = 1e-8,
         diag_jitter: float | None = 1e-8,
         optimizer_kwargs: dict | None = None,
         compile_kwargs: dict | None = None,
+        regularization_min_eigval: float = 1e-8,
+        regularization_max_attempts: int = 10,
     ) -> LaplaceVIResult:
         """Fit the model using Laplace approximation.
 
@@ -184,6 +186,10 @@ class LaplaceWrapper(PyMCWrapper):
             The number of samples to draw from the approximated posterior.
         on_bad_cov : str
             What to do when the inverse Hessian is not positive semi-definite.
+            "regularize" (default): Attempt to regularize the matrix to make it positive definite.
+            "warn": Issue a warning and continue.
+            "error": Raise an error.
+            "ignore": Proceed without taking any action.
         fit_in_unconstrained_space : bool
             Whether to fit the Laplace approximation in the unconstrained parameter space.
         zero_tol : float
@@ -194,6 +200,10 @@ class LaplaceWrapper(PyMCWrapper):
             Additional keyword arguments to pass to scipy.minimize.
         compile_kwargs : Optional[Dict]
             Additional keyword arguments to pass to pytensor.function.
+        regularization_min_eigval : float
+            Minimum eigenvalue threshold for matrix regularization.
+        regularization_max_attempts : int
+            Maximum number of regularization attempts.
 
         Returns
         -------
@@ -208,6 +218,7 @@ class LaplaceWrapper(PyMCWrapper):
 
         optimizer_kwargs = {} if optimizer_kwargs is None else optimizer_kwargs
         compile_kwargs = {} if compile_kwargs is None else compile_kwargs
+        warnings_list = []
 
         with self.model:
             optimized_point = find_MAP(
@@ -227,35 +238,74 @@ class LaplaceWrapper(PyMCWrapper):
             )
 
             # Fit multivariate normal at MAP
-            mu, H_inv = fit_mvn_at_MAP(
-                optimized_point=optimized_point,
-                model=self.model,
-                on_bad_cov=on_bad_cov,
-                transform_samples=fit_in_unconstrained_space,
-                gradient_backend=gradient_backend,
-                zero_tol=zero_tol,
-                diag_jitter=diag_jitter,
-                compile_kwargs=compile_kwargs,
-            )
+            try:
+                mu, H_inv = fit_mvn_at_MAP(
+                    optimized_point=optimized_point,
+                    model=self.model,
+                    on_bad_cov=on_bad_cov if on_bad_cov != "regularize" else "ignore",
+                    transform_samples=fit_in_unconstrained_space,
+                    gradient_backend=gradient_backend,
+                    zero_tol=zero_tol,
+                    diag_jitter=diag_jitter,
+                    compile_kwargs=compile_kwargs,
+                )
 
-            # Sample from the posterior
-            idata = sample_laplace_posterior(
-                mu=mu,
-                H_inv=H_inv,
-                model=self.model,
-                chains=chains,
-                draws=draws,
-                transform_samples=fit_in_unconstrained_space,
-                progressbar=progressbar,
-                random_seed=self.random_seed,
-                compile_kwargs=compile_kwargs,
-            )
+                if on_bad_cov == "regularize":
+                    try:
+                        eigvals = np.linalg.eigvalsh(H_inv)
+                        min_eigval = np.min(eigvals)
+
+                        if min_eigval <= regularization_min_eigval:
+                            H_inv_regularized, orig_min, final_min, attempts = (
+                                _regularize_matrix(
+                                    H_inv,
+                                    min_eigenvalue=regularization_min_eigval,
+                                    max_attempts=regularization_max_attempts,
+                                )
+                            )
+
+                            warning_msg = (
+                                "Inverse Hessian matrix required regularization. Min"
+                                f" eigenvalue before: {orig_min}, after: {final_min},"
+                                f" attempts: {attempts}"
+                            )
+                            warnings.warn(warning_msg, UserWarning, stacklevel=2)
+                            warnings_list.append(warning_msg)
+
+                            # Use the regularized matrix
+                            H_inv = H_inv_regularized
+
+                    except np.linalg.LinAlgError as e:
+                        error_msg = (
+                            "Matrix regularization failed during model fitting:"
+                            f" {str(e)}"
+                        )
+                        warnings.warn(error_msg, UserWarning, stacklevel=2)
+                        raise PyMCWrapperError(error_msg) from e
+
+                idata = sample_laplace_posterior(
+                    mu=mu,
+                    H_inv=H_inv,
+                    model=self.model,
+                    chains=chains,
+                    draws=draws,
+                    transform_samples=fit_in_unconstrained_space,
+                    progressbar=progressbar,
+                    random_seed=self.random_seed,
+                    compile_kwargs=compile_kwargs,
+                )
+
+            except (np.linalg.LinAlgError, ValueError) as e:
+                error_msg = f"Error during Laplace approximation: {str(e)}"
+                warnings.warn(error_msg, UserWarning, stacklevel=2)
+                raise PyMCWrapperError(error_msg) from e
 
         result = LaplaceVIResult(
             idata=idata,
             mu=mu,
             H_inv=H_inv,
             model=self.model,
+            warnings=warnings_list,
         )
         self.idata = idata
         self.result = result
@@ -307,7 +357,6 @@ class LaplaceWrapper(PyMCWrapper):
         if num_draws is None:
             num_draws = n_chains * n_draws_per_chain
 
-        # Compute log probabilities for the target (true posterior) and proposal (Laplace approximation)
         logP = self._compute_log_prob_target(posterior)
         # type: ignore[union-attr]
         logQ = self._compute_log_prob_proposal(
@@ -421,7 +470,35 @@ class LaplaceWrapper(PyMCWrapper):
         np.ndarray
             Log probability values with shape (n_chains, n_draws)
         """
-        mvn = stats.multivariate_normal(mean=mu.data, cov=H_inv)
+        try:
+            H_inv_regularized, orig_min, final_min, attempts = _regularize_matrix(
+                H_inv, min_eigenvalue=1e-8, max_attempts=10
+            )
+
+            if attempts > 0:
+                warning_msg = (
+                    "Inverse Hessian matrix required regularization. "
+                    f"Min eigenvalue before: {orig_min}, after: {final_min}, "
+                    f"attempts: {attempts}"
+                )
+                warnings.warn(warning_msg, UserWarning, stacklevel=2)
+
+                if hasattr(self, "result") and self.result is not None:
+                    self.result.warnings.append(warning_msg)
+
+        except np.linalg.LinAlgError as e:
+            warning_msg = (
+                f"Matrix regularization failed: {str(e)}. Using allow_singular=True as"
+                " fallback."
+            )
+            warnings.warn(warning_msg, UserWarning, stacklevel=2)
+            if hasattr(self, "result") and self.result is not None:
+                self.result.warnings.append(warning_msg)
+            H_inv_regularized = H_inv
+
+        mvn = stats.multivariate_normal(
+            mean=mu.data, cov=H_inv_regularized, allow_singular=True
+        )
 
         n_chains = len(posterior.chain)
         n_draws = len(posterior.draw)
@@ -439,7 +516,24 @@ class LaplaceWrapper(PyMCWrapper):
                         flattened.append(flat_sample)
 
                 x = np.concatenate(flattened)
-                logp_values[c, d] = mvn.logpdf(x)
+                try:
+                    logp_values[c, d] = mvn.logpdf(x)
+                except ValueError as e:
+                    warnings.warn(
+                        f"Error computing log probability for sample {c},{d}: {e}. "
+                        "Setting to NaN.",
+                        stacklevel=2,
+                    )
+                    logp_values[c, d] = np.nan
+
+        if np.any(np.isnan(logp_values)):
+            warnings.warn(
+                f"Found {np.sum(np.isnan(logp_values))} NaN values in log"
+                " probabilities. This may indicate problems with the model or"
+                " regularization.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         return logp_values
 
@@ -546,3 +640,61 @@ class LaplaceWrapper(PyMCWrapper):
             )
 
         return new_idata
+
+
+def _regularize_matrix(
+    matrix: np.ndarray, min_eigenvalue: float = 1e-8, max_attempts: int = 10
+) -> tuple[np.ndarray, float, float, int]:
+    """Regularize a matrix to ensure it is positive definite.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        The input matrix to regularize
+    min_eigenvalue : float, default 1e-8
+        Minimum acceptable eigenvalue for positive definiteness
+    max_attempts : int, default 10
+        Maximum number of regularization attempts
+
+    Returns
+    -------
+    tuple[np.ndarray, float, float, int]
+        Tuple containing:
+        - Regularized matrix
+        - Original minimum eigenvalue
+        - Final minimum eigenvalue
+        - Number of attempts taken
+
+    Raises
+    ------
+    np.linalg.LinAlgError
+        If eigenvalue computation fails or regularization is unsuccessful after max_attempts
+    """
+    matrix_copy = matrix.copy()
+
+    eigvals = np.linalg.eigvalsh(matrix_copy)
+    orig_min_eigval = np.min(eigvals)
+    min_eigval = orig_min_eigval
+
+    if min_eigval > min_eigenvalue:
+        return matrix_copy, orig_min_eigval, min_eigval, 0
+
+    jitter_scale = min_eigenvalue
+    attempts = 0
+
+    while min_eigval <= min_eigenvalue and attempts < max_attempts:
+        jitter = jitter_scale * 10**attempts
+        matrix_copy = matrix + np.eye(matrix.shape[0]) * jitter
+
+        # Check if PSD
+        eigvals = np.linalg.eigvalsh(matrix_copy)
+        min_eigval = np.min(eigvals)
+        attempts += 1
+
+    if min_eigval <= min_eigenvalue:
+        raise np.linalg.LinAlgError(
+            f"Failed to make matrix positive definite after {max_attempts} attempts. "
+            f"Min eigenvalue: {min_eigval}, min required: {min_eigenvalue}"
+        )
+
+    return matrix_copy, orig_min_eigval, min_eigval, attempts
