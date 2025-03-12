@@ -131,10 +131,8 @@ class LaplaceWrapper(PyMCWrapper):
         Currently, this wrapper only implements Laplace approximation. Future versions
         will include additional approximation methods for more complex posteriors.
         """
-        # Initialize with the parent class
         super().__init__(model, idata, var_names, approximation)
 
-        # Store additional attributes
         self.random_seed = random_seed
         self.result: LaplaceVIResult | None = None
 
@@ -302,8 +300,7 @@ class LaplaceWrapper(PyMCWrapper):
         if random_seed is None:
             random_seed = self.random_seed
 
-        # type: ignore[union-attr]
-        posterior = self.result.idata.posterior
+        posterior = self.result.idata.posterior  # type: ignore[union-attr]
         n_chains = len(posterior.chain)
         n_draws_per_chain = len(posterior.draw)
 
@@ -496,8 +493,7 @@ class LaplaceWrapper(PyMCWrapper):
                 "Model must be fit before converting resampled samples"
             )
 
-        # type: ignore[union-attr]
-        original_idata = self.result.idata
+        original_idata = self.result.idata  # type: ignore[union-attr]
         info = self.result.mu.point_map_info
 
         n_draws = resampled_samples.shape[0]
