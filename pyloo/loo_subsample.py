@@ -173,11 +173,7 @@ def loo_subsample(
             f"Must be one of: {', '.join(m.value for m in EstimatorMethod)}"
         )
 
-    try:
-        log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
-    except ValueError:
-        log_likelihood = log_likelihood.stack(sample=("chain", "draw"))
-        log_likelihood = log_likelihood.rename({"sample": "__sample__"})
+    log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
     shape = log_likelihood.shape
     n_samples = shape[-1]
 
@@ -426,7 +422,7 @@ def loo_subsample(
             looic,
             looic_se,
             looic_subsamp_se,
-            "loo_subsample",  # method
+            "loo_subsample",
         ]
 
         result_index = [
