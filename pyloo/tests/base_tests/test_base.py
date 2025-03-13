@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from ...base import ISMethod, compute_importance_weights
-from ...psis import psislw
+from ...psis import psislw, vi_psis_sampling
 from ...sis import sislw
 from ...tis import tislw
 from ...utils import get_log_likelihood
@@ -73,7 +73,8 @@ def test_method_case_insensitive(centered_eight):
     log_likelihood = get_log_likelihood(centered_eight)
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
 
-    for method in ISMethod:
+    standard_methods = [ISMethod.PSIS, ISMethod.SIS, ISMethod.TIS]
+    for method in standard_methods:
         upper_weights, upper_diag = compute_importance_weights(
             -log_likelihood, method=method.value.upper()
         )
@@ -82,3 +83,194 @@ def test_method_case_insensitive(centered_eight):
         )
         assert_arrays_allclose(upper_weights, lower_weights)
         assert_arrays_allclose(upper_diag, lower_diag)
+
+
+def test_variational_psis():
+    """Test variational inference with PSIS method."""
+    np.random.seed(42)
+    samples = np.random.normal(size=(4, 1000, 10))
+    logP = np.random.normal(size=(4, 1000))
+    logQ = np.random.normal(size=(4, 1000))
+    num_draws = 500
+
+    log_weights, pareto_k = compute_importance_weights(
+        method="psis",
+        variational=True,
+        samples=samples,
+        logP=logP,
+        logQ=logQ,
+        num_draws=num_draws,
+        random_seed=42,
+    )
+
+    expected = vi_psis_sampling(
+        samples=samples,
+        logP=logP,
+        logQ=logQ,
+        num_draws=num_draws,
+        method="psis",
+        random_seed=42,
+    )
+
+    assert_arrays_allclose(log_weights, expected.log_weights)
+    assert_arrays_allclose(pareto_k, expected.pareto_k)
+
+
+def test_variational_psir():
+    """Test variational inference with PSIR method."""
+    np.random.seed(42)
+    samples = np.random.normal(size=(4, 1000, 10))
+    logP = np.random.normal(size=(4, 1000))
+    logQ = np.random.normal(size=(4, 1000))
+    num_draws = 500
+
+    log_weights, pareto_k = compute_importance_weights(
+        method="psir",
+        variational=True,
+        samples=samples,
+        logP=logP,
+        logQ=logQ,
+        num_draws=num_draws,
+        random_seed=42,
+    )
+
+    expected = vi_psis_sampling(
+        samples=samples,
+        logP=logP,
+        logQ=logQ,
+        num_draws=num_draws,
+        method="psir",
+        random_seed=42,
+    )
+
+    assert_arrays_allclose(log_weights, expected.log_weights)
+    assert_arrays_allclose(pareto_k, expected.pareto_k)
+
+
+def test_variational_identity():
+    """Test variational inference with IDENTITY method."""
+    np.random.seed(42)
+    samples = np.random.normal(size=(4, 1000, 10))
+    logP = np.random.normal(size=(4, 1000))
+    logQ = np.random.normal(size=(4, 1000))
+    num_draws = 500
+
+    log_weights, pareto_k = compute_importance_weights(
+        method="identity",
+        variational=True,
+        samples=samples,
+        logP=logP,
+        logQ=logQ,
+        num_draws=num_draws,
+        random_seed=42,
+    )
+
+    expected = vi_psis_sampling(
+        samples=samples,
+        logP=logP,
+        logQ=logQ,
+        num_draws=num_draws,
+        method="identity",
+        random_seed=42,
+    )
+
+    assert_arrays_allclose(log_weights, expected.log_weights)
+    assert pareto_k is None
+
+
+def test_variational_missing_parameters():
+    """Test error handling for missing parameters in variational inference."""
+    np.random.seed(42)
+    samples = np.random.normal(size=(4, 1000, 10))
+    logP = np.random.normal(size=(4, 1000))
+    logQ = np.random.normal(size=(4, 1000))
+    num_draws = 500
+
+    with pytest.raises(
+        ValueError, match="samples, logP, logQ, and num_draws must be provided"
+    ):
+        compute_importance_weights(
+            method="psis",
+            variational=True,
+            samples=None,
+            logP=logP,
+            logQ=logQ,
+            num_draws=num_draws,
+        )
+
+    with pytest.raises(
+        ValueError, match="samples, logP, logQ, and num_draws must be provided"
+    ):
+        compute_importance_weights(
+            method="psis",
+            variational=True,
+            samples=samples,
+            logP=None,
+            logQ=logQ,
+            num_draws=num_draws,
+        )
+
+    with pytest.raises(
+        ValueError, match="samples, logP, logQ, and num_draws must be provided"
+    ):
+        compute_importance_weights(
+            method="psis",
+            variational=True,
+            samples=samples,
+            logP=logP,
+            logQ=None,
+            num_draws=num_draws,
+        )
+
+    with pytest.raises(
+        ValueError, match="samples, logP, logQ, and num_draws must be provided"
+    ):
+        compute_importance_weights(
+            method="psis",
+            variational=True,
+            samples=samples,
+            logP=logP,
+            logQ=logQ,
+            num_draws=None,
+        )
+
+
+def test_variational_unsupported_method():
+    """Test error handling for unsupported methods in variational inference."""
+    np.random.seed(42)
+    samples = np.random.normal(size=(4, 1000, 10))
+    logP = np.random.normal(size=(4, 1000))
+    logQ = np.random.normal(size=(4, 1000))
+    num_draws = 500
+
+    with pytest.raises(ValueError, match="not supported for variational inference"):
+        compute_importance_weights(
+            method="sis",
+            variational=True,
+            samples=samples,
+            logP=logP,
+            logQ=logQ,
+            num_draws=num_draws,
+        )
+
+    with pytest.raises(ValueError, match="not supported for variational inference"):
+        compute_importance_weights(
+            method="tis",
+            variational=True,
+            samples=samples,
+            logP=logP,
+            logQ=logQ,
+            num_draws=num_draws,
+        )
+
+
+def test_standard_missing_log_weights():
+    """Test error handling for missing log_weights in standard importance sampling."""
+    with pytest.raises(
+        ValueError, match="log_weights must be provided when variational=False"
+    ):
+        compute_importance_weights(
+            log_weights=None,
+            method="psis",
+            variational=False,
+        )
