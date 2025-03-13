@@ -57,6 +57,8 @@ class LaplaceVIResult:
             self.warnings = []
 
 
+# Mainly based on https://github.com/pymc-devs/pymc-extras/blob/main/pymc_extras/inference/laplace.py
+# with some modifications
 class LaplaceWrapper(PyMCWrapper):
     """Laplace Variational Inference wrapper for PyMC models.
 
