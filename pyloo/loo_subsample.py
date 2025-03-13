@@ -542,13 +542,8 @@ def update_subsample(
         import arviz as az
         from pyloo import loo_subsample, update_subsample
 
-        # Load example dataset
         data = az.load_arviz_data("centered_eight")
-
-        # Compute initial LOO-CV with subsampling of 100 observations
         result = loo_subsample(data, observations=100)
-
-        # Update with more observations (200 instead of 100)
         updated = update_subsample(result, observations=200)
     """
     if not isinstance(loo_data, ELPDData):
