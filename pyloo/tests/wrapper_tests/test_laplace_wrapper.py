@@ -9,7 +9,6 @@ from ...wrapper.laplace_wrapper import (
     LaplaceVIResult,
     LaplaceWrapper,
 )
-from ...wrapper.pymc_wrapper import PyMCWrapperError
 from ..helpers import assert_bounded, assert_finite
 
 
@@ -20,9 +19,6 @@ def test_laplace_wrapper_initialization(simple_model):
     wrapper = LaplaceWrapper(model, idata)
     assert wrapper.model == model
     assert wrapper.idata == idata
-    assert set(wrapper.observed_data.keys()) == {"y"}
-    assert set(wrapper.free_vars) == {"alpha", "beta", "sigma"}
-    assert wrapper.result is None
 
 
 @pytest.mark.skipif(
@@ -67,84 +63,6 @@ def test_laplace_fit(simple_model):
     not PYMC_EXTRAS_AVAILABLE,
     reason="pymc-extras not installed",
 )
-def test_importance_resample(simple_model):
-    """Test importance resampling of Laplace approximation samples."""
-    model, idata = simple_model
-
-    wrapper = LaplaceWrapper(model, idata)
-    wrapper.fit(
-        optimize_method="BFGS",
-        chains=2,
-        draws=1000,
-        progressbar=False,
-    )
-
-    result = wrapper.importance_resample(
-        num_draws=1000,
-        method="psis",
-    )
-
-    assert isinstance(result, LaplaceVIResult)
-    assert result.model == model
-    assert isinstance(result.idata, InferenceData)
-    assert hasattr(result.idata, "posterior")
-
-    posterior = result.idata.posterior
-    assert "alpha" in posterior
-    assert "beta" in posterior
-    assert "sigma" in posterior
-
-    assert posterior.dims["chain"] == 1
-    assert posterior.dims["draw"] == 1000
-
-    assert result.importance_sampled is True
-    assert result.importance_sampling_method == "psis"
-    assert result.pareto_k is not None
-
-
-@pytest.mark.skipif(
-    not PYMC_EXTRAS_AVAILABLE,
-    reason="pymc-extras not installed",
-)
-def test_importance_resample_psir(simple_model):
-    """Test importance resampling of Laplace approximation samples."""
-    model, idata = simple_model
-
-    wrapper = LaplaceWrapper(model, idata)
-    wrapper.fit(
-        optimize_method="BFGS",
-        chains=2,
-        draws=100,
-        progressbar=False,
-    )
-
-    result = wrapper.importance_resample(
-        num_draws=50,
-        method="psir",
-    )
-
-    assert isinstance(result, LaplaceVIResult)
-    assert result.model == model
-    assert isinstance(result.idata, InferenceData)
-    assert hasattr(result.idata, "posterior")
-
-    posterior = result.idata.posterior
-    assert "alpha" in posterior
-    assert "beta" in posterior
-    assert "sigma" in posterior
-
-    assert posterior.dims["chain"] == 1
-    assert posterior.dims["draw"] == 50
-
-    assert result.importance_sampled is True
-    assert result.importance_sampling_method == "psir"
-    assert result.pareto_k is not None
-
-
-@pytest.mark.skipif(
-    not PYMC_EXTRAS_AVAILABLE,
-    reason="pymc-extras not installed",
-)
 def test_compute_log_prob_target(simple_model):
     """Test computation of log probability under the target distribution."""
     model, idata = simple_model
@@ -157,8 +75,7 @@ def test_compute_log_prob_target(simple_model):
         progressbar=False,
     )
 
-    posterior = wrapper.result.idata.posterior
-    logP = wrapper._compute_log_prob_target(posterior)
+    logP = wrapper._compute_log_prob_target()
 
     assert isinstance(logP, np.ndarray)
     assert logP.shape == (2, 100)
@@ -183,10 +100,7 @@ def test_compute_log_prob_proposal(simple_model):
         progressbar=False,
     )
 
-    posterior = wrapper.result.idata.posterior
-    logQ = wrapper._compute_log_prob_proposal(
-        posterior, wrapper.result.mu, wrapper.result.H_inv
-    )
+    logQ = wrapper._compute_log_prob_proposal()
 
     assert isinstance(logQ, np.ndarray)
     assert logQ.shape == (2, 100)
@@ -210,11 +124,8 @@ def test_log_probability_comparison(simple_model):
         progressbar=False,
     )
 
-    posterior = wrapper.result.idata.posterior
-    logP = wrapper._compute_log_prob_target(posterior)
-    logQ = wrapper._compute_log_prob_proposal(
-        posterior, wrapper.result.mu, wrapper.result.H_inv
-    )
+    logP = wrapper._compute_log_prob_target()
+    logQ = wrapper._compute_log_prob_proposal()
 
     assert_finite(logP)
     assert_finite(logQ)
@@ -283,7 +194,6 @@ def test_convert_resampled_to_inferencedata(simple_model):
     samples = wrapper._reshape_posterior_for_importance_sampling(posterior)
 
     resampled_samples = samples[0, :50, :]
-
     resampled_idata = wrapper._convert_resampled_to_inferencedata(resampled_samples)
 
     assert isinstance(resampled_idata, InferenceData)
@@ -329,23 +239,6 @@ def test_convert_resampled_to_inferencedata(simple_model):
     not PYMC_EXTRAS_AVAILABLE,
     reason="pymc-extras not installed",
 )
-def test_error_handling(simple_model):
-    """Test error handling in the LaplaceWrapper."""
-    model, idata = simple_model
-
-    wrapper = LaplaceWrapper(model, idata)
-
-    with pytest.raises(
-        PyMCWrapperError,
-        match="Model must be fit before applying importance resampling",
-    ):
-        wrapper.importance_resample()
-
-
-@pytest.mark.skipif(
-    not PYMC_EXTRAS_AVAILABLE,
-    reason="pymc-extras not installed",
-)
 def test_laplace_wrapper_with_hierarchical_model(hierarchical_model):
     """Test LaplaceWrapper with a hierarchical model."""
     model, idata = hierarchical_model
@@ -357,21 +250,6 @@ def test_laplace_wrapper_with_hierarchical_model(hierarchical_model):
         draws=1000,
         progressbar=False,
     )
-
-    result_weights = wrapper.importance_resample(
-        num_draws=1000,
-        method="psis",
-    )
-
-    log_weights = result_weights.log_weights
-    assert log_weights is not None
-    assert log_weights.shape == (2000,)
-    assert_finite(log_weights)
-
-    print(np.mean(log_weights))
-    print(np.std(log_weights))
-    print(np.max(log_weights))
-    print(np.min(log_weights))
 
     assert isinstance(result, LaplaceVIResult)
     assert result.model == model

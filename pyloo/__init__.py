@@ -3,6 +3,7 @@
 from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
 from .loo import loo
+from .loo_approximate_posterior import loo_approximate_posterior
 from .loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
 from .loo_moment_match import loo_moment_match, loo_moment_match_split
 from .psis import psislw
@@ -20,6 +21,7 @@ __all__ = [
     "_kfold_split_random",
     "_kfold_split_stratified",
     "loo",
+    "loo_approximate_posterior",
     "loo_moment_match",
     "loo_moment_match_split",
     "PyMCWrapper",

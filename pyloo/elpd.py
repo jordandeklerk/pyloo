@@ -24,6 +24,16 @@ Computed from {n_samples} posterior samples and {n_points} observations log-like
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
 p_loo       {p_loo:<8.2f}        -"""
 
+# Custom format for LOO approximate posterior output
+APPROX_POSTERIOR_FMT = """
+Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
+Posterior approximation correction used.
+------
+
+         Estimate       SE
+elpd_loo   {elpd:<8.2f}    {se:<.2f}
+p_loo       {p_loo:<8.2f}        -"""
+
 # Format for k-fold cross-validation output
 KFOLD_BASE_FMT = """
 Computed from {n_samples} posterior samples using {K}-fold cross-validation
@@ -143,7 +153,13 @@ class ELPDData(pd.Series):
             ):
                 # Check if all Pareto k values are good
                 bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
-                counts, *_ = _histogram(self.pareto_k.values, bins)
+                # Handle both pandas objects and numpy arrays
+                pareto_k_values = (
+                    self.pareto_k.values
+                    if hasattr(self.pareto_k, "values")
+                    else self.pareto_k
+                )
+                counts, *_ = _histogram(pareto_k_values, bins)
                 if counts[1] == 0 and counts[2] == 0:
                     # Already set with default message above
                     pass
@@ -206,7 +222,13 @@ class ELPDData(pd.Series):
             ):
                 # Check if all Pareto k values are good
                 bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
-                counts, *_ = _histogram(self.pareto_k.values, bins)
+                # Handle both pandas objects and numpy arrays
+                pareto_k_values = (
+                    self.pareto_k.values
+                    if hasattr(self.pareto_k, "values")
+                    else self.pareto_k
+                )
+                counts, *_ = _histogram(pareto_k_values, bins)
                 if counts[1] == 0 and counts[2] == 0:
                     pareto_msg = (
                         "\n\nAll Pareto k estimates are good (k <"
@@ -236,23 +258,30 @@ class ELPDData(pd.Series):
             elpd_loo = self["elpd_loo"]
             se = self["se"]
 
-            # Use custom format without looic line
-            base = CUSTOM_LOO_FMT.format(
-                n_samples=self.n_samples,
-                n_points=self.n_data_points,
-                elpd=elpd_loo,
-                se=se,
-                p_loo=self["p_loo"],
-            )
+            # Choose the appropriate format based on whether this is from loo_approximate_posterior
+            if hasattr(self, "approximate_posterior"):
+                base = APPROX_POSTERIOR_FMT.format(
+                    n_samples=self.n_samples,
+                    n_points=self.n_data_points,
+                    elpd=elpd_loo,
+                    se=se,
+                    p_loo=self["p_loo"],
+                )
+            else:
+                base = CUSTOM_LOO_FMT.format(
+                    n_samples=self.n_samples,
+                    n_points=self.n_data_points,
+                    elpd=elpd_loo,
+                    se=se,
+                    p_loo=self["p_loo"],
+                )
 
-            # Add warning immediately after the main stats if needed
             if self.warning:
                 base += (
                     "\n\nThere has been a warning during the calculation. Please check"
                     " the results."
                 )
 
-            # Add pareto diagnostics after main stats and warning
             base += pareto_msg
 
             return base

@@ -2,7 +2,7 @@
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 import arviz as az
 import numpy as np
@@ -13,10 +13,6 @@ from arviz import InferenceData
 from better_optimize.constants import minimize_method
 from pymc.blocking import RaveledVars
 from scipy import stats
-
-from ..psis import vi_psis_sampling
-from ..wrapper.pymc_wrapper import PyMCWrapper
-from ..wrapper.utils import PyMCWrapperError
 
 try:
     from pymc_extras.inference.find_map import find_MAP
@@ -36,6 +32,12 @@ except ImportError:
         UserWarning,
         stacklevel=2,
     )
+
+
+class LaplaceWrapperError(Exception):
+    """Exception raised for errors in the LaplaceWrapper."""
+
+    pass
 
 
 @dataclass
@@ -59,12 +61,11 @@ class LaplaceVIResult:
 
 # Mainly based on https://github.com/pymc-devs/pymc-extras/blob/main/pymc_extras/inference/laplace.py
 # with some modifications
-class LaplaceWrapper(PyMCWrapper):
+class LaplaceWrapper:
     """Laplace Variational Inference wrapper for PyMC models.
 
-    This class extends the PyMCWrapper to provide Laplace approximation
-    functionality for PyMC models, including importance resampling to improve
-    the quality of the approximation.
+    This class provides Laplace approximation functionality for PyMC models,
+    including importance resampling to improve the quality of the approximation.
 
     Parameters
     ----------
@@ -75,9 +76,6 @@ class LaplaceWrapper(PyMCWrapper):
         If None, the model will be fit using Laplace approximation.
     var_names : Sequence[str], optional
         Names of specific variables to focus on. If None, all variables are included.
-    approximation : Any, optional
-        A PyMC approximation object. If provided, it can be used for approximate
-        posterior calculations without passing it explicitly each time.
     random_seed : int, optional
         Random seed for reproducibility.
 
@@ -89,12 +87,6 @@ class LaplaceWrapper(PyMCWrapper):
         ArviZ InferenceData object containing the model's posterior samples
     var_names : list[str]
         Names of variables being tracked
-    observed_data : dict[str, np.ndarray]
-        Mapping of observed variable names to their data
-    constant_data : dict[str, np.ndarray]
-        Mapping of constant data names to their values
-    observed_dims : dict[str, tuple[str, ...]]
-        Mapping of observed variable names to their dimension names
     result : LaplaceVIResult
         Container with the results of the Laplace approximation
     """
@@ -102,9 +94,8 @@ class LaplaceWrapper(PyMCWrapper):
     def __init__(
         self,
         model: pm.Model,
-        idata: InferenceData,
+        idata: InferenceData | None = None,
         var_names: list[str] | None = None,
-        approximation: Any | None = None,
         random_seed: int | None = None,
     ):
         """Initialize a LaplaceWrapper.
@@ -117,9 +108,6 @@ class LaplaceWrapper(PyMCWrapper):
             ArviZ InferenceData object containing the model's posterior samples.
         var_names : Sequence[str], optional
             Names of specific variables to focus on. If None, all variables are included.
-        approximation : Any, optional
-            A PyMC approximation object. If provided, it can be used for approximate
-            posterior calculations without passing it explicitly each time.
         random_seed : int, optional
             Random seed for reproducibility.
 
@@ -133,10 +121,11 @@ class LaplaceWrapper(PyMCWrapper):
         Currently, this wrapper only implements Laplace approximation. Future versions
         will include additional approximation methods for more complex posteriors.
         """
-        super().__init__(model, idata, var_names, approximation)
-
+        self.model = model
+        self.idata = idata
+        self.var_names = list(var_names) if var_names is not None else None
         self.random_seed = random_seed
-        self.result: LaplaceVIResult | None = None
+        self.result: LaplaceVIResult
 
     def fit(
         self,
@@ -159,6 +148,7 @@ class LaplaceWrapper(PyMCWrapper):
         compile_kwargs: dict | None = None,
         regularization_min_eigval: float = 1e-8,
         regularization_max_attempts: int = 10,
+        compute_log_likelihood: bool = True,
     ) -> LaplaceVIResult:
         """Fit the model using Laplace approximation.
 
@@ -283,7 +273,7 @@ class LaplaceWrapper(PyMCWrapper):
                             f" {str(e)}"
                         )
                         warnings.warn(error_msg, UserWarning, stacklevel=2)
-                        raise PyMCWrapperError(error_msg) from e
+                        raise LaplaceWrapperError(error_msg) from e
 
                 idata = sample_laplace_posterior(
                     mu=mu,
@@ -300,7 +290,7 @@ class LaplaceWrapper(PyMCWrapper):
             except (np.linalg.LinAlgError, ValueError) as e:
                 error_msg = f"Error during Laplace approximation: {str(e)}"
                 warnings.warn(error_msg, UserWarning, stacklevel=2)
-                raise PyMCWrapperError(error_msg) from e
+                raise LaplaceWrapperError(error_msg) from e
 
         result = LaplaceVIResult(
             idata=idata,
@@ -311,88 +301,15 @@ class LaplaceWrapper(PyMCWrapper):
         )
         self.idata = idata
         self.result = result
+
+        if compute_log_likelihood:
+            pm.compute_log_likelihood(
+                result.idata, model=self.model, extend_inferencedata=True
+            )
+
         return result
 
-    def importance_resample(
-        self,
-        num_draws: int | None = None,
-        method: Literal["psis", "psir", "identity"] = "psis",
-        random_seed: int | None = None,
-    ) -> LaplaceVIResult:
-        """Apply importance resampling to the Laplace approximation samples.
-
-        Parameters
-        ----------
-        num_draws : Optional[int]
-            Number of draws to return. If None, uses the same number as in the original samples.
-        method : Literal["psis", "psir", "identity"]
-            Method to apply for importance resampling:
-            - "psis": Pareto Smoothed Importance Sampling (default)
-            - "psir": Pareto Smoothed Importance Resampling
-            - "identity": Applies log importance weights directly without resampling
-        random_seed : Optional[int]
-            Random seed for reproducibility. If None, uses the instance's random_seed.
-
-        Returns
-        -------
-        LaplaceVIResult
-            Container with the results after importance resampling.
-        """
-        if self.result is None:
-            raise PyMCWrapperError(
-                "Model must be fit before applying importance resampling"
-            )
-
-        if not PYMC_EXTRAS_AVAILABLE:
-            raise ImportError(
-                "pymc-extras is required for importance resampling. "
-                "Install it with: pip install pymc-extras"
-            )
-
-        if random_seed is None:
-            random_seed = self.random_seed
-
-        posterior = self.result.idata.posterior  # type: ignore[union-attr]
-        n_chains = len(posterior.chain)
-        n_draws_per_chain = len(posterior.draw)
-
-        if num_draws is None:
-            num_draws = n_chains * n_draws_per_chain
-
-        logP = self._compute_log_prob_target(posterior)
-        # type: ignore[union-attr]
-        logQ = self._compute_log_prob_proposal(
-            posterior, self.result.mu, self.result.H_inv
-        )
-        samples = self._reshape_posterior_for_importance_sampling(posterior)
-
-        is_result = vi_psis_sampling(
-            samples=samples,
-            logP=logP,
-            logQ=logQ,
-            num_draws=num_draws,
-            method=method,
-            random_seed=random_seed,
-        )
-
-        resampled_idata = self._convert_resampled_to_inferencedata(is_result.samples)
-
-        # type: ignore[union-attr]
-        new_result = LaplaceVIResult(
-            idata=resampled_idata,
-            mu=self.result.mu,
-            H_inv=self.result.H_inv,
-            model=self.result.model,
-            importance_sampled=True,
-            importance_sampling_method=method,
-            pareto_k=is_result.pareto_k,
-            log_weights=is_result.log_weights,
-            warnings=self.result.warnings + is_result.warnings,
-        )
-        self.result = new_result
-        return new_result
-
-    def _compute_log_prob_target(self, posterior: xr.Dataset) -> np.ndarray:
+    def _compute_log_prob_target(self) -> np.ndarray:
         """Compute log probability of samples under the target distribution (true posterior).
 
         Parameters
@@ -406,6 +323,7 @@ class LaplaceWrapper(PyMCWrapper):
             Log probability values with shape (n_chains, n_draws)
         """
         model = self.model
+        posterior = self.result.idata.posterior
 
         n_chains = len(posterior.chain)
         n_draws = len(posterior.draw)
@@ -453,9 +371,7 @@ class LaplaceWrapper(PyMCWrapper):
 
         return logp_values
 
-    def _compute_log_prob_proposal(
-        self, posterior: xr.Dataset, mu: RaveledVars, H_inv: np.ndarray
-    ) -> np.ndarray:
+    def _compute_log_prob_proposal(self) -> np.ndarray:
         """Compute log probability of samples under the proposal distribution (Laplace approximation).
 
         Parameters
@@ -472,6 +388,10 @@ class LaplaceWrapper(PyMCWrapper):
         np.ndarray
             Log probability values with shape (n_chains, n_draws)
         """
+        posterior = self.result.idata.posterior
+        mu = self.result.mu
+        H_inv = self.result.H_inv
+
         try:
             H_inv_regularized, orig_min, final_min, attempts = _regularize_matrix(
                 H_inv, min_eigenvalue=1e-8, max_attempts=10
@@ -585,7 +505,7 @@ class LaplaceWrapper(PyMCWrapper):
     ) -> InferenceData:
         """Convert resampled samples to InferenceData format."""
         if self.result is None:
-            raise PyMCWrapperError(
+            raise LaplaceWrapperError(
                 "Model must be fit before converting resampled samples"
             )
 
