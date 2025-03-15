@@ -7,7 +7,7 @@ from arviz.data import InferenceData
 
 from ...loo import loo
 from ...loo_approximate_posterior import loo_approximate_posterior
-from ...wrapper.laplace_wrapper import LaplaceWrapper
+from ...wrapper.laplace import LaplaceWrapper
 from ..helpers import assert_arrays_allclose
 
 

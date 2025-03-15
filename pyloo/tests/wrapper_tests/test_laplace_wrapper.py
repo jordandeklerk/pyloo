@@ -4,11 +4,7 @@ import numpy as np
 import pytest
 from arviz import InferenceData
 
-from ...wrapper.laplace_wrapper import (
-    PYMC_EXTRAS_AVAILABLE,
-    LaplaceVIResult,
-    LaplaceWrapper,
-)
+from ...wrapper.laplace import PYMC_EXTRAS_AVAILABLE, LaplaceVIResult, LaplaceWrapper
 from ..helpers import assert_bounded, assert_finite
 
 
