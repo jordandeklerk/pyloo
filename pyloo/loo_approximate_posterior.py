@@ -175,6 +175,7 @@ def loo_approximate_posterior(
             )
 
     has_nan = np.any(np.isnan(log_likelihood.values))
+
     if has_nan:
         warnings.warn(
             "NaN values detected in log-likelihood. These will be ignored in the LOO"
