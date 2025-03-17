@@ -112,8 +112,7 @@ def compute_log_p(model, samples, verbose=False):
 
 
 def compute_log_q(samples, approx_params, verbose=False):
-    """
-    Compute log q(θ) for a set of samples.
+    r"""Compute math:`\log q(\theta)` for a set of samples.
 
     Parameters
     ----------
@@ -171,8 +170,7 @@ def compute_log_q(samples, approx_params, verbose=False):
 
 
 def compute_log_weights(approx, nsample=1000, verbose=False):
-    """
-    Calculate log importance weights for variational approximations.
+    r"""Calculate math:`\log w_i(\theta)` for variational approximations.
     Works with both MeanField and FullRank ADVI.
 
     Parameters
