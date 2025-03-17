@@ -170,7 +170,7 @@ with pm.Model() as model:
 wrapper = PyMCWrapper(model, idata)
 
 # Perform 5-fold cross-validation
-kfold_result = pl.kfold(wrapper, K=5)
+kfold_result = pl.loo_kfold(wrapper, K=5)
 ```
 
 For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide more reliable performance estimates:
