@@ -64,9 +64,6 @@ class LaplaceVIResult:
 class Laplace:
     """Laplace Variational Inference wrapper for PyMC models.
 
-    This class provides Laplace approximation functionality for PyMC models,
-    including importance resampling to improve the quality of the approximation.
-
     Parameters
     ----------
     model : pm.Model
@@ -569,7 +566,7 @@ class Laplace:
 def _regularize_matrix(
     matrix: np.ndarray, min_eigenvalue: float = 1e-8, max_attempts: int = 10
 ) -> tuple[np.ndarray, float, float, int]:
-    """Regularize a matrix to ensure it is positive definite.
+    """Regularize a matrix for positive definiteness.
 
     Parameters
     ----------
