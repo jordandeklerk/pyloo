@@ -33,8 +33,6 @@ APPROXIMATION_METHODS: dict[LooApproximationMethod, Any] = {
 __all__ = ["loo_subsample", "update_subsample"]
 
 
-# TODO: Calculation for p_loo seems to be slightly off.
-# Getting low values for regular sub-sampling. Not sure why.
 def loo_subsample(
     data: InferenceData | dict[str, Any],
     observations: int | np.ndarray | None = 400,
