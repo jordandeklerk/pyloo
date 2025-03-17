@@ -1,4 +1,4 @@
-"""Compute the log density of a model and its variational approximation."""
+"""Compute the log density of a PyMC model and its variational approximation."""
 
 import logging
 from typing import Any
