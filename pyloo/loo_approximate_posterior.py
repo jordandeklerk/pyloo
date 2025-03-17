@@ -215,8 +215,8 @@ def loo_approximate_posterior(
         )
 
         log_likelihood_matrix = log_likelihood_matrix[indices, :]
-
         log_ratios_matrix = -log_likelihood_matrix.copy()
+
         for i in range(log_ratios_matrix.shape[1]):
             max_ratio = np.max(log_ratios_matrix[:, i])
             log_ratios_matrix[:, i] -= max_ratio
