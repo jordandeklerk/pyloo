@@ -27,6 +27,7 @@ Specialized tools for PyMC models that handle the complexities of PyMC's interna
 - **Re-LOO Implementation**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
 - **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
 - **Moment Matching**: Computational alternative to model re-fitting that transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
+- **Posterior Approximations**: Compute LOO-CV for posterior approximations.
 
 ### Maintenance and Dependencies
 
