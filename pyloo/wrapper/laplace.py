@@ -61,7 +61,7 @@ class LaplaceVIResult:
 
 # Mainly based on https://github.com/pymc-devs/pymc-extras/blob/main/pymc_extras/inference/laplace.py
 # with some modifications
-class LaplaceWrapper:
+class Laplace:
     """Laplace Variational Inference wrapper for PyMC models.
 
     This class provides Laplace approximation functionality for PyMC models,
@@ -149,6 +149,7 @@ class LaplaceWrapper:
         regularization_min_eigval: float = 1e-8,
         regularization_max_attempts: int = 10,
         compute_log_likelihood: bool = True,
+        seed: int | None = None,
     ) -> LaplaceVIResult:
         """Fit the model using Laplace approximation.
 
@@ -212,6 +213,7 @@ class LaplaceWrapper:
         compile_kwargs = {} if compile_kwargs is None else compile_kwargs
         warnings_list = []
 
+        seed = self.random_seed if seed is None else seed
         with self.model:
             optimized_point = find_MAP(
                 method=optimize_method,

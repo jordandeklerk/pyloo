@@ -7,7 +7,7 @@ from arviz.data import InferenceData
 
 from ...loo import loo
 from ...loo_approximate_posterior import loo_approximate_posterior
-from ...wrapper.laplace import LaplaceWrapper
+from ...wrapper.laplace import Laplace
 from ..helpers import assert_arrays_allclose
 
 
@@ -15,7 +15,7 @@ from ..helpers import assert_arrays_allclose
 def simple_model_with_approximation(simple_model):
     """Create a simple model with Laplace approximation."""
     model, _ = simple_model
-    wrapper = LaplaceWrapper(model)
+    wrapper = Laplace(model)
     result = wrapper.fit()
 
     log_p = wrapper._compute_log_prob_target().flatten()
@@ -154,17 +154,9 @@ def test_loo_approximate_posterior_length_mismatch(simple_model_with_approximati
     _, idata, log_p, log_g = simple_model_with_approximation
 
     short_log_p = log_p[:-10]
-    short_log_g = log_g[:-10]
 
-    with pytest.raises(
-        ValueError, match="log_p must have length equal to number of samples"
-    ):
+    with pytest.raises(ValueError, match="log_p and log_g must have the same length"):
         loo_approximate_posterior(idata, short_log_p, log_g)
-
-    with pytest.raises(
-        ValueError, match="log_g must have length equal to number of samples"
-    ):
-        loo_approximate_posterior(idata, log_p, short_log_g)
 
 
 def test_loo_approximate_posterior_multiple_groups(simple_model_with_approximation):
@@ -196,10 +188,10 @@ def test_loo_approximate_posterior_numerical_stability(simple_model_with_approxi
 
 
 def test_loo_approximate_posterior_with_laplace_wrapper(simple_model):
-    """Test integration with LaplaceWrapper."""
+    """Test integration with Laplace."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     result = wrapper.fit()
 
     log_p = wrapper._compute_log_prob_target().flatten()
@@ -255,25 +247,19 @@ def test_loo_approximate_posterior_multidimensional(simple_model):
 
 
 def test_loo_approximate_posterior_variational_with_laplace(simple_model):
-    """Test loo_approximate_posterior with variational inference using LaplaceWrapper."""
-    model, _ = simple_model
+    """Test loo_approximate_posterior with variational inference using Laplace."""
+    model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model)
+    wrapper = Laplace(model)
     result = wrapper.fit()
 
     log_p = wrapper._compute_log_prob_target().flatten()
     log_g = wrapper._compute_log_prob_proposal().flatten()
-    samples = wrapper._reshape_posterior_for_importance_sampling(result.idata.posterior)
-
-    n_samples = len(log_p)
 
     loo_result_psis = loo_approximate_posterior(
         result.idata,
         log_p,
         log_g,
-        variational=True,
-        samples=samples,
-        num_draws=n_samples,
         method="psis",
         pointwise=True,
     )
@@ -283,62 +269,68 @@ def test_loo_approximate_posterior_variational_with_laplace(simple_model):
     assert "pareto_k" in loo_result_psis
     assert np.isfinite(loo_result_psis["elpd_loo"])
 
-    loo_result_psir = loo_approximate_posterior(
-        result.idata,
-        log_p,
-        log_g,
-        variational=True,
-        samples=samples,
-        num_draws=n_samples,
-        method="psir",
-        pointwise=True,
-    )
-
-    assert loo_result_psir is not None
-    assert "elpd_loo" in loo_result_psir
-    assert "pareto_k" in loo_result_psir
-    assert np.isfinite(loo_result_psir["elpd_loo"])
-
-    standard_loo = loo(result.idata, pointwise=True)
+    standard_loo = loo(idata, pointwise=True)
 
     print(standard_loo)
     print(loo_result_psis)
-    print(loo_result_psir)
 
     assert np.sign(loo_result_psis["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
 
-def test_loo_approximate_posterior_variational_validation(
-    simple_model_with_approximation,
-):
-    """Test validation of variational parameters in loo_approximate_posterior."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+def test_loo_approximate_posterior_wells(wells_model):
+    """Test loo_approximate_posterior with variational inference using Laplace."""
+    model, idata = wells_model
 
-    n_samples = len(log_p)
-    n_params = 2
+    wrapper = Laplace(model)
+    result = wrapper.fit(chains=4, draws=2000, seed=42)
 
-    samples = np.random.normal(size=(1, n_samples, n_params))
+    log_p = wrapper._compute_log_prob_target().flatten()
+    log_g = wrapper._compute_log_prob_proposal().flatten()
 
-    with pytest.raises(ValueError, match="samples and num_draws must be provided"):
-        loo_approximate_posterior(
-            idata, log_p, log_g, variational=True, num_draws=n_samples, method="psis"
+    standard_loo = loo(idata, pointwise=True)
+
+    if hasattr(standard_loo, "pareto_k"):
+        print(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
+        print(
+            f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
+            f" {np.max(standard_loo.pareto_k)}"
+        )
+        print(f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}")
+        print(f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}")
+
+    loo_result_psis = loo_approximate_posterior(
+        result.idata,
+        log_p,
+        log_g,
+        method="psis",
+        pointwise=True,
+    )
+
+    assert loo_result_psis is not None
+    assert "elpd_loo" in loo_result_psis
+    assert "pareto_k" in loo_result_psis
+    assert np.isfinite(loo_result_psis["elpd_loo"])
+
+    print(standard_loo)
+    print(loo_result_psis)
+
+    if hasattr(loo_result_psis, "pareto_k"):
+        print(f"Approximate LOO pareto_k shape: {loo_result_psis.pareto_k.shape}")
+        print(
+            f"Approximate LOO pareto_k min: {np.min(loo_result_psis.pareto_k)}, max:"
+            f" {np.max(loo_result_psis.pareto_k)}"
+        )
+        print(
+            f"Approximate LOO pareto_k > 0.7: {np.sum(loo_result_psis.pareto_k > 0.7)}"
+        )
+        print(
+            f"Approximate LOO pareto_k > 1.0: {np.sum(loo_result_psis.pareto_k > 1.0)}"
         )
 
-    with pytest.raises(ValueError, match="samples and num_draws must be provided"):
-        loo_approximate_posterior(
-            idata, log_p, log_g, variational=True, samples=samples, method="psis"
-        )
+        if np.sum(loo_result_psis.pareto_k > 1.0) > 0:
+            print(f"Bad pareto_k value: {loo_result_psis.pareto_k}")
 
-    with pytest.raises(ValueError, match="not supported for variational inference"):
-        loo_approximate_posterior(
-            idata,
-            log_p,
-            log_g,
-            variational=True,
-            samples=samples,
-            num_draws=n_samples,
-            method="sis",
-        )
+    assert np.sign(loo_result_psis["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
 
 def test_loo_approximate_posterior_constant_values(simple_model_with_approximation):

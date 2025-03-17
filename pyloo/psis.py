@@ -2,14 +2,13 @@
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Literal
 
 import numpy as np
 import xarray as xr
 
 from .utils import _logsumexp, wrap_xarray_ufunc
 
-__all__ = ["psislw", "vi_psis_sampling"]
+__all__ = ["psislw"]
 
 
 @dataclass(frozen=True)
@@ -18,156 +17,9 @@ class ImportanceSamplingResult:
 
     samples: np.ndarray
     log_weights: np.ndarray
-    pareto_k: float | None = None
+    pareto_k: np.ndarray | float | None = None
     warnings: list[str] = field(default_factory=list)
     method: str | None = "psis"
-
-
-def vi_psis_sampling(
-    samples: np.ndarray,
-    logP: np.ndarray,
-    logQ: np.ndarray,
-    num_draws: int,
-    method: Literal["psis", "psir", "identity"] | None,
-    random_seed: int | None = None,
-) -> ImportanceSamplingResult:
-    """Pareto Smoothed Importance Sampling (PSIS).
-
-    This function implements various importance sampling methods, including Pareto Smoothed
-    Importance Sampling (PSIS) and Pareto Smoothed Importance Resampling (PSIR) intended for
-    variational inference.
-
-    Parameters
-    ----------
-    samples : array-like
-        Samples from proposal distribution, shape (L, M, N) where:
-        - L is the number of chains/paths
-        - M is the number of draws per chain
-        - N is the number of parameters
-    logP : array-like
-        Log probability values of target distribution, shape (L, M)
-    logQ : array-like
-        Log probability values of proposal distribution, shape (L, M)
-    num_draws : int
-        Number of draws to return where num_draws <= samples.shape[0] * samples.shape[1]
-    method : str, None, optional
-        Method to apply sampling based on log importance weights (logP - logQ).
-        Options are:
-        "psis" : Pareto Smoothed Importance Sampling (default)
-                Recommended for more stable results.
-        "psir" : Pareto Smoothed Importance Resampling
-                Less stable than PSIS.
-        "identity" : Applies log importance weights directly without resampling.
-        None : No importance sampling weights. Returns raw samples.
-    random_seed : int, optional
-        Random seed for reproducibility.
-
-    Returns
-    -------
-    ImportanceSamplingResult
-        Importance sampled draws and other info based on the specified method.
-
-    Notes
-    -----
-    This function is a wrapper around the `psislw` function for variational inference.
-    We use this function to implement the importance sampling methods for variational inference
-    with the Laplace approximation. Keep in mind that Pareto k is normally bad for Pathfinder
-    even when the posterior is close to the NUTS posterior or closer to NUTS than ADVI. So
-    Pareto k may not be a good diagnostic for Pathfinder.
-
-    References
-    ----------
-    Vehtari et al. (2024). Pareto smoothed importance sampling. Journal of Machine
-    Learning Research, 25(72):1-58.
-
-    Yao, Y., Vehtari, A., Simpson, D., & Gelman, A. (2018). Yes, but Did It Work?:
-    Evaluating Variational Inference. arXiv:1802.02538 [Stat].
-    """
-    warnings = []
-    num_paths, _, N = samples.shape
-
-    if method is None:
-        warnings.append(
-            "Importance sampling is disabled. The samples are returned as is which may"
-            " include samples from failed paths with non-finite logP or logQ values. It"
-            " is recommended to use importance_sampling='psis' for better stability."
-        )
-        # Create dummy log weights if not using importance sampling
-        dummy_log_weights = np.zeros((samples.shape[0] * samples.shape[1]))
-        return ImportanceSamplingResult(
-            samples=samples,
-            log_weights=dummy_log_weights,
-            pareto_k=None,
-            warnings=warnings,
-            method=method,
-        )
-    else:
-        samples = samples.reshape(-1, N)
-        logP = logP.ravel()
-        logQ = logQ.ravel()
-
-        log_I = np.log(num_paths)
-        logP -= log_I
-        logQ -= log_I
-        logiw = logP - logQ
-
-        if method == "psis":
-            replace = False
-            logiw, pareto_k = psislw(logiw)
-        elif method == "psir":
-            replace = True
-            logiw, pareto_k = psislw(logiw)
-        elif method == "identity":
-            replace = False
-            pareto_k = None
-        else:
-            raise ValueError(f"Unknown method: {method}")
-
-        p = np.exp(logiw - _logsumexp(logiw))
-        rng = np.random.default_rng(random_seed)
-
-        try:
-            # Try to resample without replacement first
-            resampled = rng.choice(
-                samples, size=num_draws, replace=replace, p=p, shuffle=False, axis=0
-            )
-            return ImportanceSamplingResult(
-                samples=resampled,
-                log_weights=logiw,
-                pareto_k=pareto_k,
-                warnings=warnings,
-                method=method,
-            )
-        except ValueError as e1:
-            if "Fewer non-zero entries in p than size" in str(e1):
-                num_nonzero = np.sum(p > 0)
-                warnings.append(
-                    f"Not enough valid samples: {num_nonzero} available out of"
-                    f" {num_draws} requested. Switching to psir importance sampling."
-                )
-                try:
-                    # Fall back to resampling with replacement
-                    resampled = rng.choice(
-                        samples,
-                        size=num_draws,
-                        replace=True,
-                        p=p,
-                        shuffle=False,
-                        axis=0,
-                    )
-                    return ImportanceSamplingResult(
-                        samples=resampled,
-                        log_weights=logiw,
-                        pareto_k=pareto_k,
-                        warnings=warnings,
-                        method=method,
-                    )
-                except ValueError as e2:
-                    raise ValueError(
-                        "Importance sampling failed for both with and without"
-                        " replacement"
-                    ) from e2
-            raise
 
 
 def psislw(

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from arviz import InferenceData
 
-from ...wrapper.laplace import PYMC_EXTRAS_AVAILABLE, LaplaceVIResult, LaplaceWrapper
+from ...wrapper.laplace import PYMC_EXTRAS_AVAILABLE, Laplace, LaplaceVIResult
 from ..helpers import assert_bounded, assert_finite
 
 
@@ -12,7 +12,7 @@ def test_laplace_wrapper_initialization(simple_model):
     """Test wrapper initialization and validation."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     assert wrapper.model == model
     assert wrapper.idata == idata
 
@@ -25,7 +25,7 @@ def test_laplace_fit(simple_model):
     """Test fitting the model using Laplace approximation."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     result = wrapper.fit(
         optimize_method="BFGS",
         chains=2,
@@ -63,7 +63,7 @@ def test_compute_log_prob_target(simple_model):
     """Test computation of log probability under the target distribution."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     wrapper.fit(
         optimize_method="BFGS",
         chains=2,
@@ -88,7 +88,7 @@ def test_compute_log_prob_proposal(simple_model):
     """Test computation of log probability under the proposal distribution."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     wrapper.fit(
         optimize_method="BFGS",
         chains=2,
@@ -112,7 +112,7 @@ def test_log_probability_comparison(simple_model):
     """Test that log probabilities from target and proposal are reasonably close."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     wrapper.fit(
         optimize_method="BFGS",
         chains=2,
@@ -151,7 +151,7 @@ def test_reshape_posterior_for_importance_sampling(simple_model):
     """Test reshaping posterior samples for importance sampling."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     wrapper.fit(
         optimize_method="BFGS",
         chains=2,
@@ -178,7 +178,7 @@ def test_convert_resampled_to_inferencedata(simple_model):
     """Test converting resampled samples to InferenceData format."""
     model, idata = simple_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     wrapper.fit(
         optimize_method="BFGS",
         chains=2,
@@ -236,10 +236,10 @@ def test_convert_resampled_to_inferencedata(simple_model):
     reason="pymc-extras not installed",
 )
 def test_laplace_wrapper_with_hierarchical_model(hierarchical_model):
-    """Test LaplaceWrapper with a hierarchical model."""
+    """Test Laplace with a hierarchical model."""
     model, idata = hierarchical_model
 
-    wrapper = LaplaceWrapper(model, idata)
+    wrapper = Laplace(model, idata)
     result = wrapper.fit(
         optimize_method="BFGS",
         chains=2,

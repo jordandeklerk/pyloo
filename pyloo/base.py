@@ -2,12 +2,12 @@
 
 from copy import deepcopy
 from enum import Enum
-from typing import Callable, Literal, cast
+from typing import Callable, cast
 
 import numpy as np
 import xarray as xr
 
-from .psis import _psislw, vi_psis_sampling
+from .psis import _psislw
 from .sis import _sislw
 from .tis import _tislw
 from .utils import wrap_xarray_ufunc
@@ -21,8 +21,6 @@ class ISMethod(str, Enum):
     PSIS = "psis"
     SIS = "sis"
     TIS = "tis"
-    PSIR = "psir"
-    IDENTITY = "identity"
 
 
 ImplFunc = Callable[..., tuple[np.ndarray, float | np.ndarray]]
@@ -32,12 +30,6 @@ def compute_importance_weights(
     log_weights: xr.DataArray | np.ndarray | None = None,
     method: ISMethod | str = ISMethod.PSIS,
     reff: float = 1.0,
-    variational: bool = False,
-    samples: np.ndarray | None = None,
-    logP: np.ndarray | None = None,
-    logQ: np.ndarray | None = None,
-    num_draws: int | None = None,
-    random_seed: int | None = None,
 ) -> tuple[xr.DataArray | np.ndarray, xr.DataArray | np.ndarray]:
     """
     Unified importance sampling computation that supports multiple methods.
@@ -55,26 +47,6 @@ def compute_importance_weights(
         - 'identity': Apply log importance weights directly (for variational inference)
     reff : float, default 1.0
         Relative MCMC efficiency (only used for PSIS method)
-    variational : bool, default False
-        Whether to use variational inference specific importance sampling.
-        If True, samples, logP, logQ, and num_draws must be provided.
-    samples : array-like, optional
-        Samples from proposal distribution, shape (L, M, N) where:
-        - L is the number of chains/paths
-        - M is the number of draws per chain
-        - N is the number of parameters
-        Required when variational=True.
-    logP : array-like, optional
-        Log probability values of target distribution, shape (L, M)
-        Required when variational=True.
-    logQ : array-like, optional
-        Log probability values of proposal distribution, shape (L, M)
-        Required when variational=True.
-    num_draws : int, optional
-        Number of draws to return where num_draws <= samples.shape[0] * samples.shape[1]
-        Required when variational=True.
-    random_seed : int, optional
-        Random seed for reproducibility in variational inference sampling.
 
     Returns
     -------
@@ -126,27 +98,6 @@ def compute_importance_weights(
 
         # Using TIS
         lw_tis, ess = pl.compute_importance_weights(-log_likelihood, method="tis")
-
-    For variational inference
-
-    .. code-block:: python
-
-        import pyloo as pl
-        import numpy as np
-
-        # Simulate samples from a variational approximation
-        samples = np.random.normal(size=(4, 1000, 10))  # 4 paths, 1000 draws, 10 parameters
-        logP = np.random.normal(size=(4, 1000))  # Log prob from target distribution
-        logQ = np.random.normal(size=(4, 1000))  # Log prob from proposal distribution
-
-        result = pl.compute_importance_weights(
-            method="psis",
-            variational=True,
-            samples=samples,
-            logP=logP,
-            logQ=logQ,
-            num_draws=1000
-        )
     """
     if isinstance(method, str):
         try:
@@ -156,40 +107,6 @@ def compute_importance_weights(
             raise ValueError(
                 f"Invalid method '{method}'. Must be one of: {valid_methods}"
             )
-
-    if variational:
-        if samples is None or logP is None or logQ is None or num_draws is None:
-            raise ValueError(
-                "When variational=True, samples, logP, logQ, and num_draws must be"
-                " provided"
-            )
-
-        if method == ISMethod.PSIS:
-            vi_method = "psis"
-        elif method == ISMethod.PSIR:
-            vi_method = "psir"
-        elif method == ISMethod.IDENTITY:
-            vi_method = "identity"
-        elif method == ISMethod.SIS or method == ISMethod.TIS:
-            raise ValueError(
-                f"Method {method} is not supported for variational inference. "
-                "Use 'psis', 'psir', or 'identity' instead."
-            )
-        else:
-            vi_method = None
-
-        vi_method_literal = cast(Literal["psis", "psir", "identity", None], vi_method)
-
-        result = vi_psis_sampling(
-            samples=samples,
-            logP=logP,
-            logQ=logQ,
-            num_draws=num_draws,
-            method=vi_method_literal,
-            random_seed=random_seed,
-        )
-
-        return result.log_weights, result.pareto_k
 
     if log_weights is None:
         raise ValueError("log_weights must be provided when variational=False")

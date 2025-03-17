@@ -659,3 +659,36 @@ def approximate_posterior_model():
         pm.compute_log_likelihood(idata, model=model, extend_inferencedata=True)
 
     return model, idata, approx
+
+
+@pytest.fixture(scope="session")
+def wells_model():
+    """Create a logistic regression model for the arsenic wells dataset."""
+    data = pd.read_csv("./data/wells.csv")
+
+    y = data["switch"].values
+
+    data["dist100"] = data["dist"] / 100
+
+    X = np.column_stack([np.ones(len(data)), data[["dist100", "arsenic"]].values])
+
+    P = X.shape[1]
+    N = len(y)
+
+    with pm.Model(coords={"obs_id": range(N), "predictor": range(P)}) as model:
+        beta = pm.Normal("beta", mu=0, sigma=1, dims="predictor")
+
+        eta = pm.math.dot(X, beta)
+
+        pm.Bernoulli("y", logit_p=eta, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            chains=4,
+            draws=1000,
+            tune=1000,
+            target_accept=0.9,
+            random_seed=42,
+            idata_kwargs={"log_likelihood": True},
+        )
+
+    return model, idata

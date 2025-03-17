@@ -1,18 +1,23 @@
 """Efficient approximate leave-one-out cross-validation (LOO) for posterior approximations."""
 
+import logging
 import warnings
 from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
 from arviz.data import InferenceData
+from arviz.stats.diagnostics import ess
 
 from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
+from .psis import psislw
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
 __all__ = ["loo_approximate_posterior"]
+
+logger = logging.getLogger(__name__)
 
 
 def loo_approximate_posterior(
@@ -23,16 +28,16 @@ def loo_approximate_posterior(
     var_name: str | None = None,
     reff: float | None = None,
     scale: str | None = None,
-    method: Literal["psis", "sis", "tis", "psir", "identity"] | ISMethod = "psis",
-    variational: bool | None = None,
-    samples: np.ndarray | None = None,
-    num_draws: int | None = None,
-    random_seed: int | None = None,
+    method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+    resample_method: str = "psis",
+    n_resamples: int | None = None,
+    seed: int | None = None,
 ) -> ELPDData:
     """Efficient approximate leave-one-out cross-validation (LOO) for posterior approximations.
 
     This function computes LOO-CV for posterior approximations where it is possible to compute
-    the log density for the posterior approximation.
+    the log density for the posterior approximation. Performs importance resampling
+    for better numerical stability.
 
     Parameters
     ----------
@@ -58,27 +63,21 @@ def loo_approximate_posterior(
         - "log": (default) log-score
         - "negative_log": -1 * log-score
         - "deviance": -2 * log-score
-    method : {'psis', 'sis', 'tis', 'psir', 'identity'}, default 'psis'
-        The importance sampling method to use:
+    method : {'psis', 'sis', 'tis'}, default 'psis'
+        The importance sampling method to use for LOO computation:
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
-        - 'psir': Pareto Smoothed Importance Resampling (for variational inference)
-        - 'identity': Apply log importance weights directly (for variational inference)
-    variational : bool, default False
-        Whether to use variational inference specific importance sampling.
-        If True, samples, logP, logQ, and num_draws must be provided.
-    samples : array-like, optional
-        Samples from proposal distribution, shape (L, M, N) where:
-        - L is the number of chains/paths
-        - M is the number of draws per chain
-        - N is the number of parameters
-        Required when variational=True.
-    num_draws : int, optional
-        Number of draws to return where num_draws <= samples.shape[0] * samples.shape[1]
-        Required when variational=True.
-    random_seed : int, optional
-        Random seed for reproducibility in variational inference sampling.
+    resample_method : str, default "psis"
+        Method to use for importance resampling:
+        - "psis": Pareto Smoothed Importance Sampling (without replacement)
+        - "psir": Pareto Smoothed Importance Resampling (with replacement)
+        - "sis": Standard Importance Sampling (no smoothing)
+    n_resamples : int, optional
+        Number of samples to draw during importance resampling. Default is same as
+        number of input samples.
+    seed : int, optional
+        Random seed for reproducible resampling.
 
     Returns
     -------
@@ -99,81 +98,51 @@ def loo_approximate_posterior(
         scale: scale of the elpd
         good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
         approximate_posterior: dictionary with log_p and log_g values
+        ess_ratio: effective sample size ratio from importance resampling
+        resample_pareto_k: Pareto k diagnostic values from resampling (if using PSIS)
+        method: The method used for computation ("loo_approximate_posterior")
 
         The returned object has a custom print method that overrides pd.Series method.
 
+    See Also
+    --------
+    loo_subsample : Subsampled LOO-CV computation
+    reloo : Exact LOO-CV computation for PyMC models
+    loo_moment_match : LOO-CV computation using moment matching
+    loo_kfold : K-fold cross-validation
+    waic : Compute WAIC
+
     Examples
     --------
-    Variational inference with Laplace approximation for large models
+    Calculate LOO-CV for a variational inference using a Laplace approximation
 
     .. code-block:: python
 
-        import pymc as pm
-        import numpy as np
         import pyloo as pl
-        from pyloo.wrapper import LaplaceWrapper
+        from pyloo.wrapper import Laplace
 
-        true_mu = 0.5
-        true_sigma = 1.0
-        y = np.random.normal(true_mu, true_sigma, size=10000)
+        wrapper = Laplace(model)
+        result = wrapper.fit()
 
-        with pm.Model() as model:
-            mu = pm.Normal('mu', mu=0, sigma=10)
-            sigma = pm.HalfNormal('sigma', sigma=10)
-            pm.Normal('y', mu=mu, sigma=sigma, observed=y)
+        # Get target and proposal log densities
+        log_p = wrapper._compute_log_prob_target().flatten()
+        log_g = wrapper._compute_log_prob_proposal().flatten()
 
-            wrapper = LaplaceWrapper(model)
-            result = wrapper.fit()
-
-            # Extract log_p and log_g
-            log_p = wrapper._compute_log_prob_target()
-            log_g = wrapper._compute_log_prob_proposal()
-            samples = wrapper._reshape_posterior_for_importance_sampling(result.idata.posterior)
-            n_samples = len(log_p)
-
-            # Compute approximate LOO with PSIS
-            loo_result = pl.loo_approximate_posterior(
-                result.idata,
-                log_p,
-                log_g,
-                method="psis",
-                pointwise=True,
-                variational=True,
-                samples=samples,
-                num_draws=n_samples,
-                random_seed=42
-            )
-
-            # Compute approximate LOO with PSIR
-            loo_result_psir = pl.loo_approximate_posterior(
-                result.idata,
-                log_p,
-                log_g,
-                method="psir",
-                pointwise=True,
-                variational=True,
-                samples=samples,
-                num_draws=n_samples,
-                random_seed=42,
-            )
-
-    See Also
-    --------
-    loo : Standard LOO-CV computation
-    loo_subsample : Subsample-based LOO-CV computation
-    loo_kfold : K-fold LOO-CV computation
-    loo_moment_match : Moment-matching LOO-CV computation
+        loo_result = pl.loo_approximate_posterior(
+            result.idata,
+            log_p,
+            log_g,
+            pointwise=True
+        )
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
-
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
 
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
     shape = log_likelihood.shape
     n_samples = shape[-1]
     n_data_points = np.prod(shape[:-1])
-
     scale = rcParams["stats.ic_scale"] if scale is None else scale.lower()
 
     if scale == "deviance":
@@ -185,20 +154,10 @@ def loo_approximate_posterior(
     else:
         raise TypeError('Valid scale values are "deviance", "log", "negative_log"')
 
-    if not isinstance(log_p, np.ndarray):
-        log_p = np.asarray(log_p)
-    if not isinstance(log_g, np.ndarray):
-        log_g = np.asarray(log_g)
-
-    if len(log_p) != n_samples:
+    if len(log_p) != len(log_g):
         raise ValueError(
-            f"log_p must have length equal to number of samples ({n_samples}), "
-            f"got {len(log_p)}"
-        )
-    if len(log_g) != n_samples:
-        raise ValueError(
-            f"log_g must have length equal to number of samples ({n_samples}), "
-            f"got {len(log_g)}"
+            f"log_p and log_g must have the same length, got {len(log_p)} and"
+            f" {len(log_g)}"
         )
 
     if reff is None:
@@ -209,9 +168,7 @@ def loo_approximate_posterior(
         if n_chains == 1:
             reff = 1.0
         else:
-            from arviz.stats.diagnostics import ess as az_ess
-
-            ess_p = az_ess(posterior, method="mean")
+            ess_p = ess(posterior, method="mean")
             reff = (
                 np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean()
                 / n_samples
@@ -238,62 +195,56 @@ def loo_approximate_posterior(
             method.value.upper() if isinstance(method, ISMethod) else method.upper()
         )
         warnings.warn(
-            f"Using {method_name} for approximate LOO computation. Note that PSIS is"
-            " highly recommended for approximate LOO computations.",
+            f"Using {method_name} for LOO computation. Note that PSIS is the"
+            " recommended method as it is typically more efficient and reliable.",
             UserWarning,
             stacklevel=2,
         )
 
-    if variational:
-        if method not in [ISMethod.PSIS, ISMethod.PSIR, ISMethod.IDENTITY]:
-            raise ValueError(
-                f"Method {method} is not supported for variational inference. "
-                "Use 'psis', 'psir', or 'identity' instead."
-            )
-        if samples is None or num_draws is None:
-            raise ValueError(
-                "When variational=True, samples and num_draws must be provided"
-            )
+    log_likelihood_np = log_likelihood.values
+    n_obs = np.prod(log_likelihood_np.shape[:-1])
+    log_likelihood_matrix = log_likelihood_np.reshape(n_obs, n_samples).T
 
-    # Apply correction for posterior approximation
-    approx_correction = log_p - log_g - np.max(log_p - log_g)
+    try:
+        indices, ess_ratio, resample_k = importance_resample(
+            log_p=log_p,
+            log_g=log_g,
+            n_resamples=n_resamples or n_samples,
+            method=resample_method,
+            seed=seed,
+        )
 
-    approx_correction_xr = xr.DataArray(
-        approx_correction,
-        dims=["__sample__"],
-        coords={"__sample__": log_likelihood.__sample__},
+        log_likelihood_matrix = log_likelihood_matrix[indices, :]
+
+        log_ratios_matrix = -log_likelihood_matrix.copy()
+        for i in range(log_ratios_matrix.shape[1]):
+            max_ratio = np.max(log_ratios_matrix[:, i])
+            log_ratios_matrix[:, i] -= max_ratio
+
+    except Exception as e:
+        warnings.warn(
+            f"Importance resampling failed: {str(e)}. Falling back to original"
+            " samples.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    log_ratios_xr = xr.DataArray(
+        log_ratios_matrix.T.reshape(log_likelihood_np.shape),
+        dims=log_likelihood.dims,
+        coords=log_likelihood.coords,
     )
 
-    log_ratios_xr = (-log_likelihood + approx_correction_xr) - (
-        -log_likelihood + approx_correction_xr
-    ).max(dim="__sample__")
+    log_weights, diagnostic = compute_importance_weights(
+        log_ratios_xr, method=method, reff=reff
+    )
 
-    if variational:
-        log_weights, diagnostic = compute_importance_weights(
-            method=method,
-            variational=True,
-            samples=samples,
-            logP=log_p,
-            logQ=log_g,
-            num_draws=num_draws,
-            random_seed=random_seed,
-        )
-
-        log_likelihood_subset = log_likelihood.isel(
-            __sample__=slice(0, len(log_weights))
-        )
-        broadcasted_weights = xr.DataArray(
-            log_weights,
-            dims=["__sample__"],
-            coords={"__sample__": log_likelihood_subset.__sample__},
-        )
-
-        log_weights = broadcasted_weights + log_likelihood_subset
-    else:
-        log_weights, diagnostic = compute_importance_weights(
-            log_ratios_xr, method=method, reff=reff
-        )
-        log_weights += log_likelihood
+    resampled_log_likelihood = xr.DataArray(
+        log_likelihood_matrix.T.reshape(log_likelihood_np.shape),
+        dims=log_likelihood.dims,
+        coords=log_likelihood.coords,
+    )
+    log_weights += resampled_log_likelihood
 
     warn_mg = False
     good_k = min(1 - 1 / np.log10(n_samples), 0.7)
@@ -338,7 +289,7 @@ def loo_approximate_posterior(
     lppd = np.sum(
         wrap_xarray_ufunc(
             _logsumexp,
-            log_likelihood,
+            resampled_log_likelihood,
             func_kwargs={"b_inv": n_samples},
             ufunc_kwargs=ufunc_kwargs,
             **xarray_kwargs,
@@ -380,9 +331,6 @@ def loo_approximate_posterior(
             result_data.append(good_k)
             result_index.append("good_k")
 
-        result_data.append(n_data_points)
-        result_index.append("subsample_size")
-
         result = ELPDData(data=result_data, index=result_index)
         result.approximate_posterior = {"log_p": log_p, "log_g": log_g}
 
@@ -420,7 +368,7 @@ def loo_approximate_posterior(
         "looic_se",
     ]
 
-    if method == ISMethod.PSIS or method == ISMethod.PSIR:
+    if method == ISMethod.PSIS:
         result_data.append(diagnostic)
         result_index.append("pareto_k")
         result_data.append(good_k)
@@ -429,11 +377,157 @@ def loo_approximate_posterior(
         result_data.append(diagnostic)
         result_index.append("ess")
 
-    result_data.append(n_data_points)
-    result_index.append("subsample_size")
-
     result = ELPDData(data=result_data, index=result_index)
     result.approximate_posterior = {"log_p": log_p, "log_g": log_g}
-    result.__class__ = ELPDData
 
     return result
+
+
+def importance_resample(
+    log_p: np.ndarray,
+    log_g: np.ndarray,
+    n_resamples: int | None = None,
+    method: str = "psis",
+    seed: int | None = None,
+) -> tuple[np.ndarray, float, np.ndarray | None]:
+    """
+    Importance resampling from approximate posterior samples.
+
+    Parameters
+    ----------
+    log_p : np.ndarray
+        Log density under target distribution
+    log_g : np.ndarray
+        Log density under proposal distribution
+    n_resamples : int | None, optional
+        Number of samples to draw (defaults to len(log_p))
+    method : str, default "psis"
+        Method to use for importance sampling:
+        - "psis": Pareto Smoothed Importance Sampling
+        - "psir": Pareto Smoothed Importance Resampling (with replacement)
+        - "sis": Standard Importance Sampling (no smoothing)
+    seed : int | None, optional
+        Random seed for reproducibility
+
+    Returns
+    -------
+    np.ndarray
+        Indices of resampled points
+    float
+        Effective sample size ratio
+    np.ndarray | None
+        Pareto k diagnostic values if method is "psis" or "psir"
+    """
+    if n_resamples is None:
+        n_resamples = len(log_p)
+
+    rng = np.random.RandomState(seed) if seed is not None else np.random.RandomState()
+
+    logiw = log_p - log_g
+
+    valid_idx = np.isfinite(logiw)
+    if not np.all(valid_idx):
+        warnings.warn(
+            f"Found {np.sum(~valid_idx)} non-finite importance weights. These will be"
+            " excluded.",
+            UserWarning,
+            stacklevel=2,
+        )
+        if np.sum(valid_idx) == 0:
+            raise ValueError("No valid importance weights found.")
+
+        logiw = logiw[valid_idx]
+    else:
+        valid_idx = slice(None)
+
+    pareto_k = None
+    replace = method == "psir"
+
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message="overflow encountered in exp"
+            )
+            if method in ["psis", "psir"]:
+                try:
+                    logiw_smoothed, pareto_k = psislw(logiw)
+                    logiw = logiw_smoothed
+                except Exception as e:
+                    warnings.warn(
+                        f"PSIS smoothing failed: {str(e)}.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+            else:
+                logiw = logiw - _logsumexp(logiw)
+    except Exception as e:
+        warnings.warn(
+            f"Error in importance weight calculation: {str(e)}. Using normalized"
+            " weights.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    p = np.exp(logiw)
+    if np.sum(p) == 0:
+        warnings.warn(
+            "All importance weights are zero. Using uniform weights.",
+            UserWarning,
+            stacklevel=2,
+        )
+        p = np.ones_like(p) / len(p)
+    else:
+        p = p / np.sum(p)
+
+    if np.any(~np.isfinite(p)):
+        warnings.warn(
+            "Non-finite probabilities detected. Using uniform weights.",
+            UserWarning,
+            stacklevel=2,
+        )
+        p = np.ones_like(p) / len(p)
+
+    ess = 1.0 / np.sum(p**2)
+    ess_ratio = ess / len(p)
+
+    try:
+        indices_subset = rng.choice(len(p), size=n_resamples, replace=replace, p=p)
+
+        if isinstance(valid_idx, np.ndarray):
+            orig_indices = np.where(valid_idx)[0]
+            indices = orig_indices[indices_subset]
+        else:
+            indices = indices_subset
+
+    except ValueError as e:
+        if "Fewer non-zero entries in p than size" in str(e) and not replace:
+            warnings.warn(
+                "Not enough non-zero weights for sampling without replacement. "
+                "Switching to sampling with replacement.",
+                UserWarning,
+                stacklevel=2,
+            )
+            try:
+                indices_subset = rng.choice(len(p), size=n_resamples, replace=True, p=p)
+
+                if isinstance(valid_idx, np.ndarray):
+                    orig_indices = np.where(valid_idx)[0]
+                    indices = orig_indices[indices_subset]
+                else:
+                    indices = indices_subset
+            except ValueError as e2:
+                warnings.warn(
+                    f"Resampling failed: {str(e2)}. Using random indices.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                indices = rng.choice(len(log_p), size=n_resamples)
+        else:
+            warnings.warn(
+                f"Resampling failed: {str(e)}. Using random indices.",
+                UserWarning,
+                stacklevel=2,
+            )
+            indices = rng.choice(len(log_p), size=n_resamples)
+
+    return indices, ess_ratio, pareto_k
