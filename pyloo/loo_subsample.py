@@ -1,7 +1,7 @@
 """Efficient approximate leave-one-out cross-validation (LOO-CV) using subsampling."""
 
 import warnings
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -24,7 +24,7 @@ from .loo_approximate_posterior import importance_resample
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
-APPROXIMATION_METHODS = {
+APPROXIMATION_METHODS: dict[LooApproximationMethod, Any] = {
     LooApproximationMethod.LPD: lambda: LPDApproximation(),
     LooApproximationMethod.TIS: lambda: TISApproximation(),
     LooApproximationMethod.SIS: lambda: SISApproximation(),
@@ -33,21 +33,23 @@ APPROXIMATION_METHODS = {
 __all__ = ["loo_subsample", "update_subsample"]
 
 
+# TODO: Calculation for p_loo seems to be slightly off.
+# Getting low values for regular sub-sampling. Not sure why.
 def loo_subsample(
     data: InferenceData | dict[str, Any],
-    observations: Optional[int | np.ndarray] = 400,
+    observations: int | np.ndarray | None = 400,
     loo_approximation: str = "plpd",
     estimator: str = "diff_srs",
-    loo_approximation_draws: Optional[int] = None,
-    pointwise: Optional[bool] = None,
-    var_name: Optional[str] = None,
-    reff: Optional[float] = None,
-    scale: Optional[str] = None,
-    log_p: Optional[np.ndarray] = None,
-    log_q: Optional[np.ndarray] = None,
+    loo_approximation_draws: int | None = None,
+    pointwise: bool | None = None,
+    var_name: str | None = None,
+    reff: float | None = None,
+    scale: str | None = None,
+    log_p: np.ndarray | None = None,
+    log_q: np.ndarray | None = None,
     resample_method: str = "psis",
-    n_resamples: Optional[int] = None,
-    seed: Optional[int] = None,
+    n_resamples: int | None = None,
+    seed: int | None = None,
 ) -> ELPDData:
     """Compute approximate LOO-CV using subsampling.
 
@@ -568,7 +570,7 @@ def loo_subsample(
 
 def update_subsample(
     loo_data: ELPDData,
-    observations: Optional[int | np.ndarray] = None,
+    observations: int | np.ndarray | None = None,
     **kwargs,
 ) -> ELPDData:
     """Update subsampling results with new observations or parameters.
@@ -581,7 +583,7 @@ def update_subsample(
     ----------
     loo_data : ELPDData
         The original LOO-CV results from loo_subsample()
-    observations : Optional[Union[int, np.ndarray]], default None
+    observations : int | np.ndarray | None, default None
         The new subsample observations to use:
         - An integer specifying the number of observations to subsample
         - An array of integers providing specific indices to use
