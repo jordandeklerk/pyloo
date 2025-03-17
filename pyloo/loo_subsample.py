@@ -324,7 +324,6 @@ def loo_subsample(
             resample_indices = importance_resample(
                 log_p=log_p,
                 log_q=log_q,
-                n_resamples=n_resamples or n_samples,
                 method=resample_method,
                 seed=seed,
             )

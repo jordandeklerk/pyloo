@@ -30,7 +30,6 @@ def loo_approximate_posterior(
     scale: str | None = None,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
     resample_method: str = "psis",
-    n_resamples: int | None = None,
     seed: int | None = None,
 ) -> ELPDData:
     """Efficient approximate leave-one-out cross-validation (LOO) for posterior approximations.
@@ -73,9 +72,6 @@ def loo_approximate_posterior(
         - "psis": Pareto Smoothed Importance Sampling (without replacement)
         - "psir": Pareto Smoothed Importance Resampling (with replacement)
         - "sis": Standard Importance Sampling (no smoothing)
-    n_resamples : int, optional
-        Number of samples to draw during importance resampling. Default is same as
-        number of input samples.
     seed : int, optional
         Random seed for reproducible resampling.
 
@@ -210,7 +206,6 @@ def loo_approximate_posterior(
         indices = importance_resample(
             log_p=log_p,
             log_q=log_q,
-            n_resamples=n_resamples or n_samples,
             method=resample_method,
             seed=seed,
         )
@@ -387,7 +382,6 @@ def loo_approximate_posterior(
 def importance_resample(
     log_p: np.ndarray,
     log_q: np.ndarray,
-    n_resamples: int | None = None,
     method: str = "psis",
     seed: int | None = None,
 ) -> tuple[np.ndarray, float, np.ndarray | None]:
@@ -400,8 +394,6 @@ def importance_resample(
         Log density under target distribution
     log_q : np.ndarray
         Log density under proposal distribution
-    n_resamples : int | None, optional
-        Number of samples to draw (defaults to len(log_p))
     method : str, default "psis"
         Method to use for importance sampling:
         - "psis": Pareto Smoothed Importance Sampling
@@ -419,10 +411,8 @@ def importance_resample(
     np.ndarray | None
         Pareto k diagnostic values if method is "psis" or "psir"
     """
-    if n_resamples is None:
-        n_resamples = len(log_p)
-
     rng = np.random.RandomState(seed) if seed is not None else np.random.RandomState()
+    draws = len(log_p)
 
     logiw = log_p - log_q
 
@@ -441,7 +431,6 @@ def importance_resample(
     else:
         valid_idx = slice(None)
 
-    pareto_k = None
     replace = method == "psir"
 
     try:
@@ -451,7 +440,7 @@ def importance_resample(
             )
             if method in ["psis", "psir"]:
                 try:
-                    logiw_smoothed, pareto_k = psislw(logiw)
+                    logiw_smoothed, _ = psislw(logiw)
                     logiw = logiw_smoothed
                 except Exception as e:
                     warnings.warn(
@@ -489,7 +478,7 @@ def importance_resample(
         p = np.ones_like(p) / len(p)
 
     try:
-        indices_subset = rng.choice(len(p), size=n_resamples, replace=replace, p=p)
+        indices_subset = rng.choice(draws, size=draws, replace=replace, p=p)
 
         if isinstance(valid_idx, np.ndarray):
             orig_indices = np.where(valid_idx)[0]
@@ -506,7 +495,7 @@ def importance_resample(
                 stacklevel=2,
             )
             try:
-                indices_subset = rng.choice(len(p), size=n_resamples, replace=True, p=p)
+                indices_subset = rng.choice(draws, size=draws, replace=True, p=p)
 
                 if isinstance(valid_idx, np.ndarray):
                     orig_indices = np.where(valid_idx)[0]
@@ -519,13 +508,13 @@ def importance_resample(
                     UserWarning,
                     stacklevel=2,
                 )
-                indices = rng.choice(len(log_p), size=n_resamples)
+                indices = rng.choice(len(log_p), size=len(log_p))
         else:
             warnings.warn(
                 f"Resampling failed: {str(e)}. Using random indices.",
                 UserWarning,
                 stacklevel=2,
             )
-            indices = rng.choice(len(log_p), size=n_resamples)
+            indices = rng.choice(len(log_p), size=len(log_p))
 
     return indices
