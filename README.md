@@ -36,6 +36,7 @@ The package implements the fast and stable computations for approximate LOO-CV f
 - **Reloo**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
 - **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
 - **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
+- **Posterior Approximations**: Compute LOO-CV for posterior approximations.
 
 ## Quickstart
 

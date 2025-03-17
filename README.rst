@@ -59,9 +59,10 @@ Advanced
 - **Reloo**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
 - **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
 - **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
+- **Posterior Approximations**: Compute LOO-CV for posterior approximations.
 
-Usage
------
+Quickstart
+---------
 
 Standard PSIS-LOO-CV
 ~~~~~~~~~~~~~~~~~~~
@@ -316,6 +317,74 @@ Alternatively, you can compute LOO-CV with moment matching by setting ``moment_m
        split=True,
        cov=True,
        method="psis"
+   )
+
+Posterior Approximations
+^^^^^^^^^^^^^^^^^^^^^^
+
+When working with posterior approximations like the Laplace approximation, you can use ``loo_approximate_posterior`` to compute LOO-CV. This is particularly useful for variational inference or other approximate inference methods:
+
+.. code-block:: python
+
+   import pyloo as pl
+   import pymc as pm
+   import numpy as np
+   import arviz as az
+
+   from pyloo.wrapper.laplace import Laplace
+
+   np.random.seed(42)
+   N = 100
+   x = np.random.normal(0, 1, N)
+   y = 2 + 3 * x + np.random.normal(0, 1, N)
+
+   with pm.Model() as model:
+       alpha = pm.Normal("alpha", mu=0, sigma=10)
+       beta = pm.Normal("beta", mu=0, sigma=10)
+       sigma = pm.HalfNormal("sigma", sigma=5)
+
+       mu = alpha + beta * x
+       likelihood = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+
+   wrapper = Laplace(model)
+   laplace_result = wrapper.fit(
+       optimize_method="BFGS",
+       chains=4,
+       draws=1000,
+       compute_log_likelihood=True
+   )
+
+   log_p = wrapper.compute_logp().flatten()  # True posterior log density
+   log_q = wrapper.compute_logq().flatten()  # Approximation log density
+
+   loo_result = pl.loo_approximate_posterior(
+       laplace_result.idata,
+       log_p=log_p,
+       log_q=log_q,
+       pointwise=True,
+       method="psis"
+   )
+
+For large datasets, you can combine posterior approximations with subsampling for even more efficient computation:
+
+.. code-block:: python
+
+   n_obs = laplace_result.idata.log_likelihood["y"].shape[2]
+   subsample_size = min(50, n_obs // 2)
+
+   loo_subsample_result = pl.loo_subsample(
+       laplace_result.idata,
+       observations=subsample_size,
+       log_p=log_p,
+       log_q=log_q,
+       pointwise=True,
+       loo_approximation="plpd",
+       estimator="diff_srs"
+   )
+
+   updated_result = pl.update_subsample(
+       loo_subsample_result,
+       observations=min(75, n_obs // 2)
    )
 
 Installation
