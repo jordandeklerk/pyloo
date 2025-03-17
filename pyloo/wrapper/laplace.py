@@ -308,7 +308,7 @@ class Laplace:
 
         return result
 
-    def _compute_log_prob_target(self) -> np.ndarray:
+    def compute_logp(self) -> np.ndarray:
         """Compute log probability of samples under the target distribution (true posterior).
 
         Parameters
@@ -370,7 +370,7 @@ class Laplace:
 
         return logp_values
 
-    def _compute_log_prob_proposal(self) -> np.ndarray:
+    def compute_logq(self) -> np.ndarray:
         """Compute log probability of samples under the proposal distribution (Laplace approximation).
 
         Parameters

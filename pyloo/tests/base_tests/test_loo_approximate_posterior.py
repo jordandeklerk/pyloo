@@ -18,8 +18,8 @@ def simple_model_with_approximation(simple_model):
     wrapper = Laplace(model)
     result = wrapper.fit()
 
-    log_p = wrapper._compute_log_prob_target().flatten()
-    log_g = wrapper._compute_log_prob_proposal().flatten()
+    log_p = wrapper.compute_logp().flatten()
+    log_g = wrapper.compute_logq().flatten()
 
     return model, result.idata, log_p, log_g
 
@@ -194,8 +194,8 @@ def test_loo_approximate_posterior_with_laplace_wrapper(simple_model):
     wrapper = Laplace(model, idata)
     result = wrapper.fit()
 
-    log_p = wrapper._compute_log_prob_target().flatten()
-    log_g = wrapper._compute_log_prob_proposal().flatten()
+    log_p = wrapper.compute_logp().flatten()
+    log_g = wrapper.compute_logq().flatten()
 
     loo_result = loo_approximate_posterior(result.idata, log_p, log_g, pointwise=True)
 
@@ -253,8 +253,8 @@ def test_loo_approximate_posterior_variational_with_laplace(simple_model):
     wrapper = Laplace(model)
     result = wrapper.fit()
 
-    log_p = wrapper._compute_log_prob_target().flatten()
-    log_g = wrapper._compute_log_prob_proposal().flatten()
+    log_p = wrapper.compute_logp().flatten()
+    log_g = wrapper.compute_logq().flatten()
 
     loo_result_psis = loo_approximate_posterior(
         result.idata,
@@ -284,8 +284,8 @@ def test_loo_approximate_posterior_wells(wells_model):
     wrapper = Laplace(model)
     result = wrapper.fit(chains=4, draws=2000, seed=42)
 
-    log_p = wrapper._compute_log_prob_target().flatten()
-    log_g = wrapper._compute_log_prob_proposal().flatten()
+    log_p = wrapper.compute_logp().flatten()
+    log_g = wrapper.compute_logq().flatten()
 
     standard_loo = loo(idata, pointwise=True)
 

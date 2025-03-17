@@ -71,7 +71,7 @@ def test_compute_log_prob_target(simple_model):
         progressbar=False,
     )
 
-    logP = wrapper._compute_log_prob_target()
+    logP = wrapper.compute_logp()
 
     assert isinstance(logP, np.ndarray)
     assert logP.shape == (2, 100)
@@ -96,7 +96,7 @@ def test_compute_log_prob_proposal(simple_model):
         progressbar=False,
     )
 
-    logQ = wrapper._compute_log_prob_proposal()
+    logQ = wrapper.compute_logq()
 
     assert isinstance(logQ, np.ndarray)
     assert logQ.shape == (2, 100)
@@ -120,8 +120,8 @@ def test_log_probability_comparison(simple_model):
         progressbar=False,
     )
 
-    logP = wrapper._compute_log_prob_target()
-    logQ = wrapper._compute_log_prob_proposal()
+    logP = wrapper.compute_logp()
+    logQ = wrapper.compute_logq()
 
     assert_finite(logP)
     assert_finite(logQ)
