@@ -1,4 +1,4 @@
-"""Functions for computing the log density of a model and its variational approximation."""
+"""Compute the log density of a model and its variational approximation."""
 
 import logging
 
