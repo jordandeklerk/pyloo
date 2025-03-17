@@ -38,6 +38,7 @@ The package implements the fast and stable computations for approximate LOO-CV f
 - **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
 
 ## Quickstart
+
 ### PSIS-LOO-CV Example
 
 ```python
@@ -73,9 +74,9 @@ Pareto k diagnostic values:
 [1, Inf)                     0     0.0
 ```
 
-### Model Comparison Example
+### Model Comparison
 
-Compare multiple models using stacking weights or other methods:
+Compare multiple models with `compare` using stacking weights or other methods:
 
 ```python
 model1 = az.load_arviz_data("centered_eight")
@@ -103,8 +104,8 @@ centered         -11.5    2.3    3.3     0.38       -0.3       0.4
 All Pareto k estimates are good (k < 0.7)
 ```
 
-### Reloo Example
-For observations where PSIS-LOO approximation fails, pyloo can perform exact LOO-CV by refitting the model without those observations:
+### Reloo
+For observations where PSIS-LOO approximation fails, pyloo can perform exact LOO-CV with `reloo` by refitting the model without those observations:
 
 ```python
 import pyloo as pl
@@ -137,8 +138,8 @@ loo_exact_subsample = pl.reloo(
 )
 ```
 
-### K-fold Cross-Validation Example
-When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
+### K-fold Cross-Validation
+When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation with `loo_kfold` can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
 
 ```python
 import pyloo as pl
@@ -204,9 +205,9 @@ kfold_result = pl.kfold(
 )
 ```
 
-### Moment Matching Example
+### Moment Matching
 
-When PSIS-LOO approximation fails, moment matching can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
+When PSIS-LOO approximation fails, moment matching with `loo_moment_match` can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
 
 ```python
 import pyloo as pl
@@ -267,7 +268,7 @@ loo_direct = pl.loo(
 )
 ```
 
-### Posterior Approximation Example
+### Posterior Approximations
 
 When working with posterior approximations like the Laplace approximation, you can use `loo_approximate_posterior` to compute LOO-CV. This is particularly useful for variational inference or other approximate inference methods:
 
