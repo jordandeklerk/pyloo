@@ -1,6 +1,7 @@
 """Tests for the LOO approximate posterior module."""
 
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 from arviz.data import InferenceData
@@ -8,6 +9,7 @@ from arviz.data import InferenceData
 from ...loo import loo
 from ...loo_approximate_posterior import loo_approximate_posterior
 from ...wrapper.laplace import Laplace
+from ...wrapper.log_density import compute_log_weights
 from ..helpers import assert_arrays_allclose
 
 
@@ -351,3 +353,111 @@ def test_loo_approximate_posterior_constant_values(simple_model_with_approximati
         result = loo_approximate_posterior(idata_const, log_p, log_g, pointwise=True)
         assert result is not None
         assert np.allclose(result["loo_i"].values, result["loo_i"].values[0])
+
+
+def test_loo_approximate_posterior_wells_advi(wells_model):
+    """Test loo_approximate_posterior with variational inference using Laplace."""
+    model, idata = wells_model
+
+    with model:
+        mean_field = pm.fit(method="advi")
+
+    log_p, log_q, _ = compute_log_weights(mean_field, 1000)
+    trace = mean_field.sample(1000)
+    pm.compute_log_likelihood(trace, model=model, extend_inferencedata=True)
+
+    standard_loo = loo(idata, pointwise=True)
+
+    if hasattr(standard_loo, "pareto_k"):
+        print(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
+        print(
+            f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
+            f" {np.max(standard_loo.pareto_k)}"
+        )
+        print(f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}")
+        print(f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}")
+
+    loo_approx = loo_approximate_posterior(
+        data=trace,
+        log_p=log_p,
+        log_q=log_q,
+        pointwise=True,
+        resample_method="psis",
+    )
+    loo_approx
+
+    assert loo_approx is not None
+    assert "elpd_loo" in loo_approx
+    assert "pareto_k" in loo_approx
+    assert np.isfinite(loo_approx["elpd_loo"])
+
+    print(standard_loo)
+    print(loo_approx)
+
+    if hasattr(loo_approx, "pareto_k"):
+        print(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
+        print(
+            f"Approximate LOO pareto_k min: {np.min(loo_approx.pareto_k)}, max:"
+            f" {np.max(loo_approx.pareto_k)}"
+        )
+        print(f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}")
+        print(f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}")
+
+        if np.sum(loo_approx.pareto_k > 1.0) > 0:
+            print(f"Bad pareto_k value: {loo_approx.pareto_k}")
+
+    assert np.sign(loo_approx["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
+
+
+def test_loo_approximate_posterior_wells_full_rank_advi(wells_model):
+    """Test loo_approximate_posterior with variational inference using Laplace."""
+    model, idata = wells_model
+
+    with model:
+        mean_field = pm.fit(method="fullrank_advi")
+
+    log_p, log_q, _ = compute_log_weights(mean_field, 1000)
+    trace = mean_field.sample(1000)
+    pm.compute_log_likelihood(trace, model=model, extend_inferencedata=True)
+
+    standard_loo = loo(idata, pointwise=True)
+
+    if hasattr(standard_loo, "pareto_k"):
+        print(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
+        print(
+            f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
+            f" {np.max(standard_loo.pareto_k)}"
+        )
+        print(f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}")
+        print(f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}")
+
+    loo_approx = loo_approximate_posterior(
+        data=trace,
+        log_p=log_p,
+        log_q=log_q,
+        pointwise=True,
+        resample_method="psis",
+    )
+    loo_approx
+
+    assert loo_approx is not None
+    assert "elpd_loo" in loo_approx
+    assert "pareto_k" in loo_approx
+    assert np.isfinite(loo_approx["elpd_loo"])
+
+    print(standard_loo)
+    print(loo_approx)
+
+    if hasattr(loo_approx, "pareto_k"):
+        print(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
+        print(
+            f"Approximate LOO pareto_k min: {np.min(loo_approx.pareto_k)}, max:"
+            f" {np.max(loo_approx.pareto_k)}"
+        )
+        print(f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}")
+        print(f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}")
+
+        if np.sum(loo_approx.pareto_k > 1.0) > 0:
+            print(f"Bad pareto_k value: {loo_approx.pareto_k}")
+
+    assert np.sign(loo_approx["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
