@@ -368,7 +368,7 @@ class Laplace:
                         )
                         break
 
-        return logp_values
+        return logp_values.flatten()
 
     def compute_logq(self) -> np.ndarray:
         """Compute log probability of samples under the proposal distribution (Laplace approximation).
@@ -456,7 +456,7 @@ class Laplace:
                 stacklevel=2,
             )
 
-        return logp_values
+        return logp_values.flatten()
 
     def _reshape_posterior_for_importance_sampling(
         self, posterior: xr.Dataset

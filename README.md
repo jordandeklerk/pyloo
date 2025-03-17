@@ -302,8 +302,8 @@ laplace_result = wrapper.fit(
     compute_log_likelihood=True
 )
 
-log_p = wrapper.compute_logp().flatten()  # True posterior log density
-log_q = wrapper.compute_logq().flatten()  # Approximation log density
+log_p = wrapper.compute_logp()  # True posterior log density
+log_q = wrapper.compute_logq()  # Approximation log density
 
 loo_result = pl.loo_approximate_posterior(
     laplace_result.idata,

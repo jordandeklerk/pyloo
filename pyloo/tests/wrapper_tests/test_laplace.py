@@ -74,7 +74,7 @@ def test_compute_log_prob_target(simple_model):
     logP = wrapper.compute_logp()
 
     assert isinstance(logP, np.ndarray)
-    assert logP.shape == (2, 100)
+    assert logP.shape == (200,)
 
     assert_finite(logP)
     assert_bounded(logP, upper=0)
@@ -99,7 +99,7 @@ def test_compute_log_prob_proposal(simple_model):
     logQ = wrapper.compute_logq()
 
     assert isinstance(logQ, np.ndarray)
-    assert logQ.shape == (2, 100)
+    assert logQ.shape == (200,)
 
     assert_finite(logQ)
 
