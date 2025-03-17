@@ -48,11 +48,7 @@ class LaplaceVIResult:
     mu: RaveledVars
     H_inv: np.ndarray
     model: pm.Model
-    importance_sampled: bool = False
-    importance_sampling_method: str | None = None
-    pareto_k: float | None = None
     warnings: list[str] = field(default_factory=list)
-    log_weights: np.ndarray | None = None
 
     def __post_init__(self):
         if self.warnings is None:
