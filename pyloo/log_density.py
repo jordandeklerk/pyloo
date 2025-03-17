@@ -72,8 +72,7 @@ def get_approximation_params(approx, verbose=False):
 
 
 def compute_log_p(model, samples, verbose=False):
-    """
-    Compute log p(θ,y) for a set of samples.
+    r"""Compute math:`\log p(\theta, y)` for a set of samples.
 
     Parameters
     ----------
