@@ -197,7 +197,7 @@ with pm.Model() as model:
 wrapper = PyMCWrapper(model, idata)
 
 # Use stratified k-fold CV to maintain class distribution across folds
-kfold_result = pl.kfold(
+kfold_result = pl.loo_kfold(
     wrapper,
     K=5,
     stratify=wrapper.get_observed_data(),  # Stratify by outcome
