@@ -1,6 +1,7 @@
 """Compute the log density of a model and its variational approximation."""
 
 import logging
+from typing import Any
 
 import numpy as np
 from pymc.blocking import DictToArrayBijection
@@ -23,7 +24,7 @@ if not logging.root.handlers:
         _log.addHandler(handler)
 
 
-def get_approximation_params(approx, verbose=False):
+def get_approximation_params(approx) -> dict[str, Any]:
     """
     Extract parameters from a variational approximation.
 
@@ -40,30 +41,24 @@ def get_approximation_params(approx, verbose=False):
         Dictionary of approximation parameters
     """
     approx_group = approx.groups[0]
-    params = {}
+    params: dict[str, Any] = {}
 
     if "rho" in approx_group.params_dict:
         # MeanField approximation
         params["type"] = "meanfield"
-        params["mu"] = np.array(approx_group.params_dict["mu"].eval())
-        rho = np.array(approx_group.params_dict["rho"].eval())
-        params["std"] = np.array(rho2sigma(rho).eval())
-
-        if verbose:
-            _log.info("MeanField approximation")
-            _log.info(f"Shape of mu: {params['mu'].shape}")
-            _log.info(f"Shape of std: {params['std'].shape}")
+        mu_eval = approx_group.params_dict["mu"].eval()
+        rho_eval = approx_group.params_dict["rho"].eval()
+        params["mu"] = np.asarray(mu_eval)
+        rho = np.asarray(rho_eval)
+        params["std"] = np.asarray(rho2sigma(rho).eval())
 
     elif "L_tril" in approx_group.params_dict:
         # FullRank approximation
         params["type"] = "fullrank"
-        params["mu"] = np.array(approx_group.params_dict["mu"].eval())
-        params["L"] = np.array(approx_group.L.eval())
-
-        if verbose:
-            _log.info("FullRank approximation")
-            _log.info(f"Shape of mu: {params['mu'].shape}")
-            _log.info(f"Shape of L: {params['L'].shape}")
+        mu_eval = approx_group.params_dict["mu"].eval()
+        L_eval = approx_group.L.eval()
+        params["mu"] = np.asarray(mu_eval)
+        params["L"] = np.asarray(L_eval)
 
     else:
         raise TypeError("Approximation must be either MeanField or FullRank ADVI")
@@ -71,7 +66,7 @@ def get_approximation_params(approx, verbose=False):
     return params
 
 
-def compute_log_p(model, samples, verbose=False):
+def compute_log_p(model, samples, verbose=False) -> np.ndarray:
     r"""Compute math:`\log p(\theta, y)` for a set of samples.
 
     Parameters
@@ -110,7 +105,7 @@ def compute_log_p(model, samples, verbose=False):
     return log_p
 
 
-def compute_log_q(samples, approx_params, verbose=False):
+def compute_log_q(samples, approx_params, verbose=False) -> np.ndarray:
     r"""Compute math:`\log q(\theta)` for a set of samples.
 
     Parameters
@@ -168,7 +163,9 @@ def compute_log_q(samples, approx_params, verbose=False):
     return log_q
 
 
-def compute_log_weights(approx, nsample=1000, verbose=False):
+def compute_log_weights(
+    approx, nsample=1000, verbose=False
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     r"""Calculate math:`\log w_i(\theta)` for variational approximations.
     Works with both MeanField and FullRank ADVI.
 
@@ -188,7 +185,7 @@ def compute_log_weights(approx, nsample=1000, verbose=False):
         log approximation probabilities, and log importance weights
     """
     model = getattr(approx, "model", approx.model)
-    approx_params = get_approximation_params(approx, verbose)
+    approx_params = get_approximation_params(approx)
 
     samples = approx.sample_dict_fn(nsample)
 
