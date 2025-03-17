@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def loo_approximate_posterior(
     data: InferenceData | Any,
     log_p: np.ndarray,
-    log_g: np.ndarray,
+    log_q: np.ndarray,
     pointwise: bool | None = None,
     var_name: str | None = None,
     reff: float | None = None,
@@ -45,10 +45,10 @@ def loo_approximate_posterior(
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Refer to documentation of :func:`arviz.convert_to_dataset` for details.
     log_p : array-like
-        The log-posterior (target) evaluated at S samples from the proposal distribution (g).
+        The log-posterior (target) evaluated at S samples from the proposal distribution (q).
         A vector of length S where S is the number of samples.
-    log_g : array-like
-        The log-density (proposal) evaluated at S samples from the proposal distribution (g).
+    log_q : array-like
+        The log-density (proposal) evaluated at S samples from the proposal distribution (q).
         A vector of length S.
     pointwise : bool, optional
         If True, returns pointwise values. Defaults to rcParams["stats.ic_pointwise"].
@@ -154,10 +154,10 @@ def loo_approximate_posterior(
     else:
         raise TypeError('Valid scale values are "deviance", "log", "negative_log"')
 
-    if len(log_p) != len(log_g):
+    if len(log_p) != len(log_q):
         raise ValueError(
-            f"log_p and log_g must have the same length, got {len(log_p)} and"
-            f" {len(log_g)}"
+            f"log_p and log_q must have the same length, got {len(log_p)} and"
+            f" {len(log_q)}"
         )
 
     if reff is None:
@@ -208,7 +208,7 @@ def loo_approximate_posterior(
     try:
         indices = importance_resample(
             log_p=log_p,
-            log_g=log_g,
+            log_q=log_q,
             n_resamples=n_resamples or n_samples,
             method=resample_method,
             seed=seed,
@@ -332,7 +332,7 @@ def loo_approximate_posterior(
             result_index.append("good_k")
 
         result = ELPDData(data=result_data, index=result_index)
-        result.approximate_posterior = {"log_p": log_p, "log_g": log_g}
+        result.approximate_posterior = {"log_p": log_p, "log_q": log_q}
 
         return result
 
@@ -378,14 +378,14 @@ def loo_approximate_posterior(
         result_index.append("ess")
 
     result = ELPDData(data=result_data, index=result_index)
-    result.approximate_posterior = {"log_p": log_p, "log_g": log_g}
+    result.approximate_posterior = {"log_p": log_p, "log_q": log_q}
 
     return result
 
 
 def importance_resample(
     log_p: np.ndarray,
-    log_g: np.ndarray,
+    log_q: np.ndarray,
     n_resamples: int | None = None,
     method: str = "psis",
     seed: int | None = None,
@@ -397,7 +397,7 @@ def importance_resample(
     ----------
     log_p : np.ndarray
         Log density under target distribution
-    log_g : np.ndarray
+    log_q : np.ndarray
         Log density under proposal distribution
     n_resamples : int | None, optional
         Number of samples to draw (defaults to len(log_p))
@@ -423,7 +423,7 @@ def importance_resample(
 
     rng = np.random.RandomState(seed) if seed is not None else np.random.RandomState()
 
-    logiw = log_p - log_g
+    logiw = log_p - log_q
 
     valid_idx = np.isfinite(logiw)
     if not np.all(valid_idx):

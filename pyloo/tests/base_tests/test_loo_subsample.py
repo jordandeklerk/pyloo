@@ -8,13 +8,19 @@ import pytest
 import xarray as xr
 
 from ...loo import loo
+from ...loo_approximate_posterior import loo_approximate_posterior
 from ...loo_subsample import (
     EstimatorMethod,
     LooApproximationMethod,
     loo_subsample,
     update_subsample,
 )
-from ..helpers import assert_array_almost_equal, create_large_model
+from ...wrapper.laplace import Laplace
+from ..helpers import (
+    assert_array_almost_equal,
+    assert_arrays_allclose,
+    create_large_model,
+)
 
 
 @pytest.fixture(scope="session")
@@ -275,3 +281,76 @@ def test_update_subsample_exact_indices(large_model):
 
     non_nan_idx = np.where(~np.isnan(updated["loo_i"]))[0]
     assert_array_almost_equal(non_nan_idx, new_indices)
+
+
+def test_loo_subsample_with_posterior_correction(simple_model):
+    """Test loo_subsample with posterior correction."""
+    model, _ = simple_model
+
+    wrapper = Laplace(model)
+    laplace_result = wrapper.fit()
+
+    log_p = wrapper.compute_logp().flatten()
+    log_q = wrapper.compute_logq().flatten()
+
+    n_obs = laplace_result.idata.log_likelihood["y"].shape[2]
+    subsample_size = max(2, n_obs // 2)
+
+    result = loo_subsample(
+        laplace_result.idata,
+        observations=subsample_size,
+        log_p=log_p,
+        log_q=log_q,
+        pointwise=True,
+    )
+
+    loo_approx = loo_approximate_posterior(
+        laplace_result.idata, log_p, log_q, pointwise=True
+    )
+
+    assert result is not None
+    assert "elpd_loo" in result
+    assert "loo_i" in result
+    assert hasattr(result, "log_p")
+    assert hasattr(result, "log_q")
+    assert_arrays_allclose(result.log_p, log_p)
+    assert_arrays_allclose(result.log_q, log_q)
+
+    print(result)
+    print(loo_approx)
+
+
+def test_update_subsample_with_posterior_correction(simple_model):
+    """Test update_subsample with posterior correction."""
+    model, _ = simple_model
+
+    wrapper = Laplace(model)
+    laplace_result = wrapper.fit()
+
+    log_p = wrapper.compute_logp().flatten()
+    log_q = wrapper.compute_logq().flatten()
+
+    n_obs = laplace_result.idata.log_likelihood["y"].shape[2]
+    initial_size = max(2, n_obs // 3)
+
+    initial_result = loo_subsample(
+        laplace_result.idata,
+        observations=initial_size,
+        log_p=log_p,
+        log_q=log_q,
+    )
+
+    updated_size = max(3, n_obs // 2)
+    updated_result = update_subsample(initial_result, observations=updated_size)
+
+    assert updated_result is not None
+    assert updated_result["subsample_size"] == updated_size
+    assert hasattr(updated_result, "log_p")
+    assert hasattr(updated_result, "log_q")
+    assert_arrays_allclose(updated_result.log_p, log_p)
+    assert_arrays_allclose(updated_result.log_q, log_q)
+
+    assert updated_result["subsampling_SE"] <= initial_result["subsampling_SE"]
+
+    print(initial_result)
+    print(updated_result)
