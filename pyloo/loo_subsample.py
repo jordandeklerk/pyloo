@@ -279,7 +279,6 @@ def loo_subsample(
             )
             approximator = PLPDApproximation(LPDApproximation())
     else:
-        # Cast to PLPDApproximation since we know it's compatible
         approximator = cast(
             PLPDApproximation, APPROXIMATION_METHODS[loo_approx_method]()
         )

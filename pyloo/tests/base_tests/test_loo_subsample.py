@@ -296,6 +296,12 @@ def test_loo_subsample_with_posterior_correction(simple_model):
     n_obs = laplace_result.idata.log_likelihood["y"].shape[2]
     subsample_size = max(2, n_obs // 2)
 
+    reg_loo_subsample = loo_subsample(
+        laplace_result.idata,
+        observations=subsample_size,
+        pointwise=True,
+    )
+
     result = loo_subsample(
         laplace_result.idata,
         observations=subsample_size,
@@ -318,6 +324,7 @@ def test_loo_subsample_with_posterior_correction(simple_model):
 
     print(result)
     print(loo_approx)
+    print(reg_loo_subsample)
 
 
 def test_update_subsample_with_posterior_correction(simple_model):
