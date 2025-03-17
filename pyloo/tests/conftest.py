@@ -666,17 +666,20 @@ def wells_model():
     """Create a logistic regression model for the arsenic wells dataset."""
     data = pd.read_csv("./data/wells.csv")
 
-    data["dist100"] = data["dist"] / 100
     y = data["switch"].values
 
-    X = np.column_stack([np.ones(len(data)), data[["dist", "arsenic"]].values])
+    data["dist100"] = data["dist"] / 100
+
+    X = np.column_stack([np.ones(len(data)), data[["dist100", "arsenic"]].values])
 
     P = X.shape[1]
     N = len(y)
 
     with pm.Model(coords={"obs_id": range(N), "predictor": range(P)}) as model:
         beta = pm.Normal("beta", mu=0, sigma=1, dims="predictor")
+
         eta = pm.math.dot(X, beta)
+
         pm.Bernoulli("y", logit_p=eta, observed=y, dims="obs_id")
 
         idata = pm.sample(

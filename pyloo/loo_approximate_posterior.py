@@ -206,7 +206,7 @@ def loo_approximate_posterior(
     log_likelihood_matrix = log_likelihood_np.reshape(n_obs, n_samples).T
 
     try:
-        indices, ess_ratio, resample_k = importance_resample(
+        indices = importance_resample(
             log_p=log_p,
             log_g=log_g,
             n_resamples=n_resamples or n_samples,
@@ -487,9 +487,6 @@ def importance_resample(
         )
         p = np.ones_like(p) / len(p)
 
-    ess = 1.0 / np.sum(p**2)
-    ess_ratio = ess / len(p)
-
     try:
         indices_subset = rng.choice(len(p), size=n_resamples, replace=replace, p=p)
 
@@ -530,4 +527,4 @@ def importance_resample(
             )
             indices = rng.choice(len(log_p), size=n_resamples)
 
-    return indices, ess_ratio, pareto_k
+    return indices
