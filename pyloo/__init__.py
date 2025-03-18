@@ -1,5 +1,16 @@
 """Python implementation of the R package 'loo' for LOO-CV and WAIC."""
 
+import logging
+
+if not logging.root.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
+    )
+
+
 from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
 from .loo import loo
