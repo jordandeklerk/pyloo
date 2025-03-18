@@ -99,10 +99,11 @@ def loo_approximate_posterior(
 
     See Also
     --------
+    loo: Efficient LOO-CV computation
     loo_subsample : Subsampled LOO-CV computation
-    reloo : Exact LOO-CV computation for PyMC models
     loo_moment_match : LOO-CV computation using moment matching
     loo_kfold : K-fold cross-validation
+    reloo : Exact LOO-CV computation for PyMC models
     waic : Compute WAIC
 
     Examples
