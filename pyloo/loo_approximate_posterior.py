@@ -1,6 +1,5 @@
 """Efficient approximate leave-one-out cross-validation (LOO) for posterior approximations."""
 
-import logging
 import warnings
 from typing import Any, Literal
 
@@ -16,8 +15,6 @@ from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
 __all__ = ["loo_approximate_posterior"]
-
-logger = logging.getLogger(__name__)
 
 
 def loo_approximate_posterior(
@@ -384,7 +381,7 @@ def importance_resample(
     log_q: np.ndarray,
     method: str = "psis",
     seed: int | None = None,
-) -> tuple[np.ndarray, float, np.ndarray | None]:
+) -> np.ndarray:
     """
     Importance resampling from approximate posterior samples.
 
@@ -406,16 +403,12 @@ def importance_resample(
     -------
     np.ndarray
         Indices of resampled points
-    float
-        Effective sample size ratio
-    np.ndarray | None
-        Pareto k diagnostic values if method is "psis" or "psir"
     """
     rng = np.random.RandomState(seed) if seed is not None else np.random.RandomState()
     draws = len(log_p)
-
     logiw = log_p - log_q
 
+    # Handle non-finite importance weights
     valid_idx = np.isfinite(logiw)
     if not np.all(valid_idx):
         warnings.warn(
@@ -433,60 +426,31 @@ def importance_resample(
 
     replace = method == "psir"
 
-    try:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore", category=RuntimeWarning, message="overflow encountered in exp"
-            )
-            if method in ["psis", "psir"]:
-                try:
-                    logiw_smoothed, _ = psislw(logiw)
-                    logiw = logiw_smoothed
-                except Exception as e:
-                    warnings.warn(
-                        f"PSIS smoothing failed: {str(e)}.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-            else:
-                logiw = logiw - _logsumexp(logiw)
-    except Exception as e:
-        warnings.warn(
-            f"Error in importance weight calculation: {str(e)}. Using normalized"
-            " weights.",
-            UserWarning,
-            stacklevel=2,
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", category=RuntimeWarning, message="overflow encountered in exp"
         )
+        if method in ["psis", "psir"]:
+            try:
+                logiw_smoothed, _ = psislw(logiw)
+                logiw = logiw_smoothed
+            except Exception as e:
+                warnings.warn(
+                    f"PSIS smoothing failed: {str(e)}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        else:
+            logiw = logiw - _logsumexp(logiw)
 
     p = np.exp(logiw)
-    if np.sum(p) == 0:
-        warnings.warn(
-            "All importance weights are zero. Using uniform weights.",
-            UserWarning,
-            stacklevel=2,
-        )
-        p = np.ones_like(p) / len(p)
-    else:
-        p = p / np.sum(p)
+    p = p / np.sum(p)
 
-    if np.any(~np.isfinite(p)):
-        warnings.warn(
-            "Non-finite probabilities detected. Using uniform weights.",
-            UserWarning,
-            stacklevel=2,
-        )
-        p = np.ones_like(p) / len(p)
-
+    # Resampling
     try:
         indices_subset = rng.choice(draws, size=draws, replace=replace, p=p)
-
-        if isinstance(valid_idx, np.ndarray):
-            orig_indices = np.where(valid_idx)[0]
-            indices = orig_indices[indices_subset]
-        else:
-            indices = indices_subset
-
     except ValueError as e:
+        # Handle insufficient non-zero weights
         if "Fewer non-zero entries in p than size" in str(e) and not replace:
             warnings.warn(
                 "Not enough non-zero weights for sampling without replacement. "
@@ -494,27 +458,20 @@ def importance_resample(
                 UserWarning,
                 stacklevel=2,
             )
-            try:
-                indices_subset = rng.choice(draws, size=draws, replace=True, p=p)
-
-                if isinstance(valid_idx, np.ndarray):
-                    orig_indices = np.where(valid_idx)[0]
-                    indices = orig_indices[indices_subset]
-                else:
-                    indices = indices_subset
-            except ValueError as e2:
-                warnings.warn(
-                    f"Resampling failed: {str(e2)}. Using random indices.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                indices = rng.choice(len(log_p), size=len(log_p))
+            indices_subset = rng.choice(draws, size=draws, replace=True, p=p)
         else:
             warnings.warn(
                 f"Resampling failed: {str(e)}. Using random indices.",
                 UserWarning,
                 stacklevel=2,
             )
-            indices = rng.choice(len(log_p), size=len(log_p))
+            indices_subset = rng.choice(draws, size=draws)
+
+    # Map back to original indices
+    if isinstance(valid_idx, np.ndarray):
+        orig_indices = np.where(valid_idx)[0]
+        indices = orig_indices[indices_subset]
+    else:
+        indices = indices_subset
 
     return indices
