@@ -46,7 +46,6 @@ def loo_subsample(
     log_p: np.ndarray | None = None,
     log_q: np.ndarray | None = None,
     resample_method: str = "psis",
-    n_resamples: int | None = None,
     seed: int | None = None,
 ) -> ELPDData:
     """Compute approximate LOO-CV using subsampling.
@@ -99,9 +98,6 @@ def loo_subsample(
         - "psis": Pareto Smoothed Importance Sampling (without replacement)
         - "psir": Pareto Smoothed Importance Resampling (with replacement)
         - "sis": Standard Importance Sampling (no smoothing)
-    n_resamples : Optional[int], default None
-        Number of samples to draw during importance resampling. Default is same as
-        number of input samples. Only used when log_p and log_q are provided.
     seed : Optional[int], default None
         Random seed for reproducible resampling. Only used when log_p and log_q are provided.
 
@@ -574,7 +570,6 @@ def loo_subsample(
         result.log_p = log_p
         result.log_q = log_q
         result.resample_method = resample_method
-        result.n_resamples = n_resamples
         result.seed = seed
 
     return result
@@ -649,7 +644,6 @@ def update_subsample(
         "log_p": getattr(loo_data, "log_p", None),
         "log_q": getattr(loo_data, "log_q", None),
         "resample_method": getattr(loo_data, "resample_method", "psis"),
-        "n_resamples": getattr(loo_data, "n_resamples", None),
         "seed": getattr(loo_data, "seed", None),
     }
     params.update(kwargs)
