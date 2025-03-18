@@ -219,8 +219,8 @@ def kfold(
         if save_fits and fold_fits and fits is not None:
             fits.append(fold_fits)
 
+    p_kfold = lpds_full - elpds
     elpds = scale_factor * elpds
-    p_kfold = lpds_full - elpds / scale_factor
 
     elpd_kfold = np.sum(elpds)
     se = np.sqrt(n_obs * np.var(elpds))

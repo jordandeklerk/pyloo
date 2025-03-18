@@ -35,14 +35,14 @@ def test_kfold_compare_to_loo(large_regression_model):
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
-    n_obs = len(wrapper.get_observed_data())
-    k_folds = min(2, n_obs)
-
     loo_result = loo(wrapper.idata)
 
     kfold_result = kfold(
-        wrapper, K=k_folds, draws=1000, tune=500, chains=4, progressbar=False
+        wrapper, K=10, draws=1000, tune=500, chains=4, progressbar=False
     )
+
+    print(kfold_result)
+    print(loo_result)
 
     loo_elpd = loo_result["elpd_loo"]
     kfold_elpd = kfold_result["elpd_kfold"]
@@ -74,7 +74,7 @@ def test_kfold_save_fits(large_regression_model):
     wrapper = PyMCWrapper(model, idata)
 
     n_obs = len(wrapper.get_observed_data())
-    k_folds = min(2, n_obs)
+    k_folds = min(5, n_obs)
 
     result = kfold(wrapper, K=k_folds, save_fits=True, draws=100, tune=100)
 
