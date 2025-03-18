@@ -21,16 +21,16 @@ def simple_model_with_approximation(simple_model):
     result = wrapper.fit()
 
     log_p = wrapper.compute_logp().flatten()
-    log_g = wrapper.compute_logq().flatten()
+    log_q = wrapper.compute_logq().flatten()
 
-    return model, result.idata, log_p, log_g
+    return model, result.idata, log_p, log_q
 
 
 def test_loo_approximate_posterior_basic(simple_model_with_approximation):
     """Test basic functionality of loo_approximate_posterior."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
-    result = loo_approximate_posterior(idata, log_p, log_g)
+    result = loo_approximate_posterior(idata, log_p, log_q)
 
     print(result)
 
@@ -40,17 +40,17 @@ def test_loo_approximate_posterior_basic(simple_model_with_approximation):
     assert "se" in result
     assert hasattr(result, "approximate_posterior")
     assert "log_p" in result.approximate_posterior
-    assert "log_g" in result.approximate_posterior
+    assert "log_q" in result.approximate_posterior
     assert_arrays_allclose(result.approximate_posterior["log_p"], log_p)
-    assert_arrays_allclose(result.approximate_posterior["log_g"], log_g)
+    assert_arrays_allclose(result.approximate_posterior["log_q"], log_q)
 
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_loo_approximate_posterior_scales(simple_model_with_approximation, scale):
     """Test loo_approximate_posterior with different scales."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
-    result = loo_approximate_posterior(idata, log_p, log_g, scale=scale)
+    result = loo_approximate_posterior(idata, log_p, log_q, scale=scale)
 
     assert result["scale"] == scale
 
@@ -64,9 +64,9 @@ def test_loo_approximate_posterior_scales(simple_model_with_approximation, scale
 
 def test_loo_approximate_posterior_pointwise(simple_model_with_approximation):
     """Test loo_approximate_posterior with pointwise=True."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
-    result = loo_approximate_posterior(idata, log_p, log_g, pointwise=True)
+    result = loo_approximate_posterior(idata, log_p, log_q, pointwise=True)
 
     assert result is not None
     assert "loo_i" in result
@@ -76,64 +76,64 @@ def test_loo_approximate_posterior_pointwise(simple_model_with_approximation):
 
 def test_loo_approximate_posterior_methods(simple_model_with_approximation):
     """Test loo_approximate_posterior with different importance sampling methods."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
-    result_psis = loo_approximate_posterior(idata, log_p, log_g, pointwise=True)
+    result_psis = loo_approximate_posterior(idata, log_p, log_q, pointwise=True)
     assert "pareto_k" in result_psis
 
     result_sis = loo_approximate_posterior(
-        idata, log_p, log_g, pointwise=True, method="sis"
+        idata, log_p, log_q, pointwise=True, method="sis"
     )
     assert "ess" in result_sis
 
     result_tis = loo_approximate_posterior(
-        idata, log_p, log_g, pointwise=True, method="tis"
+        idata, log_p, log_q, pointwise=True, method="tis"
     )
     assert "ess" in result_tis
 
 
 def test_loo_approximate_posterior_invalid_method(simple_model_with_approximation):
     """Test loo_approximate_posterior with invalid method."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     with pytest.raises(ValueError, match="Invalid method"):
-        loo_approximate_posterior(idata, log_p, log_g, method="invalid")
+        loo_approximate_posterior(idata, log_p, log_q, method="invalid")
 
 
 def test_loo_approximate_posterior_invalid_scale(simple_model_with_approximation):
     """Test loo_approximate_posterior with invalid scale."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     with pytest.raises(TypeError, match="Valid scale values are"):
-        loo_approximate_posterior(idata, log_p, log_g, scale="invalid")
+        loo_approximate_posterior(idata, log_p, log_q, scale="invalid")
 
 
 def test_loo_approximate_posterior_missing_loglik(simple_model_with_approximation):
     """Test loo_approximate_posterior with missing log_likelihood."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_no_loglik = InferenceData(posterior=idata.posterior)
 
     with pytest.raises(TypeError, match="log likelihood not found"):
-        loo_approximate_posterior(idata_no_loglik, log_p, log_g)
+        loo_approximate_posterior(idata_no_loglik, log_p, log_q)
 
 
 def test_loo_approximate_posterior_missing_posterior(simple_model_with_approximation):
     """Test loo_approximate_posterior with missing posterior and no reff provided."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_no_posterior = InferenceData(log_likelihood=idata.log_likelihood)
 
     with pytest.raises(TypeError, match="Must be able to extract a posterior group"):
-        loo_approximate_posterior(idata_no_posterior, log_p, log_g, reff=None)
+        loo_approximate_posterior(idata_no_posterior, log_p, log_q, reff=None)
 
-    result = loo_approximate_posterior(idata_no_posterior, log_p, log_g, reff=0.7)
+    result = loo_approximate_posterior(idata_no_posterior, log_p, log_q, reff=0.7)
     assert result is not None
 
 
 def test_loo_approximate_posterior_nan_handling(simple_model_with_approximation):
     """Test loo_approximate_posterior with NaN values in log-likelihood."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_with_nan = idata.copy()
     log_like = idata_with_nan.log_likelihood["y"].values
@@ -146,43 +146,46 @@ def test_loo_approximate_posterior_nan_handling(simple_model_with_approximation)
     )
 
     with pytest.warns(UserWarning, match="NaN values detected"):
-        result = loo_approximate_posterior(idata_with_nan, log_p, log_g)
+        result = loo_approximate_posterior(idata_with_nan, log_p, log_q)
         assert result is not None
         assert not np.isnan(result["elpd_loo"])
 
 
 def test_loo_approximate_posterior_length_mismatch(simple_model_with_approximation):
     """Test loo_approximate_posterior with mismatched log_p and log_g lengths."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     short_log_p = log_p[:-10]
 
-    with pytest.raises(ValueError, match="log_p and log_g must have the same length"):
-        loo_approximate_posterior(idata, short_log_p, log_g)
+    with pytest.raises(
+        ValueError,
+        match="log_p and log_q must have the same length, got 990 and 1000",
+    ):
+        loo_approximate_posterior(idata, short_log_p, log_q)
 
 
 def test_loo_approximate_posterior_multiple_groups(simple_model_with_approximation):
     """Test loo_approximate_posterior with multiple log_likelihood groups."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_multi = idata.copy()
     idata_multi.log_likelihood["y2"] = idata_multi.log_likelihood["y"]
 
     with pytest.raises(TypeError, match="several log likelihood arrays"):
-        loo_approximate_posterior(idata_multi, log_p, log_g)
+        loo_approximate_posterior(idata_multi, log_p, log_q)
 
-    result = loo_approximate_posterior(idata_multi, log_p, log_g, var_name="y")
+    result = loo_approximate_posterior(idata_multi, log_p, log_q, var_name="y")
     assert result is not None
 
 
 def test_loo_approximate_posterior_numerical_stability(simple_model_with_approximation):
     """Test numerical stability of loo_approximate_posterior with extreme values."""
-    _, idata, log_p, log_g = simple_model_with_approximation
+    _, idata, log_p, log_q = simple_model_with_approximation
 
     extreme_log_p = log_p.copy() * 1e3
-    extreme_log_g = log_g.copy() * 1e3
+    extreme_log_q = log_q.copy() * 1e3
 
-    result = loo_approximate_posterior(idata, extreme_log_p, extreme_log_g)
+    result = loo_approximate_posterior(idata, extreme_log_p, extreme_log_q)
     assert result is not None
     assert np.isfinite(result["elpd_loo"])
     assert np.isfinite(result["p_loo"])
