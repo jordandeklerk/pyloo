@@ -1,11 +1,15 @@
 """Tests for K-fold cross-validation functionality."""
 
+import logging
+
 import numpy as np
 import pytest
 
 from ...loo import loo
 from ...loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
 from ...wrapper.pymc import PyMCWrapper
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
@@ -41,26 +45,26 @@ def test_kfold_compare_to_loo(large_regression_model):
         wrapper, K=10, draws=1000, tune=500, chains=4, progressbar=False
     )
 
-    print(kfold_result)
-    print(loo_result)
+    logger.info(kfold_result)
+    logger.info(loo_result)
 
     loo_elpd = loo_result["elpd_loo"]
     kfold_elpd = kfold_result["elpd_kfold"]
 
-    print("\nLOO Result:")
-    print(f"elpd_loo: {loo_elpd:.2f}")
-    print(f"p_loo: {loo_result['p_loo']:.2f}")
-    print(f"looic: {loo_result['looic']:.2f}")
-    print(f"se: {loo_result['se']:.2f}")
+    logger.info("\nLOO Result:")
+    logger.info(f"elpd_loo: {loo_elpd:.2f}")
+    logger.info(f"p_loo: {loo_result['p_loo']:.2f}")
+    logger.info(f"looic: {loo_result['looic']:.2f}")
+    logger.info(f"se: {loo_result['se']:.2f}")
 
-    print("\nK-fold Result:")
-    print(f"elpd_kfold: {kfold_elpd:.2f}")
-    print(f"p_kfold: {kfold_result['p_kfold']:.2f}")
-    print(f"kfoldic: {kfold_result['kfoldic']:.2f}")
-    print(f"se: {kfold_result['se']:.2f}")
+    logger.info("\nK-fold Result:")
+    logger.info(f"elpd_kfold: {kfold_elpd:.2f}")
+    logger.info(f"p_kfold: {kfold_result['p_kfold']:.2f}")
+    logger.info(f"kfoldic: {kfold_result['kfoldic']:.2f}")
+    logger.info(f"se: {kfold_result['se']:.2f}")
 
     rel_diff = np.abs(loo_elpd - kfold_elpd) / np.abs(loo_elpd)
-    print(f"\nRelative difference: {rel_diff:.2%}")
+    logger.info(f"\nRelative difference: {rel_diff:.2%}")
 
     assert np.sign(loo_elpd) == np.sign(kfold_elpd)
     assert (
