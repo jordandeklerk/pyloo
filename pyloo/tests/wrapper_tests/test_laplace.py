@@ -1,11 +1,15 @@
 """Tests for Laplace Variational Inference wrapper."""
 
+import logging
+
 import numpy as np
 import pytest
 from arviz import InferenceData
 
 from ...wrapper.laplace import PYMC_EXTRAS_AVAILABLE, Laplace, LaplaceVIResult
 from ..helpers import assert_bounded, assert_finite
+
+logger = logging.getLogger(__name__)
 
 
 def test_laplace_wrapper_initialization(simple_model):
@@ -128,19 +132,19 @@ def test_log_probability_comparison(simple_model):
     assert_bounded(logP, upper=0)
 
     log_weights = logP - logQ
-    print(log_weights)
+    logger.info(log_weights)
 
     mean_log_weight = np.mean(log_weights)
-    print(mean_log_weight)
+    logger.info(mean_log_weight)
 
     stddev_log_weight = np.std(log_weights)
-    print(stddev_log_weight)
+    logger.info(stddev_log_weight)
 
     max_log_weight = np.max(log_weights)
-    print(max_log_weight)
+    logger.info(max_log_weight)
 
     min_log_weight = np.min(log_weights)
-    print(min_log_weight)
+    logger.info(min_log_weight)
 
 
 @pytest.mark.skipif(
