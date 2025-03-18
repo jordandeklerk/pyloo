@@ -121,8 +121,8 @@ def loo_approximate_posterior(
         result = wrapper.fit()
 
         # Get target and proposal log densities
-        log_p = wrapper.compute_logp().flatten()
-        log_g = wrapper.compute_logq().flatten()
+        log_p = wrapper.compute_logp()
+        log_g = wrapper.compute_logq()
 
         loo_result = pl.loo_approximate_posterior(
             result.idata,
