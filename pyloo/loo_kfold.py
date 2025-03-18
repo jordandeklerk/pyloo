@@ -83,7 +83,8 @@ def kfold(
 
         import pymc as pm
         import numpy as np
-        from pyloo import PyMCWrapper, kfold
+        import pyloo as pl
+        from pyloo.wrapper import PyMCWrapper
 
         np.random.seed(42)
         x = np.random.normal(0, 1, size=100)
@@ -105,7 +106,12 @@ def kfold(
             mu = alpha + beta * x
             obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
 
-            idata = pm.sample(1000, chains=4, return_inferencedata=True, idata_kwargs={"log_likelihood": True})
+            idata = pm.sample(
+                1000,
+                chains=4,
+                return_inferencedata=True,
+                idata_kwargs={"log_likelihood": True},
+            )
 
     With our model fitted, we can now perform K-fold cross-validation to assess its predictive performance.
     First, we'll create a PyMCWrapper object, which provides a standardized interface for working with
@@ -114,7 +120,7 @@ def kfold(
     .. code-block:: python
 
         wrapper = PyMCWrapper(model, idata)
-        kfold_result = kfold(wrapper, K=5)
+        kfold_result = pl.loo_kfold(wrapper, K=5)
 
     The result contains various statistics about the model's predictive performance, including
     the expected log pointwise predictive density (ELPD) and its standard error.
@@ -125,14 +131,8 @@ def kfold(
 
     .. code-block:: python
 
-        import pymc as pm
-        import numpy as np
-        from pyloo import PyMCWrapper, kfold
-
         np.random.seed(42)
         n_samples = 200
-
-        # Create imbalanced binary outcome (30% class 1, 70% class 0)
         y = np.random.binomial(1, 0.3, size=n_samples)
 
         # Create a feature that's correlated with the outcome
@@ -149,15 +149,15 @@ def kfold(
             logit_p = alpha + pm.math.dot(X, beta)
             obs = pm.Bernoulli("y", logit_p=logit_p, observed=y)
 
-            idata = pm.sample(1000, chains=2, return_inferencedata=True, idata_kwargs={"log_likelihood": True})
+            idata = pm.sample(
+                1000,
+                chains=2,
+                return_inferencedata=True,
+                idata_kwargs={"log_likelihood": True},
+            )
 
         wrapper = PyMCWrapper(model, idata)
-
-        kfold_result = kfold(wrapper, K=5, stratify=wrapper.get_observed_data(), random_seed=123)
-
-    Using stratified folds ensures that each fold maintains approximately the same class distribution
-    as the original dataset, which is especially important for imbalanced datasets or when the outcome
-    variable has a strong relationship with certain features.
+        kfold_result = pl.loo_kfold(wrapper, K=5, stratify=wrapper.get_observed_data(), random_seed=123)
     """
     if not isinstance(data, PyMCWrapper):
         raise TypeError(f"Expected PyMCWrapper, got {type(data).__name__}")
