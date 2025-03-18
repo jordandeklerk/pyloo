@@ -114,6 +114,25 @@ def loo_approximate_posterior(
         import pyloo as pl
         from pyloo.wrapper import Laplace
 
+        rng = np.random.default_rng(42)
+        X = rng.normal(0, 1, size=100)
+        true_alpha = 1.0
+        true_beta = 2.0
+        true_sigma = 1.0
+        y = true_alpha + true_beta * X + rng.normal(0, true_sigma, size=100)
+
+        with pm.Model(coords={"obs_id": range(len(X))}) as model:
+            alpha = pm.Normal("alpha", mu=0, sigma=10)
+            beta = pm.Normal("beta", mu=0, sigma=10)
+            sigma = pm.HalfNormal("sigma", sigma=10)
+
+            mu = alpha + beta * X
+            pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+            idata = pm.sample(
+                1000, tune=1000, random_seed=42, idata_kwargs={"log_likelihood": True}
+            )
+
         wrapper = Laplace(model)
         result = wrapper.fit()
 
@@ -125,6 +144,27 @@ def loo_approximate_posterior(
             result.idata,
             log_p,
             log_g,
+            pointwise=True
+        )
+
+    We can also use built-in PyMC variational inference methods like ADVI
+
+    .. code-block:: python
+
+        import pyloo as pl
+        from pyloo.wrapper import log_density
+
+        with model:
+            mean_field = pm.fit(method="advi")
+
+        log_p, log_q, _ = log_density.compute_log_weights(mean_field, 1000)
+        trace = mean_field.sample(1000)
+        pm.compute_log_likelihood(trace, model=model, extend_inferencedata=True)
+
+        loo_result = pl.loo_approximate_posterior(
+            trace,
+            log_p,
+            log_q,
             pointwise=True
         )
     """
