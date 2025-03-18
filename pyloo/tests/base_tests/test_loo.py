@@ -332,7 +332,21 @@ def test_loo_moment_matching_no_pointwise(problematic_k_model):
 def test_loo_wells(wells_model):
     """Test LOO computation with the wells dataset."""
     _, idata = wells_model
-    result = loo(idata)
+    result = loo(idata, pointwise=True)
+
+    logger.info(result)
+
+    assert result is not None
+    assert "elpd_loo" in result
+    assert "p_loo" in result
+    assert "looic" in result
+    assert "looic_se" in result
+
+
+def test_loo_roaches(roaches_model):
+    """Test LOO computation with the roaches dataset."""
+    _, idata = roaches_model
+    result = loo(idata, pointwise=True)
 
     logger.info(result)
 

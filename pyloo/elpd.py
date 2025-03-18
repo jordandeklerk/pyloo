@@ -153,7 +153,6 @@ class ELPDData(pd.Series):
             ):
                 # Check if all Pareto k values are good
                 bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
-                # Handle both pandas objects and numpy arrays
                 pareto_k_values = (
                     self.pareto_k.values
                     if hasattr(self.pareto_k, "values")
@@ -164,7 +163,6 @@ class ELPDData(pd.Series):
                     # Already set with default message above
                     pass
                 else:
-                    # Format the detailed Pareto k diagnostics for bad values
                     percentages = counts / np.sum(counts) * 100
                     pareto_msg = POINTWISE_LOO_FMT.format(
                         "Count",
@@ -220,9 +218,7 @@ class ELPDData(pd.Series):
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                # Check if all Pareto k values are good
                 bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
-                # Handle both pandas objects and numpy arrays
                 pareto_k_values = (
                     self.pareto_k.values
                     if hasattr(self.pareto_k, "values")
@@ -249,16 +245,24 @@ class ELPDData(pd.Series):
                         percentages[2],
                     )
             elif kind == "loo" and method == "psis":
-                pareto_msg = (
-                    "\n\nAll Pareto k estimates are good (k <"
-                    f" {default_good_k:.1f}).\nSee help('pareto-k-diagnostic') for"
-                    " details."
-                )
+                if self.warning:
+                    pareto_msg = (
+                        "\n\nSome Pareto k diagnostic values are high (k >"
+                        f" {default_good_k:.1f}), indicating that the importance"
+                        " sampling approximation is unreliable. Consider using moment"
+                        " matching or exact LOO for more accurate estimates. Use"
+                        " pointwise=True to see detailed diagnostics."
+                    )
+                else:
+                    pareto_msg = (
+                        "\n\nAll Pareto k estimates are good (k <"
+                        f" {default_good_k:.1f}).\nSee help('pareto-k-diagnostic') for"
+                        " details."
+                    )
 
             elpd_loo = self["elpd_loo"]
             se = self["se"]
 
-            # Choose the appropriate format based on whether this is from loo_approximate_posterior
             if hasattr(self, "approximate_posterior"):
                 looic = self["looic"]
                 looic_se = self["looic_se"]
