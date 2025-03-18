@@ -31,7 +31,7 @@ Posterior approximation correction used.
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
+p_loo       {p_loo:<8.2f}   -
 looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
 # Format for k-fold cross-validation output
@@ -271,7 +271,6 @@ class ELPDData(pd.Series):
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
-                    p_loo_se=self["p_loo_se"],
                     looic=looic,
                     looic_se=looic_se,
                 )
@@ -284,7 +283,6 @@ class ELPDData(pd.Series):
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
-                    p_loo_se=self["p_loo_se"],
                     looic=looic,
                     looic_se=looic_se,
                 )
