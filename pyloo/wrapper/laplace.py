@@ -4,11 +4,9 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Literal
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
-import xarray as xr
 from arviz import InferenceData
 from better_optimize.constants import minimize_method
 from pymc.blocking import RaveledVars
@@ -16,11 +14,7 @@ from scipy import stats
 
 try:
     from pymc_extras.inference.find_map import find_MAP
-    from pymc_extras.inference.laplace import (
-        add_fit_to_inferencedata,
-        fit_mvn_at_MAP,
-        sample_laplace_posterior,
-    )
+    from pymc_extras.inference.laplace import fit_mvn_at_MAP, sample_laplace_posterior
 
     PYMC_EXTRAS_AVAILABLE = True
 except ImportError:
@@ -453,110 +447,6 @@ class Laplace:
             )
 
         return logp_values.flatten()
-
-    def _reshape_posterior_for_importance_sampling(
-        self, posterior: xr.Dataset
-    ) -> np.ndarray:
-        """Reshape posterior samples for importance sampling.
-
-        Parameters
-        ----------
-        posterior : xr.Dataset
-            Posterior samples from InferenceData
-
-        Returns
-        -------
-        np.ndarray
-            Reshaped samples with shape (n_chains, n_draws, n_params)
-        """
-        var_names = list(posterior.data_vars)
-        n_chains = len(posterior.chain)
-        n_draws = len(posterior.draw)
-
-        n_params = 0
-        for name in var_names:
-            var_shape = posterior[name].shape[2:]
-            n_params += np.prod(var_shape)
-
-        samples = np.zeros((n_chains, n_draws, int(n_params)))
-
-        param_idx = 0
-        for name in var_names:
-            var_shape = posterior[name].shape[2:]
-            flat_size = np.prod(var_shape)
-
-            for c in range(n_chains):
-                for d in range(n_draws):
-                    samples[c, d, param_idx : param_idx + int(flat_size)] = (
-                        posterior[name].values[c, d].flatten()
-                    )
-
-            param_idx += int(flat_size)
-
-        return samples
-
-    def _convert_resampled_to_inferencedata(
-        self, resampled_samples: np.ndarray
-    ) -> InferenceData:
-        """Convert resampled samples to InferenceData format."""
-        if self.result is None:
-            raise LaplaceWrapperError(
-                "Model must be fit before converting resampled samples"
-            )
-
-        original_idata = self.result.idata  # type: ignore[union-attr]
-        info = self.result.mu.point_map_info
-
-        n_draws = resampled_samples.shape[0]
-        n_chains = 1
-
-        posterior_dict = {}
-
-        param_idx = 0
-        for name, shape, _, _ in info:
-            if name in original_idata.posterior:
-                flat_size = int(np.prod(shape))
-
-                var_samples = resampled_samples[:, param_idx : param_idx + flat_size]
-                var_samples = var_samples.reshape((n_draws,) + shape)
-                var_samples = np.expand_dims(var_samples, axis=0)
-
-                posterior_dict[name] = var_samples
-                param_idx += flat_size
-
-        coords = {
-            "chain": np.arange(n_chains),
-            "draw": np.arange(n_draws),
-        }
-
-        for coord_name, coord_values in original_idata.posterior.coords.items():
-            if coord_name not in ["chain", "draw"]:
-                coords[coord_name] = coord_values.values
-
-        posterior_dataset = xr.Dataset(
-            {
-                name: (
-                    ["chain", "draw"] + list(original_idata.posterior[name].dims[2:]),
-                    data,
-                )
-                for name, data in posterior_dict.items()
-            },
-            coords=coords,
-        )
-
-        new_idata = az.InferenceData(posterior=posterior_dataset)
-
-        for group in original_idata.groups():
-            if group != "posterior" and group != "sample_stats" and group != "fit":
-                new_idata.add_groups({group: getattr(original_idata, group)})
-
-        if PYMC_EXTRAS_AVAILABLE:
-            # type: ignore[union-attr]
-            new_idata = add_fit_to_inferencedata(
-                new_idata, self.result.mu, self.result.H_inv, self.model
-            )
-
-        return new_idata
 
 
 def _regularize_matrix(
