@@ -9,7 +9,7 @@ import xarray as xr
 
 from ...loo import loo
 from ...psis import psislw
-from ...wrapper.pymc_wrapper import PyMCWrapper
+from ...wrapper.pymc import PyMCWrapper
 from ..helpers import assert_allclose, assert_array_almost_equal
 
 

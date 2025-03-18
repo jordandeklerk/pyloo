@@ -14,7 +14,7 @@ from .helpers import (
     log_lik_i_upars,
     log_prob_upars,
 )
-from .wrapper.pymc_wrapper import PyMCWrapper
+from .wrapper.pymc import PyMCWrapper
 
 __all__ = ["loo_moment_match_split"]
 

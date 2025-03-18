@@ -113,7 +113,7 @@ import pyloo as pl
 import pymc as pm
 import numpy as np
 
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+from pyloo.wrapper.pymc import PyMCWrapper
 
 np.random.seed(0)
 N = 100
@@ -147,7 +147,7 @@ import pyloo as pl
 import pymc as pm
 import numpy as np
 
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+from pyloo.wrapper.pymc import PyMCWrapper
 
 np.random.seed(42)
 x = np.random.normal(0, 1, size=100)
@@ -216,7 +216,7 @@ import pymc as pm
 import numpy as np
 import arviz as az
 
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+from pyloo.wrapper.pymc import PyMCWrapper
 
 np.random.seed(123)
 N = 50

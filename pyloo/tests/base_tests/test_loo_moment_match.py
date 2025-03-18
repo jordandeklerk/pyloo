@@ -22,7 +22,7 @@ from ...loo_moment_match import (
     shift_and_scale,
     update_quantities_i,
 )
-from ...wrapper.pymc_wrapper import PyMCWrapper
+from ...wrapper.pymc import PyMCWrapper
 
 
 @pytest.fixture

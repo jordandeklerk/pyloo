@@ -23,7 +23,7 @@ from .helpers import (
 )
 from .split_moment_matching import loo_moment_match_split
 from .utils import _logsumexp, wrap_xarray_ufunc
-from .wrapper.pymc_wrapper import PyMCWrapper
+from .wrapper.pymc import PyMCWrapper
 
 __all__ = ["loo_moment_match"]
 

@@ -11,7 +11,7 @@ from .reloo import reloo
 from .sis import sislw
 from .tis import tislw
 from .waic import waic
-from .wrapper.pymc_wrapper import PyMCWrapper
+from .wrapper.pymc import PyMCWrapper
 
 __all__ = [
     "compute_importance_weights",

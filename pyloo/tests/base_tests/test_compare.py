@@ -12,7 +12,7 @@ from ...compare import loo_compare
 from ...loo import loo
 from ...loo_subsample import loo_subsample
 from ...waic import waic
-from ...wrapper.pymc_wrapper import PyMCWrapper
+from ...wrapper.pymc import PyMCWrapper
 from ..helpers import create_large_model
 
 
