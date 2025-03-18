@@ -5,7 +5,7 @@ import pytest
 
 from ...loo import loo
 from ...loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
-from ...wrapper.pymc_wrapper import PyMCWrapper
+from ...wrapper.pymc import PyMCWrapper
 
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])

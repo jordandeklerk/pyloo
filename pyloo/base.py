@@ -12,6 +12,8 @@ from .sis import _sislw
 from .tis import _tislw
 from .utils import wrap_xarray_ufunc
 
+__all__ = ["ISMethod", "compute_importance_weights"]
+
 
 class ISMethod(str, Enum):
     """Enumeration of supported importance sampling methods."""
@@ -25,7 +27,7 @@ ImplFunc = Callable[..., tuple[np.ndarray, float | np.ndarray]]
 
 
 def compute_importance_weights(
-    log_weights: xr.DataArray | np.ndarray,
+    log_weights: xr.DataArray | np.ndarray | None = None,
     method: ISMethod | str = ISMethod.PSIS,
     reff: float = 1.0,
 ) -> tuple[xr.DataArray | np.ndarray, xr.DataArray | np.ndarray]:
@@ -36,11 +38,13 @@ def compute_importance_weights(
     ----------
     log_weights : DataArray or (..., N) array-like
         Array of size (n_observations, n_samples)
-    method : {'psis', 'sis', 'tis'}, default 'psis'
+    method : {'psis', 'sis', 'tis', 'psir', 'identity'}, default 'psis'
         The importance sampling method to use:
         - 'psis': Pareto Smoothed Importance Sampling
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
+        - 'psir': Pareto Smoothed Importance Resampling (for variational inference)
+        - 'identity': Apply log importance weights directly (for variational inference)
     reff : float, default 1.0
         Relative MCMC efficiency (only used for PSIS method)
 
@@ -50,8 +54,9 @@ def compute_importance_weights(
         Processed log weights (smoothed/truncated/normalized depending on method)
     diagnostic : DataArray or (...) ndarray
         Method-specific diagnostic value:
-        - PSIS: Pareto shape parameter (k)
+        - PSIS/PSIR: Pareto shape parameter (k)
         - SIS/TIS: Effective sample size (ESS)
+        - IDENTITY: None
 
     Notes
     -----
@@ -61,15 +66,20 @@ def compute_importance_weights(
     calculate the importance weights for each observation. If no ``__sample__`` dimension is
     present or the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
 
+    For variational inference models, use the variational=True parameter and provide the
+    required samples, logP, logQ, and num_draws parameters. This will use the vi_psis_sampling
+    function which is specifically designed for variational inference.
+
     See Also
     --------
     psislw : Pareto Smoothed Importance Sampling (original implementation)
     sislw : Standard Importance Sampling (original implementation)
     tislw : Truncated Importance Sampling (original implementation)
+    vi_psis_sampling : Importance sampling for variational inference
 
     Examples
     --------
-    Get importance sampling weights using different methods:
+    Get importance sampling weights using different methods
 
     .. code-block:: python
 
@@ -97,6 +107,9 @@ def compute_importance_weights(
             raise ValueError(
                 f"Invalid method '{method}'. Must be one of: {valid_methods}"
             )
+
+    if log_weights is None:
+        raise ValueError("log_weights must be provided when variational=False")
 
     log_weights = deepcopy(log_weights)
 
@@ -136,9 +149,15 @@ def compute_importance_weights(
         func_kwargs = {"out": out}
         impl_func = cast(ImplFunc, _sislw)
 
-    else:
+    elif method == ISMethod.TIS:
         func_kwargs = {"n_samples": n_samples, "out": out}
         impl_func = cast(ImplFunc, _tislw)
+
+    else:
+        raise ValueError(
+            f"Method {method} is not supported for standard importance sampling. "
+            "Use 'psis', 'sis', or 'tis' instead."
+        )
 
     log_weights, diagnostic = wrap_xarray_ufunc(
         impl_func,

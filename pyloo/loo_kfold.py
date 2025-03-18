@@ -10,7 +10,7 @@ import xarray as xr
 
 from .elpd import ELPDData
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
-from .wrapper.pymc_wrapper import PyMCWrapper
+from .wrapper.pymc import PyMCWrapper
 
 __all__ = ["kfold"]
 
@@ -142,7 +142,6 @@ def kfold(
 
         X = np.column_stack((x1, x2))
 
-        # Create a PyMC model for logistic regression
         with pm.Model() as model:
             alpha = pm.Normal("alpha", mu=0, sigma=2)
             beta = pm.Normal("beta", mu=0, sigma=2, shape=2)
@@ -154,8 +153,6 @@ def kfold(
 
         wrapper = PyMCWrapper(model, idata)
 
-        # Use stratified k-fold cross-validation based on the outcome variable
-        # This ensures each fold has a similar proportion of class 0 and class 1
         kfold_result = kfold(wrapper, K=5, stratify=wrapper.get_observed_data(), random_seed=123)
 
     Using stratified folds ensures that each fold maintains approximately the same class distribution

@@ -627,3 +627,68 @@ def roaches_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def approximate_posterior_model():
+    """Create a model with an approximate posterior (ADVI) for testing."""
+    rng = np.random.default_rng(42)
+    n_samples = 5000
+
+    X = rng.normal(0, 1, size=n_samples)
+    true_alpha = 0.5
+    true_beta = 1.5
+    true_sigma = 0.8
+    y = true_alpha + true_beta * X + rng.normal(0, true_sigma, size=n_samples)
+
+    with pm.Model(coords={"obs_id": range(n_samples)}) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=2)
+        beta = pm.Normal("beta", mu=0, sigma=2)
+        sigma = pm.HalfNormal("sigma", sigma=2)
+
+        mu = alpha + beta * X
+        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        approx = pm.fit(
+            method="advi",
+            n=1000,
+            random_seed=42,
+        )
+
+        idata = approx.sample(1000, return_inferencedata=True)
+        pm.compute_log_likelihood(idata, model=model, extend_inferencedata=True)
+
+    return model, idata, approx
+
+
+@pytest.fixture(scope="session")
+def wells_model():
+    """Create a logistic regression model for the arsenic wells dataset."""
+    data = pd.read_csv("./data/wells.csv")
+
+    y = data["switch"].values
+
+    data["dist100"] = data["dist"] / 100
+
+    X = np.column_stack([np.ones(len(data)), data[["dist100", "arsenic"]].values])
+
+    P = X.shape[1]
+    N = len(y)
+
+    with pm.Model(coords={"obs_id": range(N), "predictor": range(P)}) as model:
+        beta = pm.Normal("beta", mu=0, sigma=1, dims="predictor")
+
+        eta = pm.math.dot(X, beta)
+
+        pm.Bernoulli("y", logit_p=eta, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            chains=4,
+            draws=1000,
+            tune=1000,
+            target_accept=0.9,
+            random_seed=42,
+            idata_kwargs={"log_likelihood": True},
+        )
+
+    return model, idata

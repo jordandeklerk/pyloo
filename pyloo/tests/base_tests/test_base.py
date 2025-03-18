@@ -73,7 +73,8 @@ def test_method_case_insensitive(centered_eight):
     log_likelihood = get_log_likelihood(centered_eight)
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
 
-    for method in ISMethod:
+    standard_methods = [ISMethod.PSIS, ISMethod.SIS, ISMethod.TIS]
+    for method in standard_methods:
         upper_weights, upper_diag = compute_importance_weights(
             -log_likelihood, method=method.value.upper()
         )

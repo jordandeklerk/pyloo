@@ -76,19 +76,36 @@ class PyMCWrapper:
     constant_data: dict[str, np.ndarray]
     observed_dims: dict[str, tuple[str, ...]]
     _untransformed_model: Model
+    approximation: Any | None
 
     def __init__(
         self,
         model: Model,
         idata: InferenceData,
         var_names: Sequence[str] | None = None,
+        approximation: Any = None,
     ):
+        """Initialize a PyMCWrapper.
+
+        Parameters
+        ----------
+        model : Model
+            A fitted PyMC model containing the model structure and relationships
+        idata : InferenceData
+            ArviZ InferenceData object containing the model's posterior samples
+        var_names : Sequence[str] | None
+            Names of specific variables to focus on. If None, all variables are included
+        approximation : Any, optional
+            A PyMC approximation object (e.g., from pm.fit()). If provided, it can be used
+            for approximate posterior calculations without passing it explicitly each time.
+        """
         self.model = model
         self.idata = idata
         self.var_names = list(var_names) if var_names is not None else None
         self.observed_data = {}
         self.constant_data = {}
         self.observed_dims = {}
+        self.approximation = approximation
 
         try:
             self._untransformed_model = remove_value_transforms(copy.deepcopy(model))

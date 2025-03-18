@@ -1,7 +1,7 @@
 """Efficient approximate leave-one-out cross-validation (LOO-CV) using subsampling."""
 
 import warnings
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -20,10 +20,11 @@ from .elpd import ELPDData
 from .estimators import SubsampleIndices, get_estimator, subsample_indices
 from .estimators.hansen_hurwitz import compute_sampling_probabilities
 from .loo import loo
+from .loo_approximate_posterior import importance_resample
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, to_inference_data, wrap_xarray_ufunc
 
-APPROXIMATION_METHODS = {
+APPROXIMATION_METHODS: dict[LooApproximationMethod, Any] = {
     LooApproximationMethod.LPD: lambda: LPDApproximation(),
     LooApproximationMethod.TIS: lambda: TISApproximation(),
     LooApproximationMethod.SIS: lambda: SISApproximation(),
@@ -34,14 +35,19 @@ __all__ = ["loo_subsample", "update_subsample"]
 
 def loo_subsample(
     data: InferenceData | dict[str, Any],
-    observations: Optional[int | np.ndarray] = 400,
+    observations: int | np.ndarray | None = 400,
     loo_approximation: str = "plpd",
     estimator: str = "diff_srs",
-    loo_approximation_draws: Optional[int] = None,
-    pointwise: Optional[bool] = None,
-    var_name: Optional[str] = None,
-    reff: Optional[float] = None,
-    scale: Optional[str] = None,
+    loo_approximation_draws: int | None = None,
+    pointwise: bool | None = None,
+    var_name: str | None = None,
+    reff: float | None = None,
+    scale: str | None = None,
+    log_p: np.ndarray | None = None,
+    log_q: np.ndarray | None = None,
+    resample_method: str = "psis",
+    n_resamples: int | None = None,
+    seed: int | None = None,
 ) -> ELPDData:
     """Compute approximate LOO-CV using subsampling.
 
@@ -81,6 +87,23 @@ def loo_subsample(
         - "log": (default) log-score
         - "negative_log": -1 * log-score
         - "deviance": -2 * log-score
+    log_p : Optional[np.ndarray], default None
+        The log-posterior (target) evaluated at S samples from the proposal distribution (q).
+        A vector of length S where S is the number of samples. If provided along with log_q,
+        importance resampling will be performed for better numerical stability.
+    log_q : Optional[np.ndarray], default None
+        The log-density (proposal) evaluated at S samples from the proposal distribution (q).
+        A vector of length S. Must be provided if log_p is provided.
+    resample_method : str, default "psis"
+        Method to use for importance resampling when log_p and log_q are provided:
+        - "psis": Pareto Smoothed Importance Sampling (without replacement)
+        - "psir": Pareto Smoothed Importance Resampling (with replacement)
+        - "sis": Standard Importance Sampling (no smoothing)
+    n_resamples : Optional[int], default None
+        Number of samples to draw during importance resampling. Default is same as
+        number of input samples. Only used when log_p and log_q are provided.
+    seed : Optional[int], default None
+        Random seed for reproducible resampling. Only used when log_p and log_q are provided.
 
     Returns
     -------
@@ -110,7 +133,7 @@ def loo_subsample(
     Examples
     --------
     First, let's compute approximate LOO-CV using subsampling. We'll load a sample dataset,
-    specify the number of observations to subsample, and use the point estimate based approximation:
+    specify the number of observations to subsample, and use the point estimate based approximation
 
     .. code-block:: python
 
@@ -126,7 +149,7 @@ def loo_subsample(
             loo_approximation="plpd",
         )
 
-    Once we have initial results, we can update them with more observations:
+    Once we have initial results, we can update them with more observations
 
     .. code-block:: python
 
@@ -134,7 +157,7 @@ def loo_subsample(
 
         updated = update_subsample(result, observations=6)
 
-    We can also update with specific observation indices:
+    We can also update with specific observation indices
 
     .. code-block:: python
 
@@ -147,10 +170,10 @@ def loo_subsample(
     --------
     loo : Standard LOO-CV computation
     loo_i : Pointwise LOO-CV values
-    update_subsample : Update subsampling results with new observations
     reloo : Exact LOO-CV computation for PyMC models
     loo_moment_match : Moment matching for problematic observations
     loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : LOO-CV for posterior approximations
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)
@@ -173,11 +196,7 @@ def loo_subsample(
             f"Must be one of: {', '.join(m.value for m in EstimatorMethod)}"
         )
 
-    try:
-        log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
-    except ValueError:
-        log_likelihood = log_likelihood.stack(sample=("chain", "draw"))
-        log_likelihood = log_likelihood.rename({"sample": "__sample__"})
+    log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
     shape = log_likelihood.shape
     n_samples = shape[-1]
 
@@ -260,7 +279,6 @@ def loo_subsample(
             )
             approximator = PLPDApproximation(LPDApproximation())
     else:
-        # Cast to PLPDApproximation since we know it's compatible
         approximator = cast(
             PLPDApproximation, APPROXIMATION_METHODS[loo_approx_method]()
         )
@@ -293,6 +311,45 @@ def loo_subsample(
         idx_dict["__sample__"] = slice(None)
 
     log_likelihood_sample = log_likelihood.isel(idx_dict)
+
+    # Apply posterior correction
+    if log_p is not None and log_q is not None:
+        if len(log_p) != len(log_q):
+            raise ValueError(
+                f"log_p and log_q must have the same length, got {len(log_p)} and"
+                f" {len(log_q)}"
+            )
+
+        try:
+            resample_indices = importance_resample(
+                log_p=log_p,
+                log_q=log_q,
+                method=resample_method,
+                seed=seed,
+            )
+
+            log_likelihood_np = log_likelihood_sample.values
+
+            orig_shape = log_likelihood_np.shape
+            n_obs = np.prod(orig_shape[:-1])
+            log_likelihood_matrix = log_likelihood_np.reshape(n_obs, n_samples).T
+
+            resampled_log_likelihood = log_likelihood_matrix[resample_indices, :]
+            resampled_log_likelihood = resampled_log_likelihood.T.reshape(orig_shape)
+
+            log_likelihood_sample = xr.DataArray(
+                resampled_log_likelihood,
+                dims=log_likelihood_sample.dims,
+                coords=log_likelihood_sample.coords,
+            )
+
+        except Exception as e:
+            warnings.warn(
+                f"Importance resampling failed: {str(e)}. Falling back to original"
+                " samples.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     log_weights, diagnostic = compute_importance_weights(
         -log_likelihood_sample,
@@ -426,7 +483,7 @@ def loo_subsample(
             looic,
             looic_se,
             looic_subsamp_se,
-            "loo_subsample",  # method
+            "loo_subsample",
         ]
 
         result_index = [
@@ -498,12 +555,19 @@ def loo_subsample(
     result.estimates.var_name = var_name
     result.method = "loo_subsample"
 
+    if log_p is not None and log_q is not None:
+        result.log_p = log_p
+        result.log_q = log_q
+        result.resample_method = resample_method
+        result.n_resamples = n_resamples
+        result.seed = seed
+
     return result
 
 
 def update_subsample(
     loo_data: ELPDData,
-    observations: Optional[int | np.ndarray] = None,
+    observations: int | np.ndarray | None = None,
     **kwargs,
 ) -> ELPDData:
     """Update subsampling results with new observations or parameters.
@@ -516,7 +580,7 @@ def update_subsample(
     ----------
     loo_data : ELPDData
         The original LOO-CV results from loo_subsample()
-    observations : Optional[Union[int, np.ndarray]], default None
+    observations : int | np.ndarray | None, default None
         The new subsample observations to use:
         - An integer specifying the number of observations to subsample
         - An array of integers providing specific indices to use
@@ -542,13 +606,8 @@ def update_subsample(
         import arviz as az
         from pyloo import loo_subsample, update_subsample
 
-        # Load example dataset
         data = az.load_arviz_data("centered_eight")
-
-        # Compute initial LOO-CV with subsampling of 100 observations
         result = loo_subsample(data, observations=100)
-
-        # Update with more observations (200 instead of 100)
         updated = update_subsample(result, observations=200)
     """
     if not isinstance(loo_data, ELPDData):
@@ -572,6 +631,11 @@ def update_subsample(
         "var_name": getattr(loo_data.estimates, "var_name", None),
         "reff": loo_data.get("r_eff", None),
         "scale": loo_data["scale"],
+        "log_p": getattr(loo_data, "log_p", None),
+        "log_q": getattr(loo_data, "log_q", None),
+        "resample_method": getattr(loo_data, "resample_method", "psis"),
+        "n_resamples": getattr(loo_data, "n_resamples", None),
+        "seed": getattr(loo_data, "seed", None),
     }
     params.update(kwargs)
 

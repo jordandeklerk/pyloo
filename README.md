@@ -36,8 +36,11 @@ The package implements the fast and stable computations for approximate LOO-CV f
 - **Reloo**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
 - **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
 - **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
+- **Posterior Approximations**: Compute LOO-CV for posterior approximations.
 
-## PSIS-LOO-CV Example
+## Quickstart
+
+### PSIS-LOO-CV Example
 
 ```python
 import pyloo as pl
@@ -72,9 +75,9 @@ Pareto k diagnostic values:
 [1, Inf)                     0     0.0
 ```
 
-## Model Comparison Example
+### Model Comparison
 
-Compare multiple models using stacking weights or other methods:
+Compare multiple models with `compare` using stacking weights or other methods:
 
 ```python
 model1 = az.load_arviz_data("centered_eight")
@@ -102,18 +105,15 @@ centered         -11.5    2.3    3.3     0.38       -0.3       0.4
 All Pareto k estimates are good (k < 0.7)
 ```
 
-## Advanced Features
-We provide several advanced features beyond the core capabilities for PyMC models.
-
-### Reloo Example
-For observations where PSIS-LOO approximation fails, pyloo can perform exact LOO-CV by refitting the model without those observations:
+### Reloo
+For observations where PSIS-LOO approximation fails, pyloo can perform exact LOO-CV with `reloo` by refitting the model without those observations:
 
 ```python
 import pyloo as pl
 import pymc as pm
 import numpy as np
 
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+from pyloo.wrapper.pymc import PyMCWrapper
 
 np.random.seed(0)
 N = 100
@@ -139,15 +139,15 @@ loo_exact_subsample = pl.reloo(
 )
 ```
 
-### K-fold Cross-Validation Example
-When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
+### K-fold Cross-Validation
+When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation with `loo_kfold` can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
 
 ```python
 import pyloo as pl
 import pymc as pm
 import numpy as np
 
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+from pyloo.wrapper.pymc import PyMCWrapper
 
 np.random.seed(42)
 x = np.random.normal(0, 1, size=100)
@@ -171,7 +171,7 @@ with pm.Model() as model:
 wrapper = PyMCWrapper(model, idata)
 
 # Perform 5-fold cross-validation
-kfold_result = pl.kfold(wrapper, K=5)
+kfold_result = pl.loo_kfold(wrapper, K=5)
 ```
 
 For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide more reliable performance estimates:
@@ -198,7 +198,7 @@ with pm.Model() as model:
 wrapper = PyMCWrapper(model, idata)
 
 # Use stratified k-fold CV to maintain class distribution across folds
-kfold_result = pl.kfold(
+kfold_result = pl.loo_kfold(
     wrapper,
     K=5,
     stratify=wrapper.get_observed_data(),  # Stratify by outcome
@@ -206,9 +206,9 @@ kfold_result = pl.kfold(
 )
 ```
 
-### Moment Matching Example
+### Moment Matching
 
-When PSIS-LOO approximation fails, moment matching can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
+When PSIS-LOO approximation fails, moment matching with `loo_moment_match` can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
 
 ```python
 import pyloo as pl
@@ -216,7 +216,7 @@ import pymc as pm
 import numpy as np
 import arviz as az
 
-from pyloo.wrapper.pymc_wrapper import PyMCWrapper
+from pyloo.wrapper.pymc import PyMCWrapper
 
 np.random.seed(123)
 N = 50
@@ -266,6 +266,74 @@ loo_direct = pl.loo(
     split=True,
     cov=True,
     method="psis"
+)
+```
+
+### Posterior Approximations
+
+When working with posterior approximations like the Laplace approximation, you can use `loo_approximate_posterior` to compute LOO-CV. This is particularly useful for variational inference or other approximate inference methods:
+
+```python
+import pyloo as pl
+import pymc as pm
+import numpy as np
+import arviz as az
+
+from pyloo.wrapper.laplace import Laplace
+
+np.random.seed(42)
+N = 100
+x = np.random.normal(0, 1, N)
+y = 2 + 3 * x + np.random.normal(0, 1, N)
+
+with pm.Model() as model:
+    alpha = pm.Normal("alpha", mu=0, sigma=10)
+    beta = pm.Normal("beta", mu=0, sigma=10)
+    sigma = pm.HalfNormal("sigma", sigma=5)
+
+    mu = alpha + beta * x
+    likelihood = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
+
+wrapper = Laplace(model)
+laplace_result = wrapper.fit(
+    optimize_method="BFGS",
+    chains=4,
+    draws=1000,
+    compute_log_likelihood=True
+)
+
+log_p = wrapper.compute_logp()  # True posterior log density
+log_q = wrapper.compute_logq()  # Approximation log density
+
+loo_result = pl.loo_approximate_posterior(
+    laplace_result.idata,
+    log_p=log_p,
+    log_q=log_q,
+    pointwise=True,
+    method="psis"
+)
+```
+
+For large datasets, you can combine posterior approximations with subsampling for even more efficient computation:
+
+```python
+n_obs = laplace_result.idata.log_likelihood["y"].shape[2]
+subsample_size = min(50, n_obs // 2)
+
+loo_subsample_result = pl.loo_subsample(
+    laplace_result.idata,
+    observations=subsample_size,
+    log_p=log_p,
+    log_q=log_q,
+    pointwise=True,
+    loo_approximation="plpd",
+    estimator="diff_srs"
+)
+
+
+updated_result = pl.update_subsample(
+    loo_subsample_result,
+    observations=min(75, n_obs // 2)
 )
 ```
 

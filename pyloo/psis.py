@@ -1,6 +1,7 @@
-"""Functions for Pareto smoothed importance sampling (PSIS) based on ArviZ."""
+"""Functions for Pareto smoothed importance sampling (PSIS)."""
 
 from copy import deepcopy
+from dataclasses import dataclass, field
 
 import numpy as np
 import xarray as xr
@@ -10,19 +11,21 @@ from .utils import _logsumexp, wrap_xarray_ufunc
 __all__ = ["psislw"]
 
 
+@dataclass(frozen=True)
+class ImportanceSamplingResult:
+    """Container for importance sampling results."""
+
+    samples: np.ndarray
+    log_weights: np.ndarray
+    pareto_k: np.ndarray | float | None = None
+    warnings: list[str] = field(default_factory=list)
+    method: str | None = "psis"
+
+
 def psislw(
     log_weights, reff: float = 1.0
 ) -> tuple[xr.DataArray | np.ndarray, xr.DataArray | np.ndarray]:
-    """
-    Pareto smoothed importance sampling (PSIS).
-
-    Notes
-    -----
-    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
-    named ``__sample__`` (recommended) ``psislw`` will interpret this dimension as samples,
-    and all other dimensions as dimensions of the observed data, looping over them to
-    calculate the psislw of each observation. If no ``__sample__`` dimension is present or
-    the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
+    """Pareto smoothed importance sampling (PSIS).
 
     Parameters
     ----------
@@ -39,10 +42,13 @@ def psislw(
         Estimates of the shape parameter *k* of the generalized Pareto
         distribution.
 
-    References
-    ----------
-    * Vehtari et al. (2024). Pareto smoothed importance sampling. Journal of Machine
-      Learning Research, 25(72):1-58.
+    Notes
+    -----
+    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
+    named ``__sample__`` (recommended) ``psislw`` will interpret this dimension as samples,
+    and all other dimensions as dimensions of the observed data, looping over them to
+    calculate the psislw of each observation. If no ``__sample__`` dimension is present or
+    the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
 
     See Also
     --------
@@ -62,6 +68,11 @@ def psislw(
             __sample__=["chain", "draw"]
         )
         loo.psislw(-log_likelihood, reff=0.8)
+
+    References
+    ----------
+    * Vehtari et al. (2024). Pareto smoothed importance sampling. Journal of Machine
+      Learning Research, 25(72):1-58.
 
     """
     log_weights = deepcopy(log_weights)

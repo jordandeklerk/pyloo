@@ -1,5 +1,6 @@
 """Wrappers for different model backends to support LOO-CV computations."""
 
-from .pymc_wrapper import PyMCWrapper
+from .laplace import Laplace
+from .pymc import PyMCWrapper
 
-__all__ = ["PyMCWrapper"]
+__all__ = ["PyMCWrapper", "Laplace"]

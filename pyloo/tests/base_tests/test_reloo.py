@@ -9,7 +9,7 @@ import pytest
 from ...elpd import ELPDData
 from ...loo import loo
 from ...reloo import reloo
-from ...wrapper.pymc_wrapper import PyMCWrapper
+from ...wrapper.pymc import PyMCWrapper
 from ..helpers import assert_arrays_allclose
 
 
