@@ -366,19 +366,34 @@ def loo_subsample(
     )
 
     estimator_impl = get_estimator(est_method.value)
+    p_loo_values = log_likelihood_sample.var(dim="__sample__").values
 
+    # Calculate elpd_loo and p_loo based on the current estimator method
     if est_method == EstimatorMethod.HH_PPS:
         z = compute_sampling_probabilities(elpd_loo_approx)
         z_sample = z[indices.idx]
+
         estimates = estimator_impl.estimate(
             z=z_sample,
             m_i=indices.m_i,
             y=loo_lppd_i.values,
             N=n_data_points,
         )
+
+        p_loo_estimates = estimator_impl.estimate(
+            z=z_sample,
+            m_i=indices.m_i,
+            y=p_loo_values,
+            N=n_data_points,
+        )
     elif est_method == EstimatorMethod.SRS:
         estimates = estimator_impl.estimate(
             y=loo_lppd_i.values,
+            N=n_data_points,
+        )
+
+        p_loo_estimates = estimator_impl.estimate(
+            y=p_loo_values,
             N=n_data_points,
         )
     else:  # diff_srs
@@ -388,9 +403,31 @@ def loo_subsample(
             y_idx=indices.idx,
         )
 
-    warn_mg = False
+        p_loo_approx = np.zeros_like(elpd_loo_approx)
+        p_loo_estimates = estimator_impl.estimate(
+            y_approx=p_loo_approx,
+            y=p_loo_values,
+            y_idx=indices.idx,
+        )
+
+    p_loo = p_loo_estimates.y_hat
+
+    # Calculate standard errors and information criteria
+    # Total variance (hat_v_y) for regular SE and subsampling variance
+    # (v_y_hat) for subsampling SE
+    se = np.sqrt(estimates.hat_v_y) if hasattr(estimates, "hat_v_y") else np.nan
+    subsampling_se = (
+        np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
+    )
+
+    looic = -2 * estimates.y_hat
+    looic_se = 2 * se
+    looic_subsamp_se = 2 * subsampling_se
+
+    # Check diagnostics for warnings
     good_k = min(1 - 1 / np.log10(n_samples), 0.7)
     max_k = np.nanmax(diagnostic) if not np.all(np.isnan(diagnostic)) else 0
+    warn_mg = False
 
     if est_method == EstimatorMethod.SRS:
         min_ess = np.min(diagnostic)
@@ -439,48 +476,9 @@ def loo_subsample(
         warnings.warn(
             "The point-wise LOO is the same with the sum LOO, please double check "
             "the Observed RV in your model to make sure it returns element-wise logp.",
+            UserWarning,
             stacklevel=2,
         )
-
-    # Calculate p_loo using the same estimator as for elpd_loo
-    if est_method == EstimatorMethod.HH_PPS:
-        z = compute_sampling_probabilities(elpd_loo_approx)
-        z_sample = z[indices.idx]
-        p_loo_values = log_likelihood_sample.var(dim="__sample__").values
-        p_loo_estimates = estimator_impl.estimate(
-            z=z_sample,
-            m_i=indices.m_i,
-            y=p_loo_values,
-            N=n_data_points,
-        )
-        p_loo = p_loo_estimates.y_hat
-    elif est_method == EstimatorMethod.SRS:
-        p_loo_values = log_likelihood_sample.var(dim="__sample__").values
-        p_loo_estimates = estimator_impl.estimate(
-            y=p_loo_values,
-            N=n_data_points,
-        )
-        p_loo = p_loo_estimates.y_hat
-    else:
-        p_loo_values = log_likelihood_sample.var(dim="__sample__").values
-        p_loo_approx = np.zeros_like(elpd_loo_approx)
-        p_loo_estimates = estimator_impl.estimate(
-            y_approx=p_loo_approx,
-            y=p_loo_values,
-            y_idx=indices.idx,
-        )
-        p_loo = p_loo_estimates.y_hat
-
-    # Total variance (hat_v_y) for regular SE and subsampling variance
-    # (v_y_hat) for subsampling SE
-    se = np.sqrt(estimates.hat_v_y) if hasattr(estimates, "hat_v_y") else np.nan
-    subsampling_se = (
-        np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
-    )
-
-    looic = -2 * estimates.y_hat
-    looic_se = 2 * se
-    looic_subsamp_se = 2 * subsampling_se
 
     result_data: list[Any] = []
     result_index: list[str] = []
