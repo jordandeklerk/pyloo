@@ -283,6 +283,7 @@ class ELPDData(pd.Series):
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
+                    p_loo_se=self["p_loo_se"],
                     looic=looic,
                     looic_se=looic_se,
                 )
