@@ -9,7 +9,7 @@ from arviz.data import InferenceData
 from ...loo import loo
 from ...loo_approximate_posterior import loo_approximate_posterior
 from ...wrapper.laplace import Laplace
-from ...wrapper.log_density import compute_log_weights
+from ...wrapper.utils import compute_log_weights
 from ..helpers import assert_arrays_allclose
 
 

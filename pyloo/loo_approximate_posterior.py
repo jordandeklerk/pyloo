@@ -152,12 +152,12 @@ def loo_approximate_posterior(
     .. code-block:: python
 
         import pyloo as pl
-        from pyloo.wrapper import log_density
+        from pyloo.wrapper import utils
 
         with model:
             mean_field = pm.fit(method="advi")
 
-        log_p, log_q, _ = log_density.compute_log_weights(mean_field, 1000)
+        log_p, log_q, _ = utils.compute_log_weights(mean_field, 1000)
         trace = mean_field.sample(1000)
         pm.compute_log_likelihood(trace, model=model, extend_inferencedata=True)
 
