@@ -12,7 +12,7 @@ Computed from {n_samples} posterior samples and {n_points} observations log-like
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}        -
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
 looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
 # Custom format for LOO output without looic line
@@ -21,7 +21,7 @@ Computed from {n_samples} posterior samples and {n_points} observations log-like
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}        -"""
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}"""
 
 # Custom format for LOO approximate posterior output
 APPROX_POSTERIOR_FMT = """
@@ -31,7 +31,7 @@ Posterior approximation correction used.
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}        -
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
 looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
 # Format for k-fold cross-validation output
@@ -41,7 +41,7 @@ with {n_points} observations.{stratify_msg}
 
            Estimate       SE
 elpd_kfold   {elpd:<8.2f}    {se:<.2f}
-p_kfold       {p_kfold:<8.2f}        -
+p_kfold       {p_kfold:<8.2f}    {p_kfold_se:<.2f}
 kfoldic      {kfoldic:<8.2f}    {kfoldic_se:<.2f}
 """
 
@@ -52,7 +52,7 @@ values from {n_data_points} total observations.
 
          Estimate       SE  subsampling SE
 elpd_loo   {0:<8.2f}    {1:<.2f}         {2:<.2f}
-p_loo       {3:<8.2f}        -            -
+p_loo       {3:<8.2f}    -               -
 looic      {4:<8.2f}    {5:<.2f}         {6:<.2f}
 {pareto_msg}"""
 
@@ -181,7 +181,6 @@ class ELPDData(pd.Series):
             elpd_loo_subsamp_se = self["subsampling_SE"]
 
             p_loo = self["p_loo"]
-
             looic = -2 * elpd_loo
             looic_se = 2 * elpd_loo_se
             looic_subsamp_se = 2 * elpd_loo_subsamp_se
@@ -272,6 +271,7 @@ class ELPDData(pd.Series):
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
+                    p_loo_se=self["p_loo_se"],
                     looic=looic,
                     looic_se=looic_se,
                 )
@@ -284,6 +284,7 @@ class ELPDData(pd.Series):
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
+                    p_loo_se=self["p_loo_se"],
                     looic=looic,
                     looic_se=looic_se,
                 )
@@ -293,7 +294,6 @@ class ELPDData(pd.Series):
                     "\n\nThere has been a warning during the calculation. Please check"
                     " the results."
                 )
-
             base += pareto_msg
 
             return base

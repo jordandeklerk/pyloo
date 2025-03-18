@@ -35,7 +35,7 @@ __all__ = ["loo_subsample", "update_subsample"]
 
 def loo_subsample(
     data: InferenceData | dict[str, Any],
-    observations: int | np.ndarray | None = 400,
+    observations: int | np.ndarray | None = 100,
     loo_approximation: str = "plpd",
     estimator: str = "diff_srs",
     loo_approximation_draws: int | None = None,
@@ -388,16 +388,6 @@ def loo_subsample(
             y_idx=indices.idx,
         )
 
-    lppd = np.sum(
-        wrap_xarray_ufunc(
-            _logsumexp,
-            log_likelihood,
-            func_kwargs={"b_inv": n_samples},
-            ufunc_kwargs=ufunc_kwargs,
-            **kwargs,
-        ).values
-    )
-
     warn_mg = False
     good_k = min(1 - 1 / np.log10(n_samples), 0.7)
     max_k = np.nanmax(diagnostic) if not np.all(np.isnan(diagnostic)) else 0
@@ -452,7 +442,34 @@ def loo_subsample(
             stacklevel=2,
         )
 
-    p_loo = lppd - estimates.y_hat / scale_value
+    # Calculate p_loo using the same estimator as for elpd_loo
+    if est_method == EstimatorMethod.HH_PPS:
+        z = compute_sampling_probabilities(elpd_loo_approx)
+        z_sample = z[indices.idx]
+        p_loo_values = log_likelihood_sample.var(dim="__sample__").values
+        p_loo_estimates = estimator_impl.estimate(
+            z=z_sample,
+            m_i=indices.m_i,
+            y=p_loo_values,
+            N=n_data_points,
+        )
+        p_loo = p_loo_estimates.y_hat
+    elif est_method == EstimatorMethod.SRS:
+        p_loo_values = log_likelihood_sample.var(dim="__sample__").values
+        p_loo_estimates = estimator_impl.estimate(
+            y=p_loo_values,
+            N=n_data_points,
+        )
+        p_loo = p_loo_estimates.y_hat
+    else:
+        p_loo_values = log_likelihood_sample.var(dim="__sample__").values
+        p_loo_approx = np.zeros_like(elpd_loo_approx)
+        p_loo_estimates = estimator_impl.estimate(
+            y_approx=p_loo_approx,
+            y=p_loo_values,
+            y_idx=indices.idx,
+        )
+        p_loo = p_loo_estimates.y_hat
 
     # Total variance (hat_v_y) for regular SE and subsampling variance
     # (v_y_hat) for subsampling SE
