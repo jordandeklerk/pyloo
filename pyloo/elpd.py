@@ -13,8 +13,7 @@ Computed from {n_samples} posterior samples and {n_points} observations log-like
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
 p_loo       {p_loo:<8.2f}        -
-looic      {looic:<8.2f}    {looic_se:<.2f}
-{pareto_msg}"""
+looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
 # Custom format for LOO output without looic line
 CUSTOM_LOO_FMT = """
@@ -32,7 +31,8 @@ Posterior approximation correction used.
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}        -"""
+p_loo       {p_loo:<8.2f}        -
+looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
 # Format for k-fold cross-validation output
 KFOLD_BASE_FMT = """
@@ -260,20 +260,28 @@ class ELPDData(pd.Series):
 
             # Choose the appropriate format based on whether this is from loo_approximate_posterior
             if hasattr(self, "approximate_posterior"):
+                looic = self["looic"]
+                looic_se = self["looic_se"]
                 base = APPROX_POSTERIOR_FMT.format(
                     n_samples=self.n_samples,
                     n_points=self.n_data_points,
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
+                    looic=looic,
+                    looic_se=looic_se,
                 )
             else:
-                base = CUSTOM_LOO_FMT.format(
+                looic = self["looic"]
+                looic_se = self["looic_se"]
+                base = STD_BASE_FMT.format(
                     n_samples=self.n_samples,
                     n_points=self.n_data_points,
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
+                    looic=looic,
+                    looic_se=looic_se,
                 )
 
             if self.warning:

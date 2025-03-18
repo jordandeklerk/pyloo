@@ -1,5 +1,6 @@
 """Tests for the LOO module."""
 
+import logging
 from copy import deepcopy
 
 import arviz as az
@@ -11,6 +12,8 @@ from ...loo import loo
 from ...psis import psislw
 from ...wrapper.pymc import PyMCWrapper
 from ..helpers import assert_allclose, assert_array_almost_equal
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -324,3 +327,17 @@ def test_loo_moment_matching_no_pointwise(problematic_k_model):
         ValueError, match="Moment matching requires pointwise LOO results"
     ):
         loo(idata, moment_match=True, wrapper=wrapper)
+
+
+def test_loo_wells(wells_model):
+    """Test LOO computation with the wells dataset."""
+    _, idata = wells_model
+    result = loo(idata)
+
+    logger.info(result)
+
+    assert result is not None
+    assert "elpd_loo" in result
+    assert "p_loo" in result
+    assert "looic" in result
+    assert "looic_se" in result
