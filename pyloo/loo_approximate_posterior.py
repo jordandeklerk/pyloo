@@ -331,6 +331,7 @@ def loo_approximate_posterior(
     )
 
     p_loo = lppd - loo_lppd / scale_value
+    p_loo_se = np.sqrt(np.sum(np.var(loo_lppd_i.values)))
     looic = -2 * loo_lppd
     looic_se = 2 * loo_lppd_se
 
@@ -342,6 +343,7 @@ def loo_approximate_posterior(
             loo_lppd,
             loo_lppd_se,
             p_loo,
+            p_loo_se,
             n_samples,
             n_data_points,
             warn_mg,
@@ -353,6 +355,7 @@ def loo_approximate_posterior(
             "elpd_loo",
             "se",
             "p_loo",
+            "p_loo_se",
             "n_samples",
             "n_data_points",
             "warning",
@@ -381,6 +384,7 @@ def loo_approximate_posterior(
         loo_lppd,
         loo_lppd_se,
         p_loo,
+        p_loo_se,
         n_samples,
         n_data_points,
         warn_mg,
@@ -393,6 +397,7 @@ def loo_approximate_posterior(
         "elpd_loo",
         "se",
         "p_loo",
+        "p_loo_se",
         "n_samples",
         "n_data_points",
         "warning",
