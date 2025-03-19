@@ -85,21 +85,15 @@ Standard PSIS-LOO-CV
 
 .. code-block:: text
 
-   Computed from 4000 samples using all 8 observations.
+   Computed from 2000 posterior samples and 8 observations log-likelihood matrix.
 
-              Estimate   SE
-   elpd_loo   -11.2     2.1
-   p_loo       3.1      -
-   looic       22.4     4.2
+          Estimate       SE
+   elpd_loo   -30.78      1.35
+   p_loo       0.95        0.48
+   looic      61.56       2.69
 
    All Pareto k estimates are good (k < 0.7).
    See help('pareto-k-diagnostic') for details.
-
-   Pareto k diagnostic values:
-                             Count    Pct.
-   (-Inf, 0.70)                 8   100.0
-   [0.70, 1)                    0     0.0
-   [1, Inf)                     0     0.0
 
 Model Comparison
 ~~~~~~~~~~~~~~
@@ -125,9 +119,9 @@ Model Comparison
 
    Model comparison using LOO (scale: log)
 
-                   elpd_loo   se    p_loo   weight    elpd_diff    dse
-   non_centered     -11.2    2.1    3.1     0.62        0.0       0.0
-   centered         -11.5    2.3    3.3     0.38       -0.3       0.4
+                 elpd_loo   se      p_loo   weight    elpd_diff    dse     warning
+   non_centered     -30.72   1.33     0.90    1.00e+00     0.0      0.00      True
+   centered         -30.78   1.35     0.95    2.50e-16    -0.06     0.06      False
 
    All Pareto k estimates are good (k < 0.7)
 
