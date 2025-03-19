@@ -133,7 +133,7 @@ We provide several advanced features beyond the core capabilities for PyMC model
 Reloo
 ^^^^^
 
-For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations:
+For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), we can perform exact LOO-CV by refitting the model without those observations:
 
 .. code-block:: python
 
@@ -252,7 +252,7 @@ You can also save the fitted models for each fold for further analysis:
 Moment Matching
 ^^^^^^^^^^^^^
 
-When PSIS-LOO approximation fails, moment matching can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
+When PSIS-LOO approximation fails, moment matching can improve the reliability of LOO-CV estimates without the computational cost of refitting the model:
 
 .. code-block:: python
 
@@ -316,7 +316,7 @@ Alternatively, you can compute LOO-CV with moment matching by setting ``moment_m
 Posterior Approximations
 ^^^^^^^^^^^^^^^^^^^^^^
 
-When working with posterior approximations like the Laplace approximation, you can use ``loo_approximate_posterior`` to compute LOO-CV. This is particularly useful for variational inference or other approximate inference methods:
+When working with posterior approximations, we can use ``loo_approximate_posterior`` to compute LOO-CV:
 
 .. code-block:: python
 
@@ -359,7 +359,7 @@ When working with posterior approximations like the Laplace approximation, you c
        method="psis"
    )
 
-For large datasets, you can combine posterior approximations with subsampling for even more efficient computation:
+For large datasets, we can combine posterior approximations with sub-sampling for even more efficient computation:
 
 .. code-block:: python
 

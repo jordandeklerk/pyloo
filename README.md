@@ -100,7 +100,7 @@ All Pareto k estimates are good (k < 0.7)
 ```
 
 ### Reloo
-For observations where PSIS-LOO approximation fails, pyloo can perform exact LOO-CV with `reloo` by refitting the model without those observations:
+For observations where PSIS-LOO approximation fails, we can perform exact LOO-CV with `reloo` by refitting the model without those observations:
 
 ```python
 import pyloo as pl
@@ -202,7 +202,7 @@ kfold_result = pl.loo_kfold(
 
 ### Moment Matching
 
-When PSIS-LOO approximation fails, moment matching with `loo_moment_match` can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
+When PSIS-LOO approximation fails, moment matching with `loo_moment_match` can improve the reliability of LOO-CV estimates without the computational cost of refitting the model:
 
 ```python
 import pyloo as pl
@@ -265,7 +265,7 @@ loo_direct = pl.loo(
 
 ### Posterior Approximations
 
-When working with posterior approximations like the Laplace approximation, you can use `loo_approximate_posterior` to compute LOO-CV. This is particularly useful for variational inference or other approximate inference methods:
+When working with posterior approximations, we can use `loo_approximate_posterior` to compute LOO-CV:
 
 ```python
 import pyloo as pl
@@ -308,7 +308,7 @@ loo_result = pl.loo_approximate_posterior(
 )
 ```
 
-For large datasets, you can combine posterior approximations with subsampling for even more efficient computation:
+For large datasets, you can combine posterior approximations with sub-sampling for even more efficient computation:
 
 ```python
 n_obs = laplace_result.idata.log_likelihood["y"].shape[2]
