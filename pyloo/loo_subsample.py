@@ -420,7 +420,6 @@ def loo_subsample(
     looic_se = 2 * se
     looic_subsamp_se = 2 * subsampling_se
 
-    # Check diagnostics for warnings
     good_k = min(1 - 1 / np.log10(n_samples), 0.7)
     max_k = np.nanmax(diagnostic) if not np.all(np.isnan(diagnostic)) else 0
     warn_mg = False
