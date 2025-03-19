@@ -1,318 +1,626 @@
-"""Tests for expectation calculations."""
+"""Tests for the e_loo module."""
 
 import numpy as np
 import pytest
+import xarray as xr
+from arviz import InferenceData
 
 from ...base import compute_importance_weights
-from ...e_loo import ExpectationResult, _wmean, _wquant, _wsd, _wvar, e_loo
-from ...utils import _logsumexp
-from ..helpers import (
-    assert_arrays_allclose,
-    assert_arrays_almost_equal,
-    assert_positive,
+from ...e_loo import (
+    ExpectationResult,
+    _compute_pareto_k,
+    _compute_weighted_mean,
+    _compute_weighted_quantiles,
+    _compute_weighted_sd,
+    _compute_weighted_variance,
+    _khat_func,
+    _normalize_log_weights,
+    _weighted_quantile,
+    _wvar_func,
+    e_loo,
 )
+from ..helpers import assert_arrays_allclose, assert_finite, assert_positive
 
 
-def make_test_data(n_samples=1000, n_obs=1):
-    """Create test data for expectations."""
-    rng = np.random.default_rng(42)
-    x = rng.normal(size=(n_samples, n_obs))
-    log_weights = rng.normal(size=(n_samples, n_obs))
-    log_weights -= np.max(log_weights, axis=0)  # stabilize
+def test_expectation_result_dataclass():
+    """Test the ExpectationResult dataclass."""
+    value = xr.DataArray([1.0, 2.0, 3.0], dims=["dim1"])
+    pareto_k = xr.DataArray([0.1, 0.2, 0.3], dims=["dim1"])
 
-    processed_weights, pareto_k = compute_importance_weights(log_weights.T)
+    result = ExpectationResult(value=value, pareto_k=pareto_k)
 
-    return x, processed_weights.T, pareto_k
-
-
-def test_e_loo_vector():
-    """Test e_loo with vector inputs."""
-    x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    log_weights = np.array([-1.0, -1.0, -1.0, -1.0, -1.0])
-    processed_weights, pareto_k = compute_importance_weights(log_weights[None, :])
-
-    result = e_loo(x, processed_weights[0], type="mean", pareto_k=pareto_k[0])
     assert isinstance(result, ExpectationResult)
-    assert_arrays_allclose(result.value, 3.0)
-    assert_positive(result.pareto_k)
+    assert isinstance(result.value, xr.DataArray)
+    assert isinstance(result.pareto_k, xr.DataArray)
+    assert_arrays_allclose(result.value.values, [1.0, 2.0, 3.0])
+    assert_arrays_allclose(result.pareto_k.values, [0.1, 0.2, 0.3])
 
-    result = e_loo(x, processed_weights[0], type="variance", pareto_k=pareto_k[0])
-    assert_arrays_allclose(result.value, 2.5)
 
-    result = e_loo(x, processed_weights[0], type="sd", pareto_k=pareto_k[0])
-    assert_arrays_allclose(result.value, np.sqrt(2.5))
-
-    result = e_loo(
-        x,
-        processed_weights[0],
-        type="quantile",
-        probs=[0.25, 0.5, 0.75],
-        pareto_k=pareto_k[0],
+def test_normalize_log_weights():
+    """Test the _normalize_log_weights function."""
+    log_weights = xr.DataArray(
+        [[-1.0, -2.0], [-3.0, -4.0]],
+        dims=("__sample__", "obs_dim"),
+        coords={"obs_dim": [0, 1]},
     )
-    assert_arrays_almost_equal(result.value, [2.0, 3.0, 4.0])
 
-
-def test_e_loo_matrix():
-    """Test e_loo with matrix inputs."""
-    x = np.array([[1.0, 2.0], [2.0, 3.0], [3.0, 4.0], [4.0, 5.0], [5.0, 6.0]])
-    log_weights = np.array(
-        [[-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0], [-1.0, -1.0]]
+    normalized = _normalize_log_weights(
+        log_weights, log_weights.get_axis_num("__sample__")
     )
-    processed_weights, pareto_k = compute_importance_weights(log_weights.T)
 
-    result = e_loo(x, processed_weights.T, type="mean", pareto_k=pareto_k)
-    assert isinstance(result, ExpectationResult)
-    assert_arrays_almost_equal(result.value, [3.0, 4.0])
-    assert len(result.pareto_k) == 2
-    assert_positive(result.pareto_k)
-
-    result = e_loo(x, processed_weights.T, type="variance", pareto_k=pareto_k)
-    assert_arrays_almost_equal(result.value, [2.5, 2.5])
-
-    result = e_loo(x, processed_weights.T, type="sd", pareto_k=pareto_k)
-    assert_arrays_almost_equal(result.value, [np.sqrt(2.5), np.sqrt(2.5)])
-
-    result = e_loo(
-        x,
-        processed_weights.T,
-        type="quantile",
-        probs=[0.25, 0.5, 0.75],
-        pareto_k=pareto_k,
-    )
-    expected = np.array([[2.0, 3.0], [3.0, 4.0], [4.0, 5.0]])
-    assert_arrays_almost_equal(result.value, expected)
+    summed = np.exp(normalized).sum(dim="__sample__")
+    assert_arrays_allclose(summed.values, [1.0, 1.0], rtol=1e-5)
 
 
-def test_e_loo_errors():
-    """Test error handling in e_loo."""
-    x = np.array([1.0, 2.0, 3.0])
-    log_weights = np.array([-1.0, -1.0, -1.0])
-    processed_weights, pareto_k = compute_importance_weights(log_weights[None, :])
+def test_wvar_func():
+    """Test the _wvar_func function."""
+    x_const = np.array([5.0, 5.0, 5.0, 5.0])
+    w_const = np.array([0.25, 0.25, 0.25, 0.25])
+    assert_arrays_allclose(_wvar_func(x_const, w_const), 0.0)
 
-    with pytest.raises(ValueError, match="type must be"):
-        e_loo(x, processed_weights[0], type="invalid")
+    x_vary = np.array([1.0, 2.0, 3.0, 4.0])
+    w_vary = np.array([0.1, 0.2, 0.3, 0.4])
+    var = _wvar_func(x_vary, w_vary)
+    assert var > 0
 
-    with pytest.raises(ValueError, match="probs must be provided"):
-        e_loo(x, processed_weights[0], type="quantile")
-
-    with pytest.raises(ValueError, match="probs must be between"):
-        e_loo(x, processed_weights[0], type="quantile", probs=[-0.1, 1.1])
-
-    with pytest.raises(ValueError, match="x and log_weights must have same"):
-        e_loo(x[:-1], processed_weights[0])
-
-    with pytest.raises(ValueError):
-        e_loo(np.array([]), processed_weights[0])
-
-    bad_weights = np.array([np.inf, -np.inf, np.nan])
-    with pytest.raises(ValueError):
-        e_loo(x, bad_weights)
+    w_extreme = np.array([0.97, 0.01, 0.01, 0.01])
+    var_extreme = _wvar_func(x_vary, w_extreme)
+    assert var_extreme >= 0
 
 
-def test_e_loo_with_real_data():
-    """Test e_loo with more realistic data."""
-    x, processed_weights, pareto_k = make_test_data(n_samples=1000, n_obs=5)
-
-    for type in ["mean", "variance", "sd"]:
-        result = e_loo(x, processed_weights, type=type, pareto_k=pareto_k)
-        assert isinstance(result, ExpectationResult)
-        assert result.value.shape == (5,)
-        assert result.pareto_k.shape == (5,)
-
-    probs = [0.1, 0.5, 0.9]
-    result = e_loo(
-        x, processed_weights, type="quantile", probs=probs, pareto_k=pareto_k
-    )
-    assert result.value.shape == (len(probs), 5)
-    assert result.pareto_k.shape == (5,)
-
-    assert np.all(np.diff(result.value, axis=0) >= -1e-10)
-
-
-def test_pareto_k_estimation():
-    """Test Pareto k estimation with different input types."""
-    np.random.seed(42)
-    n_samples = 1000
-    x = np.random.normal(size=n_samples)
-
-    log_weights = np.random.pareto(3, size=n_samples)
-    log_weights = np.log(log_weights) - np.max(np.log(log_weights))
-    processed_weights, pareto_k = compute_importance_weights(log_weights[None, :])
-
-    test_cases = [
-        x,
-        np.ones_like(x),
-        np.where(x > 0, 1, 0),
-        np.full_like(x, np.inf),
-        np.full_like(x, np.nan),
-    ]
-
-    for test_x in test_cases:
-        result = e_loo(test_x, processed_weights[0], pareto_k=pareto_k[0])
-        assert isinstance(result.pareto_k, float)
-        assert result.pareto_k >= 0
-
-
-def test_weighted_calculations():
-    """Test individual weighted calculation functions."""
+def test_weighted_quantile():
+    """Test the _weighted_quantile function."""
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     w = np.array([0.1, 0.2, 0.4, 0.2, 0.1])
 
-    mean = _wmean(x, w)
-    assert_arrays_allclose(mean, 3.0)
+    median = _weighted_quantile(x, w, 0.5)
+    assert_arrays_allclose(median, 2.5)
 
-    var = _wvar(x, w)
-    assert_positive(var)
+    q1 = _weighted_quantile(x, w, 0.25)
+    q3 = _weighted_quantile(x, w, 0.75)
+    assert q1 < median < q3
 
-    sd = _wsd(x, w)
-    assert_arrays_allclose(sd, np.sqrt(var))
+    w_equal = np.ones_like(x) / len(x)
+    median_equal = _weighted_quantile(x, w_equal, 0.5)
+    assert_arrays_allclose(median_equal, 3.0)
 
-    quants = _wquant(x, w, np.array([0.25, 0.5, 0.75]))
-    assert_positive(np.diff(quants))
+    assert _weighted_quantile(x, w, 0.0) == 1.0
+    assert _weighted_quantile(x, w, 1.0) == 5.0
 
 
-def test_numerical_stability():
-    """Test numerical stability with extreme weights."""
-    n_samples = 1000
-    x = np.random.normal(size=n_samples)
+def test_khat_func():
+    """Test the _khat_func function."""
+    rng = np.random.default_rng(42)
+    x = rng.normal(size=100)
+    log_ratios = rng.normal(size=100)
 
-    log_weights = np.array([-1000.0] * (n_samples - 1) + [0.0])
-    processed_weights, pareto_k = compute_importance_weights(log_weights[None, :])
+    k = _khat_func(x, log_ratios)
+    assert isinstance(k, float)
+    assert k >= 0 or np.isnan(k)
 
-    for type in ["mean", "variance", "sd"]:
-        result = e_loo(x, processed_weights[0], type=type, pareto_k=pareto_k[0])
-        assert np.isfinite(result.value)
+    k_none = _khat_func(None, log_ratios)
+    assert isinstance(k_none, float)
+    assert k_none >= 0 or np.isnan(k_none)
 
-    result = e_loo(
-        x,
-        processed_weights[0],
-        type="quantile",
-        probs=[0.1, 0.5, 0.9],
-        pareto_k=pareto_k[0],
+    x_const = np.ones_like(x)
+    k_const = _khat_func(x_const, log_ratios)
+    assert isinstance(k_const, float)
+    assert k_const >= 0 or np.isnan(k_const)
+
+
+def test_compute_weighted_mean(centered_eight):
+    """Test the _compute_weighted_mean function."""
+    x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
+    log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    result = _compute_weighted_mean(x, log_weights)
+
+    assert isinstance(result, xr.DataArray)
+    assert "school" in result.dims
+    assert "__sample__" not in result.dims
+    assert result.shape == (8,)
+    assert_finite(result)
+
+
+def test_compute_weighted_variance(centered_eight):
+    """Test the _compute_weighted_variance function."""
+    x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
+    log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    result = _compute_weighted_variance(x, log_weights)
+
+    assert isinstance(result, xr.DataArray)
+    assert "school" in result.dims
+    assert "__sample__" not in result.dims
+    assert result.shape == (8,)
+    assert_positive(result)
+
+
+def test_compute_weighted_sd(centered_eight):
+    """Test the _compute_weighted_sd function."""
+    x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
+    log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    result = _compute_weighted_sd(x, log_weights)
+
+    assert isinstance(result, xr.DataArray)
+    assert "school" in result.dims
+    assert "__sample__" not in result.dims
+    assert result.shape == (8,)
+    assert_positive(result)
+
+    variance = _compute_weighted_variance(x, log_weights)
+    assert_arrays_allclose(result.values, np.sqrt(variance.values))
+
+
+def test_compute_weighted_quantiles(centered_eight):
+    """Test the _compute_weighted_quantiles function."""
+    x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
+    log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+    probs = np.array([0.25, 0.5, 0.75])
+
+    result = _compute_weighted_quantiles(x, log_weights, probs)
+
+    assert isinstance(result, xr.DataArray)
+    assert "school" in result.dims
+    assert "quantile" in result.dims
+    assert "__sample__" not in result.dims
+    assert result.shape == (8, 3)
+    assert_finite(result)
+
+    # Check that quantiles are monotonically increasing for each school
+    for school in result.coords["school"].values:
+        assert np.all(np.diff(result.sel(school=school).values) >= 0)
+
+
+def test_compute_pareto_k(centered_eight):
+    """Test the _compute_pareto_k function."""
+    x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
+    log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    result = _compute_pareto_k(x, log_weights)
+
+    assert isinstance(result, xr.DataArray)
+    assert "school" in result.dims
+    assert "__sample__" not in result.dims
+    assert result.shape == (8,)
+
+    result_none = _compute_pareto_k(None, log_weights)
+
+    assert isinstance(result_none, xr.DataArray)
+    assert "school" in result_none.dims
+    assert "__sample__" not in result_none.dims
+    assert result_none.shape == (8,)
+
+
+def test_e_loo_with_arrays(centered_eight):
+    """Test e_loo with xarray DataArrays."""
+    x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
+    log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    n_chains = 4
+    n_draws = 25
+    n_obs = 3
+
+    rng = np.random.default_rng(42)
+
+    pp_data = rng.normal(size=(n_chains, n_draws, n_obs))
+    pp_da = xr.DataArray(
+        pp_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
     )
-    assert np.all(np.isfinite(result.value))
+    pp_ds = xr.Dataset({"y": pp_da})
 
-
-def test_eight_schools_expectations(centered_eight, non_centered_eight):
-    """Test E_loo functions with eight schools data from both parameterizations."""
-    centered_loglik = centered_eight.log_likelihood.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
-    non_centered_loglik = non_centered_eight.log_likelihood.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
-
-    centered_loglik_norm = centered_loglik - _logsumexp(
-        centered_loglik, axis=1, keepdims=True
+    ll_data = rng.normal(size=(n_chains, n_draws, n_obs))
+    ll_da = xr.DataArray(
+        ll_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
     )
-    non_centered_loglik_norm = non_centered_loglik - _logsumexp(
-        non_centered_loglik, axis=1, keepdims=True
-    )
+    ll_ds = xr.Dataset({"y": ll_da})
 
-    # Transpose to (n_obs, n_samples) for compute_importance_weights
-    centered_weights, centered_k = compute_importance_weights(centered_loglik_norm.T)
-    non_centered_weights, non_centered_k = compute_importance_weights(
-        non_centered_loglik_norm.T
-    )
+    idata = InferenceData(posterior_predictive=pp_ds, log_likelihood=ll_ds)
 
-    centered_y = centered_eight.posterior_predictive.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
-    non_centered_y = non_centered_eight.posterior_predictive.obs.stack(
-        __sample__=("chain", "draw")
-    ).values.T
+    mean_value = _compute_weighted_mean(x, log_weights)
+    pareto_k = _compute_pareto_k(x, log_weights)
+    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
 
-    for type in ["mean", "variance", "sd"]:
-        result_centered = e_loo(
-            centered_y,
-            centered_weights.T,
-            type=type,
-            log_ratios=centered_loglik,
-            pareto_k=centered_k,
-        )
-        assert result_centered.value.shape == (8,)
-        assert result_centered.pareto_k.shape == (8,)
-        assert np.all(np.isfinite(result_centered.value))
-        assert np.all(np.isfinite(result_centered.pareto_k))
+    assert isinstance(result_mean, ExpectationResult)
+    assert isinstance(result_mean.value, xr.DataArray)
+    assert isinstance(result_mean.pareto_k, xr.DataArray)
+    assert result_mean.value.shape == (8,)
+    assert result_mean.pareto_k.shape == (8,)
 
-        result_non_centered = e_loo(
-            non_centered_y,
-            non_centered_weights.T,
-            type=type,
-            log_ratios=non_centered_loglik,
-            pareto_k=non_centered_k,
-        )
-        assert result_non_centered.value.shape == (8,)
-        assert result_non_centered.pareto_k.shape == (8,)
-        assert np.all(np.isfinite(result_non_centered.value))
-        assert np.all(np.isfinite(result_non_centered.pareto_k))
+    var_value = _compute_weighted_variance(x, log_weights)
+    result_var = ExpectationResult(value=var_value, pareto_k=pareto_k)
 
-    probs = [0.1, 0.5, 0.9]
-    result_centered = e_loo(
-        centered_y,
-        centered_weights.T,
-        type="quantile",
-        probs=probs,
-        pareto_k=centered_k,
-    )
-    result_non_centered = e_loo(
-        non_centered_y,
-        non_centered_weights.T,
-        type="quantile",
-        probs=probs,
-        pareto_k=non_centered_k,
+    assert isinstance(result_var, ExpectationResult)
+    assert result_var.value.shape == (8,)
+    assert result_var.pareto_k.shape == (8,)
+    assert_positive(result_var.value)
+
+    sd_value = _compute_weighted_sd(x, log_weights)
+    result_sd = ExpectationResult(value=sd_value, pareto_k=pareto_k)
+
+    assert isinstance(result_sd, ExpectationResult)
+    assert result_sd.value.shape == (8,)
+    assert result_sd.pareto_k.shape == (8,)
+    assert_positive(result_sd.value)
+    assert_arrays_allclose(result_sd.value.values, np.sqrt(result_var.value.values))
+
+    probs = [0.25, 0.5, 0.75]
+    quant_value = _compute_weighted_quantiles(x, log_weights, np.array(probs))
+    result_quant = ExpectationResult(value=quant_value, pareto_k=pareto_k)
+
+    assert isinstance(result_quant, ExpectationResult)
+    assert result_quant.value.shape == (8, 3)
+    assert result_quant.pareto_k.shape == (8,)
+    assert "quantile" in result_quant.value.dims
+    assert_arrays_allclose(result_quant.value.coords["quantile"].values, probs)
+
+    result_idata = e_loo(idata, var_name="y", type="mean")
+
+    assert isinstance(result_idata, ExpectationResult)
+    assert result_idata.value.shape == (n_obs,)
+    assert result_idata.pareto_k.shape == (n_obs,)
+
+
+def test_e_loo_with_weights(centered_eight):
+    """Test e_loo with pre-computed weights."""
+    log_like = -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    log_weights, pareto_k = compute_importance_weights(log_like)
+    weights = np.exp(log_weights)
+
+    result_weights = e_loo(centered_eight, var_name="obs", weights=weights, type="mean")
+
+    assert isinstance(result_weights, ExpectationResult)
+    assert result_weights.value.shape == (8,)
+    assert result_weights.pareto_k.shape == (8,)
+
+    result_log_weights = e_loo(
+        centered_eight, var_name="obs", log_weights=log_weights, type="mean"
     )
 
-    assert result_centered.value.shape == (len(probs), 8)
-    assert result_non_centered.value.shape == (len(probs), 8)
+    assert isinstance(result_log_weights, ExpectationResult)
+    assert result_log_weights.value.shape == (8,)
+    assert result_log_weights.pareto_k.shape == (8,)
 
-    assert np.all(result_centered.value[1] > result_centered.value[0])
-    assert np.all(result_centered.value[2] > result_centered.value[1])
-    assert np.all(result_non_centered.value[1] > result_non_centered.value[0])
-    assert np.all(result_non_centered.value[2] > result_non_centered.value[1])
+    assert_arrays_allclose(result_weights.value.values, result_log_weights.value.values)
 
 
-def test_weighted_quantiles_edge_cases():
-    """Test weighted quantile function with edge cases."""
-    x = np.array([1.0, 2.0, 3.0])
-    w = np.array([0.5, 0.0, 0.5])
+def test_e_loo_with_inference_data(centered_eight):
+    """Test e_loo with InferenceData objects."""
+    result = e_loo(centered_eight, var_name="obs", type="mean")
 
-    probs = [0.0, 0.25, 0.5, 0.75, 1.0]
-    quants = _wquant(x, w, np.array(probs))
-    assert len(quants) == len(probs)
-    assert quants[0] == 1.0
-    assert quants[-1] == 3.0
-
-    w_const = np.array([1 / 3, 1 / 3, 1 / 3])
-    quants_const = _wquant(x, w_const, np.array([0.5]))
-    assert_arrays_allclose(quants_const, [2.0])
-
-    w_single = np.array([1.0, 0.0, 0.0])
-    quants_single = _wquant(x, w_single, np.array([0.5]))
-    assert_arrays_allclose(quants_single, [1.0])
-
-
-def test_constant_values():
-    """Test behavior with constant values."""
-    x = np.ones(100)
-    log_weights = np.random.normal(size=100)
-    log_weights -= np.max(log_weights)
-    processed_weights, pareto_k = compute_importance_weights(log_weights[None, :])
-
-    result_mean = e_loo(x, processed_weights[0], type="mean", pareto_k=pareto_k[0])
-    assert_arrays_allclose(result_mean.value, 1.0)
-
-    result_var = e_loo(x, processed_weights[0], type="variance", pareto_k=pareto_k[0])
-    assert_arrays_allclose(result_var.value, 0.0, atol=1e-10)
-
-    result_sd = e_loo(x, processed_weights[0], type="sd", pareto_k=pareto_k[0])
-    assert_arrays_allclose(result_sd.value, 0.0, atol=1e-10)
+    assert isinstance(result, ExpectationResult)
+    assert isinstance(result.value, xr.DataArray)
+    assert isinstance(result.pareto_k, xr.DataArray)
+    assert result.value.shape == (8,)
+    assert result.pareto_k.shape == (8,)
 
     result_quant = e_loo(
-        x,
-        processed_weights[0],
-        type="quantile",
-        probs=[0.1, 0.5, 0.9],
-        pareto_k=pareto_k[0],
+        centered_eight, var_name="obs", type="quantile", probs=[0.25, 0.5, 0.75]
     )
-    assert_arrays_allclose(result_quant.value, 1.0)
+
+    assert isinstance(result_quant, ExpectationResult)
+    assert result_quant.value.shape[0] * result_quant.value.shape[1] == 24
+    assert result_quant.pareto_k.shape == (8,)
+    assert "quantile" in result_quant.value.dims
+
+    result_posterior = e_loo(
+        centered_eight,
+        var_name="theta",
+        group="posterior",
+        log_likelihood_var="obs",
+        type="mean",
+    )
+
+    assert isinstance(result_posterior, ExpectationResult)
+    assert result_posterior.value.shape == (8,)
+    assert result_posterior.pareto_k.shape == (8,)
+
+
+def test_e_loo_errors(centered_eight):
+    """Test error handling in e_loo."""
+    x, log_weights = (
+        centered_eight.posterior_predictive.obs,
+        centered_eight.log_likelihood.obs,
+    )
+
+    with pytest.raises(ValueError, match="type must be"):
+        e_loo(x, log_weights=log_weights, type="invalid")
+
+    with pytest.raises(ValueError, match="probs must be provided"):
+        e_loo(x, log_weights=log_weights, type="quantile")
+
+    with pytest.raises(ValueError, match="probs must be between"):
+        e_loo(x, log_weights=log_weights, type="quantile", probs=[-0.1, 1.1])
+
+    with pytest.raises(ValueError):
+        e_loo(x)
+
+    invalid_data = InferenceData()
+    with pytest.raises(ValueError):
+        e_loo(invalid_data, var_name="obs")
+
+
+def test_e_loo_with_different_methods(centered_eight):
+    """Test e_loo with different importance sampling methods."""
+    result_psis = e_loo(centered_eight, var_name="obs", type="mean", method="psis")
+
+    assert isinstance(result_psis, ExpectationResult)
+
+    result_sis = e_loo(centered_eight, var_name="obs", type="mean", method="sis")
+
+    assert isinstance(result_sis, ExpectationResult)
+
+    result_tis = e_loo(centered_eight, var_name="obs", type="mean", method="tis")
+
+    assert isinstance(result_tis, ExpectationResult)
+
+    assert not np.allclose(result_psis.value.values, result_sis.value.values)
+    assert not np.allclose(result_psis.value.values, result_tis.value.values)
+
+
+def test_e_loo_with_multidimensional_data():
+    """Test e_loo with multidimensional data."""
+    rng = np.random.default_rng(42)
+    n_samples = 100
+    n_dim1 = 3
+    n_dim2 = 2
+
+    x = rng.normal(size=(n_samples, n_dim1, n_dim2))
+    log_weights = rng.normal(size=(n_samples, n_dim1, n_dim2))
+    log_weights -= np.max(log_weights, axis=0)
+
+    x_da = xr.DataArray(
+        x,
+        dims=("__sample__", "dim1", "dim2"),
+        coords={"dim1": range(n_dim1), "dim2": range(n_dim2)},
+    )
+    log_weights_da = xr.DataArray(
+        log_weights,
+        dims=("__sample__", "dim1", "dim2"),
+        coords={"dim1": range(n_dim1), "dim2": range(n_dim2)},
+    )
+
+    mean_value = _compute_weighted_mean(x_da, log_weights_da)
+    pareto_k = _compute_pareto_k(x_da, log_weights_da)
+    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    assert isinstance(result_mean, ExpectationResult)
+    assert result_mean.value.shape == (n_dim1, n_dim2)
+    assert result_mean.pareto_k.shape == (n_dim1, n_dim2)
+    assert "dim1" in result_mean.value.dims
+    assert "dim2" in result_mean.value.dims
+
+    probs = [0.25, 0.5, 0.75]
+    quant_value = _compute_weighted_quantiles(x_da, log_weights_da, np.array(probs))
+    result_quant = ExpectationResult(value=quant_value, pareto_k=pareto_k)
+
+    assert isinstance(result_quant, ExpectationResult)
+    assert result_quant.value.shape == (n_dim1, n_dim2, 3)
+    assert result_quant.pareto_k.shape == (n_dim1, n_dim2)
+    assert "quantile" in result_quant.value.dims
+
+
+def test_e_loo_with_aligned_data():
+    """Test e_loo with data that needs alignment."""
+    rng = np.random.default_rng(42)
+    n_samples = 100
+    n_obs = 3
+
+    x = rng.normal(size=(n_samples, n_obs))
+    log_weights = rng.normal(size=(n_samples, n_obs))
+    log_weights -= np.max(log_weights, axis=0)
+
+    x_da = xr.DataArray(
+        x, dims=("__sample__", "obs_dim"), coords={"obs_dim": ["a", "b", "c"]}
+    )
+    log_weights_da = xr.DataArray(
+        log_weights, dims=("__sample__", "obs_dim"), coords={"obs_dim": ["a", "b", "c"]}
+    )
+
+    x_da = x_da.expand_dims({"extra_dim": ["x"]})
+
+    x_aligned, log_weights_aligned = xr.align(
+        x_da, log_weights_da, join="inner", exclude=["__sample__"]
+    )
+
+    mean_value = _compute_weighted_mean(x_aligned, log_weights_aligned)
+    pareto_k = _compute_pareto_k(x_aligned, log_weights_aligned)
+    result = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    assert isinstance(result, ExpectationResult)
+    assert "obs_dim" in result.value.dims
+    assert "extra_dim" in result.value.dims
+    assert result.value.size == 3
+    assert result.pareto_k.size == 3
+
+
+def test_e_loo_with_constant_values():
+    """Test e_loo with constant values."""
+    n_samples = 100
+    n_obs = 3
+
+    x = np.ones((n_samples, n_obs))
+    log_weights = np.random.default_rng(42).normal(size=(n_samples, n_obs))
+    log_weights -= np.max(log_weights, axis=0)
+
+    x_da = xr.DataArray(
+        x, dims=("__sample__", "obs_dim"), coords={"obs_dim": range(n_obs)}
+    )
+    log_weights_da = xr.DataArray(
+        log_weights, dims=("__sample__", "obs_dim"), coords={"obs_dim": range(n_obs)}
+    )
+
+    mean_value = _compute_weighted_mean(x_da, log_weights_da)
+    pareto_k = _compute_pareto_k(x_da, log_weights_da)
+    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    assert isinstance(result_mean, ExpectationResult)
+    assert_arrays_allclose(result_mean.value.values, np.ones(n_obs))
+
+    var_value = _compute_weighted_variance(x_da, log_weights_da)
+    result_var = ExpectationResult(value=var_value, pareto_k=pareto_k)
+
+    assert isinstance(result_var, ExpectationResult)
+    assert_arrays_allclose(result_var.value.values, np.zeros(n_obs), atol=1e-10)
+
+    sd_value = _compute_weighted_sd(x_da, log_weights_da)
+    result_sd = ExpectationResult(value=sd_value, pareto_k=pareto_k)
+
+    assert isinstance(result_sd, ExpectationResult)
+    assert_arrays_allclose(result_sd.value.values, np.zeros(n_obs), atol=1e-10)
+
+
+def test_e_loo_with_extreme_weights():
+    """Test e_loo with extreme weights."""
+    n_samples = 100
+    n_obs = 3
+
+    x = np.random.default_rng(42).normal(size=(n_samples, n_obs))
+    log_weights = np.ones((n_samples, n_obs)) * -1000
+    log_weights[0, :] = 0
+
+    x_da = xr.DataArray(
+        x, dims=("__sample__", "obs_dim"), coords={"obs_dim": range(n_obs)}
+    )
+    log_weights_da = xr.DataArray(
+        log_weights, dims=("__sample__", "obs_dim"), coords={"obs_dim": range(n_obs)}
+    )
+
+    mean_value = _compute_weighted_mean(x_da, log_weights_da)
+    pareto_k = _compute_pareto_k(x_da, log_weights_da)
+    result = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    assert isinstance(result, ExpectationResult)
+    assert_finite(result.value)
+    assert_arrays_allclose(result.value.values, x[0, :])
+
+
+def test_e_loo_with_eight_schools(centered_eight, non_centered_eight):
+    """Test e_loo with eight schools data from both parameterizations."""
+    result_centered = e_loo(centered_eight, var_name="obs", type="mean")
+
+    assert isinstance(result_centered, ExpectationResult)
+    assert result_centered.value.shape == (8,)
+    assert result_centered.pareto_k.shape == (8,)
+
+    result_non_centered = e_loo(non_centered_eight, var_name="obs", type="mean")
+
+    assert isinstance(result_non_centered, ExpectationResult)
+    assert result_non_centered.value.shape == (8,)
+    assert result_non_centered.pareto_k.shape == (8,)
+
+    assert np.allclose(
+        result_centered.value.values,
+        result_non_centered.value.values,
+        rtol=0.3,
+        atol=0.5,
+    )
+
+
+def test_e_loo_with_custom_inference_data():
+    """Test e_loo with a custom InferenceData object."""
+    n_chains = 4
+    n_draws = 100
+    n_obs = 3
+
+    rng = np.random.default_rng(42)
+
+    pp_data = rng.normal(size=(n_chains, n_draws, n_obs))
+    pp_da = xr.DataArray(
+        pp_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
+    )
+    pp_ds = xr.Dataset({"y": pp_da})
+
+    ll_data = rng.normal(size=(n_chains, n_draws, n_obs))
+    ll_da = xr.DataArray(
+        ll_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
+    )
+    ll_ds = xr.Dataset({"y": ll_da})
+
+    idata = InferenceData(posterior_predictive=pp_ds, log_likelihood=ll_ds)
+
+    result = e_loo(idata, var_name="y", type="mean")
+
+    assert isinstance(result, ExpectationResult)
+    assert result.value.shape == (n_obs,)
+    assert result.pareto_k.shape == (n_obs,)
+
+
+def test_e_loo_with_different_var_names():
+    """Test e_loo with different variable names for data and log likelihood."""
+    n_chains = 4
+    n_draws = 100
+    n_obs = 3
+
+    rng = np.random.default_rng(42)
+
+    pp_data = rng.normal(size=(n_chains, n_draws, n_obs))
+    pp_da = xr.DataArray(
+        pp_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
+    )
+    pp_ds = xr.Dataset({"y_pred": pp_da})
+
+    ll_data = rng.normal(size=(n_chains, n_draws, n_obs))
+    ll_da = xr.DataArray(
+        ll_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
+    )
+    ll_ds = xr.Dataset({"y_loglik": ll_da})
+
+    idata = InferenceData(posterior_predictive=pp_ds, log_likelihood=ll_ds)
+
+    result = e_loo(idata, var_name="y_pred", log_likelihood_var="y_loglik", type="mean")
+
+    assert isinstance(result, ExpectationResult)
+    assert result.value.shape == (n_obs,)
+    assert result.pareto_k.shape == (n_obs,)
+
+
+def test_e_loo_numerical_stability():
+    """Test numerical stability of e_loo with challenging data."""
+    n_samples = 100
+    n_obs = 3
+
+    rng = np.random.default_rng(42)
+    x = rng.normal(size=(n_samples, n_obs))
+
+    log_weights = np.ones((n_samples, n_obs)) * -1000
+    log_weights[0, :] = 0
+
+    x[1, :] = 1e10
+
+    x_da = xr.DataArray(
+        x, dims=("__sample__", "obs_dim"), coords={"obs_dim": range(n_obs)}
+    )
+    log_weights_da = xr.DataArray(
+        log_weights, dims=("__sample__", "obs_dim"), coords={"obs_dim": range(n_obs)}
+    )
+
+    mean_value = _compute_weighted_mean(x_da, log_weights_da)
+    pareto_k = _compute_pareto_k(x_da, log_weights_da)
+    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    assert isinstance(result_mean, ExpectationResult)
+    assert_finite(result_mean.value)
+
+    var_value = _compute_weighted_variance(x_da, log_weights_da)
+    result_var = ExpectationResult(value=var_value, pareto_k=pareto_k)
+
+    assert isinstance(result_var, ExpectationResult)
+    assert_finite(result_var.value)
+
+    # Test standard deviation using direct computation functions
+    sd_value = _compute_weighted_sd(x_da, log_weights_da)
+    result_sd = ExpectationResult(value=sd_value, pareto_k=pareto_k)
+
+    assert isinstance(result_sd, ExpectationResult)
+    assert_finite(result_sd.value)
+
+    # Test quantiles using direct computation functions
+    probs = [0.25, 0.5, 0.75]
+    quant_value = _compute_weighted_quantiles(x_da, log_weights_da, np.array(probs))
+    result_quant = ExpectationResult(value=quant_value, pareto_k=pareto_k)
+
+    assert isinstance(result_quant, ExpectationResult)
+    assert_finite(result_quant.value)

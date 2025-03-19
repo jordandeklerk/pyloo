@@ -75,7 +75,6 @@ def compute_importance_weights(
     psislw : Pareto Smoothed Importance Sampling (original implementation)
     sislw : Standard Importance Sampling (original implementation)
     tislw : Truncated Importance Sampling (original implementation)
-    vi_psis_sampling : Importance sampling for variational inference
 
     Examples
     --------
@@ -99,6 +98,13 @@ def compute_importance_weights(
         # Using TIS
         lw_tis, ess = pl.compute_importance_weights(-log_likelihood, method="tis")
     """
+    if isinstance(log_weights, xr.DataArray):
+        if "__sample__" not in log_weights.dims:
+            if "chain" in log_weights.dims and "draw" in log_weights.dims:
+                log_weights = log_weights.stack(__sample__=("chain", "draw"))
+            else:
+                raise ValueError("log_weights must have a __sample__ dimension")
+
     if isinstance(method, str):
         try:
             method = ISMethod(method.lower())

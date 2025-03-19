@@ -1,12 +1,17 @@
-"""Functions for computing weighted expectations using importance sampling."""
+"""Functions for computing weighted expectations."""
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
+import xarray as xr
+from arviz import InferenceData
 
+from .base import ISMethod, compute_importance_weights
 from .psis import _gpdfit
-from .utils import _logsumexp
+from .utils import _logsumexp, to_inference_data, wrap_xarray_ufunc
+
+__all__ = ["e_loo", "ExpectationResult"]
 
 
 @dataclass
@@ -15,51 +20,78 @@ class ExpectationResult:
 
     Attributes
     ----------
-    value : float | np.ndarray
-        The computed expectation value. For matrix inputs with type="quantile"
-        and multiple probabilities, this will be a matrix with shape
-        (len(probs), n_cols). Otherwise it will be a scalar or vector.
-    pareto_k : float | np.ndarray
-        Function-specific Pareto k diagnostic value(s). For matrix inputs this
-        will be a vector with length n_cols, for vector inputs it will be a
-        scalar.
+    value : xr.DataArray
+        The computed expectation value. For quantile calculations with multiple
+        probabilities, this will include a 'quantile' dimension. Otherwise, it will
+        have the same dimensions as the input data, excluding the sample dimension.
+    pareto_k : xr.DataArray
+        Function-specific Pareto k diagnostic values with the same dimensions as
+        the value attribute, excluding any quantile dimension.
     """
 
-    value: float | np.ndarray
-    pareto_k: float | np.ndarray
+    value: xr.DataArray
+    pareto_k: xr.DataArray
 
 
 def e_loo(
-    x: np.ndarray | Sequence[float],
-    log_weights: np.ndarray,
+    data: InferenceData | Any,
     *,
+    var_name: str | None = None,
+    group: str = "posterior_predictive",
+    log_likelihood_group: str = "log_likelihood",
+    log_likelihood_var: str | None = None,
+    weights: xr.DataArray | None = None,
+    log_weights: xr.DataArray | None = None,
     type: str = "mean",
     probs: float | Sequence[float] | None = None,
-    log_ratios: np.ndarray | None = None,
-    pareto_k: float | np.ndarray | None = None,
+    method: str | ISMethod = "psis",
+    reff: float = 1.0,
 ) -> ExpectationResult:
     """Compute weighted expectations using importance sampling weights.
 
+    This function computes expectations (mean, variance, standard deviation, or quantiles)
+    of posterior or posterior predictive samples, weighted by importance sampling weights.
+    The weights are typically derived from leave-one-out cross-validation.
+
     Parameters
     ----------
-    x : array-like
-        Values to compute expectations for. Can be a vector or 2D array.
-    log_weights : array-like
-        Log weights from importance sampling. Can be a vector or 2D array.
-    type : str, optional
-        Type of expectation to compute. Options are:
-        - "mean": weighted mean (default)
+    data : InferenceData or convertible object
+        An ArviZ InferenceData object or any object that can be converted to
+        InferenceData containing posterior or posterior predictive samples.
+    var_name : str, optional
+        Name of the variable in the specified group to compute expectations for.
+        If None and there is only one variable, that variable will be used.
+    group : str, default "posterior_predictive"
+        Name of the InferenceData group containing the variable to compute
+        expectations for. Typically "posterior_predictive" or "posterior".
+    log_likelihood_group : str, default "log_likelihood"
+        Name of the group containing log likelihood values, used for computing
+        importance weights if not provided directly.
+    log_likelihood_var : str, optional
+        Name of the variable in log_likelihood group to use. If None and var_name
+        is provided, will try to use var_name. If None and var_name is None,
+        will use the only variable if there is only one.
+    weights : xr.DataArray, optional
+        Pre-computed importance sampling weights (not log weights).
+        If not provided, weights will be computed from log-likelihood values.
+    log_weights : xr.DataArray, optional
+        Pre-computed log importance sampling weights.
+        If not provided, will be computed from log-likelihood values.
+    type : str, default "mean"
+        Type of expectation to compute:
+        - "mean": weighted mean
         - "variance": weighted variance
         - "sd": weighted standard deviation
         - "quantile": weighted quantiles
-    probs : array-like, optional
+    probs : float or sequence of floats, optional
         Probabilities for computing quantiles. Required if type="quantile".
-    log_ratios : array-like, optional
-        Raw (not smoothed) log ratios with same shape as x. If provided,
-        these are used to compute more accurate Pareto k diagnostics.
-    pareto_k : float or array-like, optional
-        Pre-computed Pareto k values. If not provided, they will be estimated
-        from the log weights.
+    method : str or ISMethod, default "psis"
+        Importance sampling method to use if weights need to be computed:
+        - "psis": Pareto Smoothed Importance Sampling (recommended)
+        - "sis": Standard Importance Sampling
+        - "tis": Truncated Importance Sampling
+    reff : float, default 1.0
+        Relative MCMC efficiency, used for PSIS. Default is 1.0.
 
     Returns
     -------
@@ -68,65 +100,43 @@ def e_loo(
 
     Examples
     --------
-    Compute weighted mean using importance sampling:
+    Compute weighted mean of posterior predictive samples:
 
     .. code-block:: python
 
-        import numpy as np
+        import arviz as az
+        from pyloo import e_loo
+
+        idata = az.load_arviz_data("centered_eight")
+
+        # Compute weighted mean of posterior predictive samples
+        result = e_loo(idata, var_name="obs", type="mean")
+        print(result.value)
+        print(result.pareto_k)
+
+    Compute weighted quantiles with pre-computed weights:
+
+    .. code-block:: python
+
+        import arviz as az
         from pyloo import compute_importance_weights, e_loo
 
-        x = np.random.normal(size=(1000, 100))
+        idata = az.load_arviz_data("centered_eight")
 
-        log_ratios = np.random.normal(size=(1000, 100))
-        weights, k = compute_importance_weights(log_ratios)
-        result = e_loo(x, weights, pareto_k=k)
+        log_like = -idata.log_likelihood.obs
+        log_weights, pareto_k = compute_importance_weights(log_like)
 
-        print(f"Mean value: {result.value.mean():.3f}")
+        # Compute weighted quantiles
+        result = e_loo(
+            idata,
+            var_name="obs",
+            log_weights=log_weights,
+            type="quantile",
+            probs=[0.025, 0.5, 0.975]
+        )
+        print(result.value.sel(quantile=0.5))  # Median
     """
-    x = np.asarray(x)
-    if x.ndim == 1:
-        return _e_loo_vector(
-            x,
-            log_weights,
-            type=type,
-            probs=probs,
-            log_ratios=log_ratios,
-            pareto_k=pareto_k,
-        )
-    elif x.ndim == 2:
-        return _e_loo_matrix(
-            x,
-            log_weights,
-            type=type,
-            probs=probs,
-            log_ratios=log_ratios,
-            pareto_k=pareto_k,
-        )
-    else:
-        raise ValueError("x must be 1D or 2D")
-
-
-def _validate_inputs(
-    x: np.ndarray,
-    log_weights: np.ndarray,
-    type: str,
-    probs: float | Sequence[float] | None,
-    log_ratios: np.ndarray | None,
-) -> None:
-    """Validate input parameters."""
-    if x.ndim == 1:
-        if len(x) != len(log_weights):
-            raise ValueError("x and log_weights must have same length")
-        if log_ratios is not None and len(log_ratios) != len(x):
-            raise ValueError("log_ratios must have same length as x")
-    else:  # x.ndim == 2
-        if x.shape != log_weights.shape:
-            raise ValueError("x and log_weights must have same shape")
-        if log_ratios is not None and log_ratios.shape != x.shape:
-            raise ValueError("log_ratios must have same shape as x")
-
-    if not np.all(np.isfinite(log_weights)):
-        raise ValueError("log weights must be finite")
+    idata = to_inference_data(data)
 
     if type not in ["mean", "variance", "sd", "quantile"]:
         raise ValueError("type must be 'mean', 'variance', 'sd' or 'quantile'")
@@ -134,73 +144,178 @@ def _validate_inputs(
     if type == "quantile":
         if probs is None:
             raise ValueError("probs must be provided for quantile calculation")
-        probs_array = np.asarray(probs)
+        if np.isscalar(probs):
+            probs_array = np.array([probs])
+        else:
+            probs_array = np.asarray(probs)
         if not np.all((probs_array > 0) & (probs_array < 1)):
             raise ValueError("probs must be between 0 and 1")
+    else:
+        probs_array = None
+
+    if not hasattr(idata, group):
+        raise ValueError(f"InferenceData object does not have a {group} group")
+
+    data_group = getattr(idata, group)
+
+    if var_name is None:
+        var_names = list(data_group.data_vars)
+        if len(var_names) == 1:
+            var_name = var_names[0]
+        else:
+            raise ValueError(
+                f"Multiple variables found in {group} group. Please specify var_name"
+                f" from: {var_names}"
+            )
+    elif var_name not in data_group.data_vars:
+        raise ValueError(
+            f"Variable '{var_name}' not found in {group} group. Available variables:"
+            f" {list(data_group.data_vars)}"
+        )
+
+    x_data = data_group[var_name]
+
+    if "chain" in x_data.dims and "draw" in x_data.dims:
+        x_data = x_data.stack(__sample__=("chain", "draw"))
+
+    if weights is not None:
+        log_weights = np.log(weights)
+
+        if isinstance(log_weights, xr.DataArray):
+            if (
+                "__sample__" not in log_weights.dims
+                and "chain" in log_weights.dims
+                and "draw" in log_weights.dims
+            ):
+                log_weights = log_weights.stack(__sample__=("chain", "draw"))
+    elif log_weights is None:
+        if not hasattr(idata, log_likelihood_group):
+            raise ValueError(
+                f"InferenceData object does not have a {log_likelihood_group} group and"
+                " no weights provided"
+            )
+
+        ll_group = getattr(idata, log_likelihood_group)
+        if log_likelihood_var is None:
+            log_likelihood_var = var_name
+
+        if log_likelihood_var not in ll_group.data_vars:
+            ll_vars = list(ll_group.data_vars)
+            if len(ll_vars) == 1:
+                log_likelihood_var = ll_vars[0]
+            else:
+                raise ValueError(
+                    f"Multiple variables found in {log_likelihood_group} group. "
+                    f"Please specify log_likelihood_var from: {ll_vars}"
+                )
+
+        log_like = ll_group[log_likelihood_var]
+
+        if "chain" in log_like.dims and "draw" in log_like.dims:
+            log_like = log_like.stack(__sample__=("chain", "draw"))
+
+        log_weights, pareto_k_values = compute_importance_weights(
+            -log_like, method=method, reff=reff
+        )
+    else:
+        if isinstance(log_weights, xr.DataArray):
+            if (
+                "__sample__" not in log_weights.dims
+                and "chain" in log_weights.dims
+                and "draw" in log_weights.dims
+            ):
+                log_weights = log_weights.stack(__sample__=("chain", "draw"))
+
+    if "__sample__" not in log_weights.dims:
+        if "chain" in log_weights.dims and "draw" in log_weights.dims:
+            log_weights = log_weights.stack(__sample__=("chain", "draw"))
+        else:
+            sample_dim = log_weights.dims[-1]
+            log_weights = log_weights.rename({sample_dim: "__sample__"})
+
+    if isinstance(log_weights, xr.DataArray) and isinstance(x_data, xr.DataArray):
+        x_dims = [d for d in x_data.dims if d != "__sample__"]
+        lw_dims = [d for d in log_weights.dims if d != "__sample__"]
+
+        shared_dims = set(x_dims) & set(lw_dims)
+        if shared_dims:
+            x_data, log_weights = xr.align(
+                x_data, log_weights, join="inner", exclude=["__sample__"]
+            )
+
+    if type == "mean":
+        value = _compute_weighted_mean(x_data, log_weights)
+    elif type == "variance":
+        value = _compute_weighted_variance(x_data, log_weights)
+    elif type == "sd":
+        value = _compute_weighted_sd(x_data, log_weights)
+    else:
+        value = _compute_weighted_quantiles(x_data, log_weights, probs_array)
+
+    if "pareto_k_values" not in locals():
+        log_ratios = log_weights
+
+        if type == "quantile":
+            h = None
+        elif type in ("variance", "sd"):
+            h = x_data**2
+        else:
+            h = x_data
+
+        pareto_k_values = _compute_pareto_k(h, log_ratios)
+
+    return ExpectationResult(value=value, pareto_k=pareto_k_values)
 
 
-def _wmean(x: np.ndarray, w: np.ndarray) -> float:
-    """Compute weighted mean."""
-    return np.sum(w * x)
+def _normalize_log_weights(log_weights: xr.DataArray, sample_axis: int) -> xr.DataArray:
+    """Normalize log weights to sum to 1 on the log scale."""
+    return log_weights - _logsumexp(log_weights, axis=sample_axis, keepdims=True)
 
 
-def _wvar(x: np.ndarray, w: np.ndarray) -> float:
-    """Compute weighted variance using bias-corrected estimator.
-
-    The denominator (1 - sum(w^2)) equals (ESS-1)/ESS, where effective sample
-    size ESS is estimated as 1/sum(w^2). See "Monte Carlo theory, methods and
-    examples" by Owen (2013).
-    """
-    if np.allclose(x, x[0]):
+def _wvar_func(x_vals: np.ndarray, w_vals: np.ndarray) -> float:
+    """Calculate weighted variance from arrays of values and weights."""
+    if np.allclose(x_vals, x_vals[0]):
         return 0.0
 
-    w_sum_sq = np.sum(w**2)
+    w_sum_sq = np.sum(w_vals**2)
     if np.isclose(w_sum_sq, 1.0):
         return 0.0
 
-    mean = _wmean(x, w)
-    mean_sq = _wmean(x**2, w)
+    mean = np.sum(w_vals * x_vals)
+    mean_sq = np.sum(w_vals * x_vals**2)
+
     var = (mean_sq - mean**2) / (1 - w_sum_sq)
     return max(var, 0.0)
 
 
-def _wsd(x: np.ndarray, w: np.ndarray) -> float:
-    """Compute weighted standard deviation."""
-    var = _wvar(x, w)
-    return np.sqrt(var) if var > 0 else 0.0
+def _weighted_quantile(x_vals: np.ndarray, w_vals: np.ndarray, prob: float) -> float:
+    """Calculate weighted quantile from arrays of values and weights."""
+    if np.allclose(w_vals, w_vals[0]):
+        return np.quantile(x_vals, prob)
 
+    idx = np.argsort(x_vals)
+    x_sorted, w_sorted = x_vals[idx], w_vals[idx]
 
-def _wquant(x: np.ndarray, w: np.ndarray, probs: np.ndarray) -> np.ndarray:
-    """Compute weighted quantiles."""
-    if np.allclose(w, w[0]):
-        return np.quantile(x, probs)
+    ww = np.cumsum(w_sorted) / np.sum(w_sorted)
 
-    idx = np.argsort(x)
-    x, w = x[idx], w[idx]
-
-    ww = np.cumsum(w) / np.sum(w)
-
-    qq = np.zeros_like(probs)
-    for j, prob in enumerate(probs):
-        ids = np.where(ww >= prob)[0]
+    ids = np.where(ww >= prob)[0]
+    if len(ids) == 0:
+        return x_sorted[-1]
+    else:
         wi = ids[0]
         if wi == 0:
-            qq[j] = x[0]
+            return x_sorted[0]
         else:
             w1 = ww[wi - 1]
-            x1 = x[wi - 1]
-            qq[j] = x1 + (x[wi] - x1) * (prob - w1) / (ww[wi] - w1)
-
-    return qq
+            x1 = x_sorted[wi - 1]
+            return x1 + (x_sorted[wi] - x1) * (prob - w1) / (ww[wi] - w1)
 
 
-def _e_loo_khat(
-    x: np.ndarray | None,
-    log_ratios: np.ndarray,
-    tail_len: int = 20,
+def _khat_func(
+    x_vals: np.ndarray | None, log_ratios_vals: np.ndarray, tail_len: int = 20
 ) -> float:
-    """Compute Pareto k diagnostic."""
-    r_theta = np.exp(log_ratios - np.max(log_ratios))
+    """Calculate Pareto k diagnostic from arrays of values and log ratios."""
+    r_theta = np.exp(log_ratios_vals - np.max(log_ratios_vals))
 
     x_tail = -np.sort(-r_theta)[:tail_len]
     if len(x_tail) < 5 or np.allclose(x_tail, x_tail[0]):
@@ -210,15 +325,15 @@ def _e_loo_khat(
         khat_r, _ = _gpdfit(x_tail - exp_cutoff)
 
     if (
-        x is None
-        or np.allclose(x, x[0])
-        or len(np.unique(x)) == 2
-        or np.any(np.isnan(x))
-        or np.any(np.isinf(x))
+        x_vals is None
+        or np.allclose(x_vals, x_vals[0])
+        or len(np.unique(x_vals)) == 2
+        or np.any(np.isnan(x_vals))
+        or np.any(np.isinf(x_vals))
     ):
         return khat_r
 
-    hr = x * r_theta
+    hr = x_vals * r_theta
     x_tail_left = np.sort(hr)[:tail_len]
     x_tail_right = -np.sort(-hr)[:tail_len]
     x_tail = np.concatenate([x_tail_left, x_tail_right])
@@ -234,79 +349,123 @@ def _e_loo_khat(
     return max(khat_hr, khat_r)
 
 
-def _e_loo_vector(
-    x: np.ndarray,
-    log_weights: np.ndarray,
-    *,
-    type: str = "mean",
-    probs: float | Sequence[float] | None = None,
-    log_ratios: np.ndarray | None = None,
-    pareto_k: float | None = None,
-) -> ExpectationResult:
-    """Compute expectations for vector inputs."""
-    _validate_inputs(x, log_weights, type, probs, log_ratios)
+def _khat_wrapper(dummy: np.ndarray, log_ratios_vals: np.ndarray) -> float:
+    """Wrapper for _khat_func when x values are None."""
+    return _khat_func(None, log_ratios_vals)
 
-    log_weights = log_weights - _logsumexp(log_weights)
-    w = np.exp(np.clip(log_weights, -100, 0))
 
-    if type == "mean":
-        value = _wmean(x, w)
-    elif type == "variance":
-        value = _wvar(x, w)
-    elif type == "sd":
-        value = _wsd(x, w)
+def _compute_weighted_mean(x: xr.DataArray, log_weights: xr.DataArray) -> xr.DataArray:
+    """Compute weighted mean for xarray inputs."""
+    normalized_log_weights = _normalize_log_weights(
+        log_weights, x.get_axis_num("__sample__")
+    )
+    weights = np.exp(normalized_log_weights)
+
+    return (weights * x).sum(dim="__sample__")
+
+
+def _compute_weighted_variance(
+    x: xr.DataArray, log_weights: xr.DataArray
+) -> xr.DataArray:
+    """Compute weighted variance for xarray inputs."""
+    normalized_log_weights = _normalize_log_weights(
+        log_weights, x.get_axis_num("__sample__")
+    )
+    weights = np.exp(normalized_log_weights)
+
+    result = wrap_xarray_ufunc(
+        _wvar_func,
+        x,
+        weights,
+        input_core_dims=[["__sample__"], ["__sample__"]],
+        output_core_dims=[[]],
+        vectorize=True,
+    )
+
+    return result
+
+
+def _compute_weighted_sd(x: xr.DataArray, log_weights: xr.DataArray) -> xr.DataArray:
+    """Compute weighted standard deviation for xarray inputs."""
+    variance = _compute_weighted_variance(x, log_weights)
+    return np.sqrt(variance)
+
+
+def _compute_weighted_quantiles(
+    x: xr.DataArray, log_weights: xr.DataArray, probs: np.ndarray
+) -> xr.DataArray:
+    """Compute weighted quantiles for xarray inputs."""
+    normalized_log_weights = _normalize_log_weights(
+        log_weights, x.get_axis_num("__sample__")
+    )
+    weights = np.exp(normalized_log_weights)
+
+    if np.isscalar(probs):
+        probs = np.array([probs])
     else:
-        value = _wquant(x, w, np.asarray(probs))
+        probs = np.asarray(probs)
 
-    if pareto_k is None:
-        if log_ratios is None:
-            log_ratios = log_weights
-        h = None if type == "quantile" else x**2 if type in ("variance", "sd") else x
-        pareto_k = _e_loo_khat(h, log_ratios)
+    sample_axis = x.get_axis_num("__sample__")
+    non_sample_dims = list(x.dims)
+    non_sample_dims.pop(sample_axis)
+    non_sample_shape = tuple(x.sizes[d] for d in non_sample_dims)
 
-    return ExpectationResult(value=value, pareto_k=pareto_k)
+    result_shape = non_sample_shape + (len(probs),)
+    result_data = np.zeros(result_shape)
 
+    iter_coords = []
+    for d in non_sample_dims:
+        iter_coords.append(list(range(x.sizes[d])))
 
-def _e_loo_matrix(
-    x: np.ndarray,
-    log_weights: np.ndarray,
-    *,
-    type: str = "mean",
-    probs: float | Sequence[float] | None = None,
-    log_ratios: np.ndarray | None = None,
-    pareto_k: np.ndarray | None = None,
-) -> ExpectationResult:
-    """Compute expectations for matrix inputs."""
-    _validate_inputs(x, log_weights, type, probs, log_ratios)
+    if non_sample_dims:
+        for idx in np.ndindex(non_sample_shape):
+            idx_dict = dict(zip(non_sample_dims, idx))
+            idx_dict["__sample__"] = slice(None)
 
-    w = np.exp(log_weights - _logsumexp(log_weights, axis=0))
+            x_vals = x.isel(idx_dict).values
+            w_vals = weights.isel(idx_dict).values
 
-    n_cols = x.shape[1]
-    if type == "quantile":
-        if probs is None:
-            raise ValueError("probs must be provided for quantile calculation")
-        probs_array = np.asarray(probs)
-        value = np.zeros((len(probs_array), n_cols))
+            for p_idx, prob in enumerate(probs):
+                flat_idx = idx + (p_idx,)
+                result_data[flat_idx] = _weighted_quantile(x_vals, w_vals, prob)
     else:
-        value = np.zeros(n_cols)
+        x_vals = x.values
+        w_vals = weights.values
+        for p_idx, prob in enumerate(probs):
+            result_data[p_idx] = _weighted_quantile(x_vals, w_vals, prob)
 
-    for i in range(n_cols):
-        if type == "mean":
-            value[i] = _wmean(x[:, i], w[:, i])
-        elif type == "variance":
-            value[i] = _wvar(x[:, i], w[:, i])
-        elif type == "sd":
-            value[i] = _wsd(x[:, i], w[:, i])
-        else:  # type == "quantile"
-            value[:, i] = _wquant(x[:, i], w[:, i], probs_array)
+    output_dims = non_sample_dims + ["quantile"]
+    coords = {}
+    for d in non_sample_dims:
+        coords[d] = x.coords[d]
+    coords["quantile"] = probs
 
-    if pareto_k is None:
-        if log_ratios is None:
-            log_ratios = log_weights
-        h = None if type == "quantile" else x**2 if type in ("variance", "sd") else x
-        pareto_k = np.array([
-            _e_loo_khat(None if h is None else h[:, i], log_ratios[:, i])
-            for i in range(n_cols)
-        ])
+    return xr.DataArray(result_data, dims=output_dims, coords=coords)
 
-    return ExpectationResult(value=value, pareto_k=pareto_k)
+
+def _compute_pareto_k(
+    x: xr.DataArray | None, log_ratios: xr.DataArray, tail_len: int = 20
+) -> xr.DataArray:
+    """Compute Pareto k diagnostic for xarray inputs."""
+    if x is None:
+        dummy_x = xr.zeros_like(log_ratios)
+
+        result = wrap_xarray_ufunc(
+            _khat_wrapper,
+            dummy_x,
+            log_ratios,
+            input_core_dims=[["__sample__"], ["__sample__"]],
+            output_core_dims=[[]],
+            vectorize=True,
+        )
+    else:
+        result = wrap_xarray_ufunc(
+            _khat_func,
+            x,
+            log_ratios,
+            input_core_dims=[["__sample__"], ["__sample__"]],
+            output_core_dims=[[]],
+            vectorize=True,
+        )
+
+    return result
