@@ -29,11 +29,16 @@ def kfold(
     random_seed: int | None = None,
     **kwargs: Any,
 ) -> ELPDData:
-    r"""Perform K-fold cross-validation for PyMC models.
+    r"""Perform exact K-fold cross-validation for PyMC models.
 
-    K-fold CV is particularly useful when you have a moderate amount of data or when
-    individual observations have strong influence on the model. It provides a more
-    stable estimate of out-of-sample predictive performance than LOO-CV in these cases.
+    This function first randomly partitions the data into ::math:`K` subsets
+    of equal size (or as close to equal as possible), or the user can specify the
+    ``folds`` argument. If ::math:`K` is equal to the total number of observations,
+    this is equivalent to leave-one-out cross-validation (LOO-CV).
+
+    For each subset, it fits a model using the remaining data, and then computes
+    the log-likelihood of the held-out data. The sum of the log-likelihoods is then
+    converted to an estimate of the expected log pointwise predictive density (ELPD).
 
     Parameters
     ----------
@@ -74,6 +79,14 @@ def kfold(
         If data is not a PyMCWrapper instance
     ValueError
         If K is invalid, folds are improperly specified, or scale is invalid
+
+    See Also
+    --------
+    loo : Leave-one-out cross-validation for PyMC models
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
+    loo_approximate : Leave-one-out cross-validation for posterior approximations
+    waic : Widely applicable information criterion
 
     Examples
     --------
