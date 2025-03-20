@@ -163,10 +163,10 @@ def loo(
 
     See Also
     --------
-    loo_subsample : Subsampled LOO-CV computation
-    reloo : Exact LOO-CV computation for PyMC models
-    loo_moment_match : LOO-CV computation using moment matching
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
+    loo_approximate : Leave-one-out cross-validation for posterior approximations
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)

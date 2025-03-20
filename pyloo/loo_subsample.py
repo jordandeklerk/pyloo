@@ -165,9 +165,7 @@ def loo_subsample(
     See Also
     --------
     loo : Standard LOO-CV computation
-    loo_i : Pointwise LOO-CV values
-    reloo : Exact LOO-CV computation for PyMC models
-    loo_moment_match : Moment matching for problematic observations
+    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
     loo_approximate_posterior : LOO-CV for posterior approximations
     waic : Compute WAIC
