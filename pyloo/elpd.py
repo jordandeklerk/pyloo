@@ -45,15 +45,14 @@ p_kfold       {p_kfold:<8.2f}    {p_kfold_se:<.2f}
 kfoldic      {kfoldic:<8.2f}    {kfoldic_se:<.2f}
 """
 
-# Format for subsampled LOO output
 SUBSAMPLE_BASE_FMT = """
 Computed from {n_samples} by {subsample_size} subsampled log-likelihood
 values from {n_data_points} total observations.
 
          Estimate       SE  subsampling SE
-elpd_loo   {0:<8.2f}    {1:<.2f}         {2:<.2f}
-p_loo       {3:<8.2f}    -               -
-looic      {4:<8.2f}    {5:<.2f}         {6:<.2f}
+elpd_loo   {elpd_loo:<8.2f}    {elpd_loo_se:<.2f}         {elpd_loo_subsamp_se:<.2f}
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}         {p_loo_subsamp_se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}         {looic_subsamp_se:<.2f}
 {pareto_msg}"""
 
 POINTWISE_LOO_FMT = """
@@ -181,18 +180,23 @@ class ELPDData(pd.Series):
             elpd_loo_subsamp_se = self["subsampling_SE"]
 
             p_loo = self["p_loo"]
+            p_loo_se = self.get("p_loo_se", float("nan"))
+            p_loo_subsamp_se = self.get("p_loo_subsampling_se", float("nan"))
+
             looic = -2 * elpd_loo
             looic_se = 2 * elpd_loo_se
             looic_subsamp_se = 2 * elpd_loo_subsamp_se
 
             base = SUBSAMPLE_BASE_FMT.format(
-                elpd_loo,
-                elpd_loo_se,
-                elpd_loo_subsamp_se,
-                p_loo,
-                looic,
-                looic_se,
-                looic_subsamp_se,
+                elpd_loo=elpd_loo,
+                elpd_loo_se=elpd_loo_se,
+                elpd_loo_subsamp_se=elpd_loo_subsamp_se,
+                p_loo=p_loo,
+                p_loo_se=p_loo_se,
+                p_loo_subsamp_se=p_loo_subsamp_se,
+                looic=looic,
+                looic_se=looic_se,
+                looic_subsamp_se=looic_subsamp_se,
                 n_samples=self.n_samples,
                 subsample_size=subsample_size,
                 n_data_points=self.n_data_points,

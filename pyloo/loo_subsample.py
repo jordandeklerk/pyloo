@@ -19,6 +19,7 @@ from .constants import EstimatorMethod, LooApproximationMethod
 from .elpd import ELPDData
 from .estimators import SubsampleIndices, get_estimator, subsample_indices
 from .estimators.hansen_hurwitz import compute_sampling_probabilities
+from .estimators.srs import SimpleRandomSamplingEstimator
 from .loo import loo
 from .loo_approximate_posterior import importance_resample
 from .rcparams import rcParams
@@ -106,8 +107,10 @@ def loo_subsample(
     ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
     elpd_loo: approximated expected log pointwise predictive density (elpd)
     se: standard error of the elpd (includes both approximation and sampling uncertainty)
-    subsampling_SE: standard error from subsampling uncertainty only
     p_loo: effective number of parameters
+    p_loo_se: standard error of p_loo (includes both approximation and sampling uncertainty)
+    p_loo_subsampling_se: standard error of p_loo from subsampling uncertainty only
+    subsampling_SE: standard error from subsampling uncertainty only for elpd_loo
     n_samples: number of samples
     n_data_points: number of data points
     warning: bool
@@ -390,21 +393,27 @@ def loo_subsample(
             y=p_loo_values,
             N=n_data_points,
         )
-    else:  # diff_srs
+    elif est_method == EstimatorMethod.DIFF_SRS:
         estimates = estimator_impl.estimate(
             y_approx=elpd_loo_approx,
             y=loo_lppd_i.values,
             y_idx=indices.idx,
         )
 
-        p_loo_approx = np.zeros_like(elpd_loo_approx)
-        p_loo_estimates = estimator_impl.estimate(
-            y_approx=p_loo_approx,
-            y=p_loo_values,
-            y_idx=indices.idx,
-        )
+        srs_estimator = SimpleRandomSamplingEstimator()
+        p_loo_estimates = srs_estimator.estimate(y=p_loo_values, N=n_data_points)
 
     p_loo = p_loo_estimates.y_hat
+    p_loo_se = (
+        np.sqrt(p_loo_estimates.hat_v_y)
+        if hasattr(p_loo_estimates, "hat_v_y")
+        else np.nan
+    )
+    p_loo_subsampling_se = (
+        np.sqrt(p_loo_estimates.v_y_hat)
+        if hasattr(p_loo_estimates, "v_y_hat")
+        else np.nan
+    )
 
     # Calculate standard errors and information criteria
     # Total variance (hat_v_y) for regular SE and subsampling variance
@@ -481,6 +490,8 @@ def loo_subsample(
             estimates.y_hat,  # elpd_loo
             se,  # Total uncertainty (approximation + sampling)
             p_loo,
+            p_loo_se,  # Total uncertainty for p_loo
+            p_loo_subsampling_se,  # Only subsampling uncertainty for p_loo
             n_samples,
             n_data_points,
             warn_mg,
@@ -498,6 +509,8 @@ def loo_subsample(
             "elpd_loo",
             "se",
             "p_loo",
+            "p_loo_se",
+            "p_loo_subsampling_se",
             "n_samples",
             "n_data_points",
             "warning",
@@ -519,6 +532,8 @@ def loo_subsample(
             estimates.y_hat,
             se,
             p_loo,
+            p_loo_se,  # Total uncertainty for p_loo
+            p_loo_subsampling_se,  # Only subsampling uncertainty for p_loo
             n_samples,
             n_data_points,
             warn_mg,
@@ -538,6 +553,8 @@ def loo_subsample(
             "elpd_loo",
             "se",
             "p_loo",
+            "p_loo_se",
+            "p_loo_subsampling_se",
             "n_samples",
             "n_data_points",
             "warning",
