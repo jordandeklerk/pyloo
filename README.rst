@@ -98,6 +98,8 @@ Standard PSIS-LOO-CV
 Model Comparison
 ~~~~~~~~~~~~~~
 
+Compare multiple models with `compare` using stacking weights or other methods:
+
 .. code-block:: python
 
    model1 = az.load_arviz_data("centered_eight")
@@ -133,7 +135,7 @@ We provide several advanced features beyond the core capabilities for PyMC model
 Reloo
 ^^^^^
 
-For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), we can perform exact LOO-CV by refitting the model without those observations:
+For observations where PSIS-LOO approximation fails, we can perform exact LOO-CV with `reloo`:
 
 .. code-block:: python
 
@@ -169,7 +171,7 @@ For observations where PSIS-LOO approximation fails (indicated by large Pareto k
 K-fold Cross-Validation
 ^^^^^^^^^^^^^^^^^^^^^^
 
-When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
+When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation with `loo_kfold` can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
 
 .. code-block:: python
 
@@ -252,7 +254,7 @@ You can also save the fitted models for each fold for further analysis:
 Moment Matching
 ^^^^^^^^^^^^^
 
-When PSIS-LOO approximation fails, moment matching can improve the reliability of LOO-CV estimates without the computational cost of refitting the model:
+When PSIS-LOO approximation fails, moment matching with `loo_moment_match` can improve the reliability of LOO-CV estimates without the computational cost of refitting the model:
 
 .. code-block:: python
 
