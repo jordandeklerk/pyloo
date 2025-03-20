@@ -31,8 +31,7 @@ def compute_importance_weights(
     method: ISMethod | str = ISMethod.PSIS,
     reff: float = 1.0,
 ) -> tuple[xr.DataArray | np.ndarray, xr.DataArray | np.ndarray]:
-    """
-    Unified importance sampling computation that supports multiple methods.
+    """Unified importance sampling computation that supports multiple methods.
 
     Parameters
     ----------
