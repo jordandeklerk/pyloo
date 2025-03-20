@@ -269,11 +269,6 @@ def compute_pareto_k(
 ) -> xr.DataArray | float:
     """Compute Pareto k diagnostic for expectation calculations.
 
-    This function estimates the shape parameter k of the generalized Pareto distribution
-    fitted to the importance ratios and, when available, to the function values multiplied
-    by the importance ratios. The k parameter is a diagnostic for the reliability of
-    importance sampling estimates.
-
     Parameters
     ----------
     x : xr.DataArray, np.ndarray, or None
@@ -332,7 +327,9 @@ def compute_pareto_k(
 def k_hat(
     x_vals: np.ndarray | None, log_ratios_vals: np.ndarray, tail_len: int = 20
 ) -> float:
-    """Calculate Pareto k diagnostic.
+    """Calculate Pareto k diagnostic by fitting a Generalized Pareto Distribution
+    to one or two tails of ``x``. This can be used to estimate the number of fractional
+    moments that is useful for convergence diagnostics.
 
     Parameters
     ----------
