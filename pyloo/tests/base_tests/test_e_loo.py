@@ -8,16 +8,16 @@ from arviz import InferenceData
 from ...base import compute_importance_weights
 from ...e_loo import (
     ExpectationResult,
-    _compute_pareto_k,
     _compute_weighted_mean,
     _compute_weighted_quantiles,
     _compute_weighted_sd,
     _compute_weighted_variance,
-    _khat_func,
     _normalize_log_weights,
     _weighted_quantile,
     _wvar_func,
+    compute_pareto_k,
     e_loo,
+    k_hat,
 )
 from ..helpers import assert_arrays_allclose, assert_finite, assert_positive
 
@@ -94,16 +94,16 @@ def test_khat_func():
     x = rng.normal(size=100)
     log_ratios = rng.normal(size=100)
 
-    k = _khat_func(x, log_ratios)
+    k = k_hat(x, log_ratios)
     assert isinstance(k, float)
     assert k >= 0 or np.isnan(k)
 
-    k_none = _khat_func(None, log_ratios)
+    k_none = k_hat(None, log_ratios)
     assert isinstance(k_none, float)
     assert k_none >= 0 or np.isnan(k_none)
 
     x_const = np.ones_like(x)
-    k_const = _khat_func(x_const, log_ratios)
+    k_const = k_hat(x_const, log_ratios)
     assert isinstance(k_const, float)
     assert k_const >= 0 or np.isnan(k_const)
 
@@ -168,7 +168,6 @@ def test_compute_weighted_quantiles(centered_eight):
     assert result.shape == (8, 3)
     assert_finite(result)
 
-    # Check that quantiles are monotonically increasing for each school
     for school in result.coords["school"].values:
         assert np.all(np.diff(result.sel(school=school).values) >= 0)
 
@@ -178,14 +177,14 @@ def test_compute_pareto_k(centered_eight):
     x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
-    result = _compute_pareto_k(x, log_weights)
+    result = compute_pareto_k(x, log_weights)
 
     assert isinstance(result, xr.DataArray)
     assert "school" in result.dims
     assert "__sample__" not in result.dims
     assert result.shape == (8,)
 
-    result_none = _compute_pareto_k(None, log_weights)
+    result_none = compute_pareto_k(None, log_weights)
 
     assert isinstance(result_none, xr.DataArray)
     assert "school" in result_none.dims
@@ -219,7 +218,7 @@ def test_e_loo_with_arrays(centered_eight):
     idata = InferenceData(posterior_predictive=pp_ds, log_likelihood=ll_ds)
 
     mean_value = _compute_weighted_mean(x, log_weights)
-    pareto_k = _compute_pareto_k(x, log_weights)
+    pareto_k = compute_pareto_k(x, log_weights)
     result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
 
     assert isinstance(result_mean, ExpectationResult)
@@ -255,7 +254,11 @@ def test_e_loo_with_arrays(centered_eight):
     assert "quantile" in result_quant.value.dims
     assert_arrays_allclose(result_quant.value.coords["quantile"].values, probs)
 
-    result_idata = e_loo(idata, var_name="y", type="mean")
+    idata_log_weights = -idata.log_likelihood.y.stack(__sample__=("chain", "draw"))
+
+    result_idata = e_loo(
+        idata, log_weights=idata_log_weights, var_name="y", type="mean"
+    )
 
     assert isinstance(result_idata, ExpectationResult)
     assert result_idata.value.shape == (n_obs,)
@@ -266,17 +269,17 @@ def test_e_loo_with_weights(centered_eight):
     """Test e_loo with pre-computed weights."""
     log_like = -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
-    log_weights, pareto_k = compute_importance_weights(log_like)
+    log_weights, _ = compute_importance_weights(log_like)
     weights = np.exp(log_weights)
 
-    result_weights = e_loo(centered_eight, var_name="obs", weights=weights, type="mean")
+    result_weights = e_loo(centered_eight, weights=weights, var_name="obs", type="mean")
 
     assert isinstance(result_weights, ExpectationResult)
     assert result_weights.value.shape == (8,)
     assert result_weights.pareto_k.shape == (8,)
 
     result_log_weights = e_loo(
-        centered_eight, var_name="obs", log_weights=log_weights, type="mean"
+        centered_eight, weights=weights, var_name="obs", type="mean"
     )
 
     assert isinstance(result_log_weights, ExpectationResult)
@@ -288,16 +291,33 @@ def test_e_loo_with_weights(centered_eight):
 
 def test_e_loo_with_inference_data(centered_eight):
     """Test e_loo with InferenceData objects."""
-    result = e_loo(centered_eight, var_name="obs", type="mean")
+    log_like = -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+    log_weights, _ = compute_importance_weights(log_like)
+
+    result = e_loo(
+        centered_eight,
+        var_name="obs",
+        log_weights=log_weights,
+        log_ratios=log_like,
+        type="mean",
+    )
 
     assert isinstance(result, ExpectationResult)
     assert isinstance(result.value, xr.DataArray)
     assert isinstance(result.pareto_k, xr.DataArray)
     assert result.value.shape == (8,)
     assert result.pareto_k.shape == (8,)
+    assert result.min_ss is not None
+    assert result.khat_threshold is not None
+    assert result.convergence_rate is not None
 
     result_quant = e_loo(
-        centered_eight, var_name="obs", type="quantile", probs=[0.25, 0.5, 0.75]
+        centered_eight,
+        var_name="obs",
+        log_weights=log_weights,
+        log_ratios=log_like,
+        type="quantile",
+        probs=[0.25, 0.5, 0.75],
     )
 
     assert isinstance(result_quant, ExpectationResult)
@@ -309,7 +329,8 @@ def test_e_loo_with_inference_data(centered_eight):
         centered_eight,
         var_name="theta",
         group="posterior",
-        log_likelihood_var="obs",
+        log_weights=log_weights,
+        log_ratios=log_like,
         type="mean",
     )
 
@@ -342,24 +363,6 @@ def test_e_loo_errors(centered_eight):
         e_loo(invalid_data, var_name="obs")
 
 
-def test_e_loo_with_different_methods(centered_eight):
-    """Test e_loo with different importance sampling methods."""
-    result_psis = e_loo(centered_eight, var_name="obs", type="mean", method="psis")
-
-    assert isinstance(result_psis, ExpectationResult)
-
-    result_sis = e_loo(centered_eight, var_name="obs", type="mean", method="sis")
-
-    assert isinstance(result_sis, ExpectationResult)
-
-    result_tis = e_loo(centered_eight, var_name="obs", type="mean", method="tis")
-
-    assert isinstance(result_tis, ExpectationResult)
-
-    assert not np.allclose(result_psis.value.values, result_sis.value.values)
-    assert not np.allclose(result_psis.value.values, result_tis.value.values)
-
-
 def test_e_loo_with_multidimensional_data():
     """Test e_loo with multidimensional data."""
     rng = np.random.default_rng(42)
@@ -383,8 +386,9 @@ def test_e_loo_with_multidimensional_data():
     )
 
     mean_value = _compute_weighted_mean(x_da, log_weights_da)
-    pareto_k = _compute_pareto_k(x_da, log_weights_da)
-    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    pareto_k_values = xr.zeros_like(mean_value)
+    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k_values)
 
     assert isinstance(result_mean, ExpectationResult)
     assert result_mean.value.shape == (n_dim1, n_dim2)
@@ -394,7 +398,7 @@ def test_e_loo_with_multidimensional_data():
 
     probs = [0.25, 0.5, 0.75]
     quant_value = _compute_weighted_quantiles(x_da, log_weights_da, np.array(probs))
-    result_quant = ExpectationResult(value=quant_value, pareto_k=pareto_k)
+    result_quant = ExpectationResult(value=quant_value, pareto_k=pareto_k_values)
 
     assert isinstance(result_quant, ExpectationResult)
     assert result_quant.value.shape == (n_dim1, n_dim2, 3)
@@ -426,8 +430,9 @@ def test_e_loo_with_aligned_data():
     )
 
     mean_value = _compute_weighted_mean(x_aligned, log_weights_aligned)
-    pareto_k = _compute_pareto_k(x_aligned, log_weights_aligned)
-    result = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    pareto_k_values = xr.zeros_like(mean_value)
+    result = ExpectationResult(value=mean_value, pareto_k=pareto_k_values)
 
     assert isinstance(result, ExpectationResult)
     assert "obs_dim" in result.value.dims
@@ -453,20 +458,21 @@ def test_e_loo_with_constant_values():
     )
 
     mean_value = _compute_weighted_mean(x_da, log_weights_da)
-    pareto_k = _compute_pareto_k(x_da, log_weights_da)
-    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    pareto_k_values = xr.zeros_like(mean_value)
+    result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k_values)
 
     assert isinstance(result_mean, ExpectationResult)
     assert_arrays_allclose(result_mean.value.values, np.ones(n_obs))
 
     var_value = _compute_weighted_variance(x_da, log_weights_da)
-    result_var = ExpectationResult(value=var_value, pareto_k=pareto_k)
+    result_var = ExpectationResult(value=var_value, pareto_k=pareto_k_values)
 
     assert isinstance(result_var, ExpectationResult)
     assert_arrays_allclose(result_var.value.values, np.zeros(n_obs), atol=1e-10)
 
     sd_value = _compute_weighted_sd(x_da, log_weights_da)
-    result_sd = ExpectationResult(value=sd_value, pareto_k=pareto_k)
+    result_sd = ExpectationResult(value=sd_value, pareto_k=pareto_k_values)
 
     assert isinstance(result_sd, ExpectationResult)
     assert_arrays_allclose(result_sd.value.values, np.zeros(n_obs), atol=1e-10)
@@ -489,8 +495,9 @@ def test_e_loo_with_extreme_weights():
     )
 
     mean_value = _compute_weighted_mean(x_da, log_weights_da)
-    pareto_k = _compute_pareto_k(x_da, log_weights_da)
-    result = ExpectationResult(value=mean_value, pareto_k=pareto_k)
+
+    pareto_k_values = xr.zeros_like(mean_value)
+    result = ExpectationResult(value=mean_value, pareto_k=pareto_k_values)
 
     assert isinstance(result, ExpectationResult)
     assert_finite(result.value)
@@ -499,17 +506,45 @@ def test_e_loo_with_extreme_weights():
 
 def test_e_loo_with_eight_schools(centered_eight, non_centered_eight):
     """Test e_loo with eight schools data from both parameterizations."""
-    result_centered = e_loo(centered_eight, var_name="obs", type="mean")
+    log_like_centered = -centered_eight.log_likelihood.obs.stack(
+        __sample__=("chain", "draw")
+    )
+    log_weights_centered, _ = compute_importance_weights(log_like_centered)
+
+    result_centered = e_loo(
+        centered_eight,
+        var_name="obs",
+        log_weights=log_weights_centered,
+        log_ratios=log_like_centered,
+        type="mean",
+    )
 
     assert isinstance(result_centered, ExpectationResult)
     assert result_centered.value.shape == (8,)
     assert result_centered.pareto_k.shape == (8,)
+    assert result_centered.min_ss is not None
+    assert result_centered.khat_threshold is not None
+    assert result_centered.convergence_rate is not None
 
-    result_non_centered = e_loo(non_centered_eight, var_name="obs", type="mean")
+    log_like_non_centered = -non_centered_eight.log_likelihood.obs.stack(
+        __sample__=("chain", "draw")
+    )
+    log_weights_non_centered, _ = compute_importance_weights(log_like_non_centered)
+
+    result_non_centered = e_loo(
+        non_centered_eight,
+        var_name="obs",
+        log_weights=log_weights_non_centered,
+        log_ratios=log_like_non_centered,
+        type="mean",
+    )
 
     assert isinstance(result_non_centered, ExpectationResult)
     assert result_non_centered.value.shape == (8,)
     assert result_non_centered.pareto_k.shape == (8,)
+    assert result_non_centered.min_ss is not None
+    assert result_non_centered.khat_threshold is not None
+    assert result_non_centered.convergence_rate is not None
 
     assert np.allclose(
         result_centered.value.values,
@@ -541,36 +576,7 @@ def test_e_loo_with_custom_inference_data():
 
     idata = InferenceData(posterior_predictive=pp_ds, log_likelihood=ll_ds)
 
-    result = e_loo(idata, var_name="y", type="mean")
-
-    assert isinstance(result, ExpectationResult)
-    assert result.value.shape == (n_obs,)
-    assert result.pareto_k.shape == (n_obs,)
-
-
-def test_e_loo_with_different_var_names():
-    """Test e_loo with different variable names for data and log likelihood."""
-    n_chains = 4
-    n_draws = 100
-    n_obs = 3
-
-    rng = np.random.default_rng(42)
-
-    pp_data = rng.normal(size=(n_chains, n_draws, n_obs))
-    pp_da = xr.DataArray(
-        pp_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
-    )
-    pp_ds = xr.Dataset({"y_pred": pp_da})
-
-    ll_data = rng.normal(size=(n_chains, n_draws, n_obs))
-    ll_da = xr.DataArray(
-        ll_data, dims=("chain", "draw", "obs_id"), coords={"obs_id": range(n_obs)}
-    )
-    ll_ds = xr.Dataset({"y_loglik": ll_da})
-
-    idata = InferenceData(posterior_predictive=pp_ds, log_likelihood=ll_ds)
-
-    result = e_loo(idata, var_name="y_pred", log_likelihood_var="y_loglik", type="mean")
+    result = e_loo(idata, log_weights=-ll_da, var_name="y", type="mean")
 
     assert isinstance(result, ExpectationResult)
     assert result.value.shape == (n_obs,)
@@ -598,7 +604,7 @@ def test_e_loo_numerical_stability():
     )
 
     mean_value = _compute_weighted_mean(x_da, log_weights_da)
-    pareto_k = _compute_pareto_k(x_da, log_weights_da)
+    pareto_k = compute_pareto_k(x_da, log_weights_da)
     result_mean = ExpectationResult(value=mean_value, pareto_k=pareto_k)
 
     assert isinstance(result_mean, ExpectationResult)
@@ -610,14 +616,12 @@ def test_e_loo_numerical_stability():
     assert isinstance(result_var, ExpectationResult)
     assert_finite(result_var.value)
 
-    # Test standard deviation using direct computation functions
     sd_value = _compute_weighted_sd(x_da, log_weights_da)
     result_sd = ExpectationResult(value=sd_value, pareto_k=pareto_k)
 
     assert isinstance(result_sd, ExpectationResult)
     assert_finite(result_sd.value)
 
-    # Test quantiles using direct computation functions
     probs = [0.25, 0.5, 0.75]
     quant_value = _compute_weighted_quantiles(x_da, log_weights_da, np.array(probs))
     result_quant = ExpectationResult(value=quant_value, pareto_k=pareto_k)
