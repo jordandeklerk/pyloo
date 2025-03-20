@@ -91,8 +91,7 @@ def tislw(log_weights):
 
 
 def _tislw(log_weights, n_samples):
-    """
-    Truncated importance sampling (TIS) for a 1D vector.
+    """Truncated importance sampling (TIS) for a 1D vector.
 
     Parameters
     ----------

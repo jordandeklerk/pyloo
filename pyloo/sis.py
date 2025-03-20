@@ -84,8 +84,7 @@ def sislw(log_weights):
 
 
 def _sislw(log_weights):
-    """
-    Standard importance sampling (SIS) for a 1D vector.
+    """Standard importance sampling (SIS) for a 1D vector.
 
     Parameters
     ----------
