@@ -100,7 +100,7 @@ All Pareto k estimates are good (k < 0.7)
 ```
 
 ### Reloo
-For observations where PSIS-LOO approximation fails, we can perform exact LOO-CV with `reloo` by refitting the model without those observations:
+For observations where PSIS-LOO approximation fails, we can perform exact LOO-CV with `reloo`:
 
 ```python
 import pyloo as pl
