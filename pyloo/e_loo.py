@@ -244,7 +244,6 @@ def e_loo(
         n_samples = x_data.shape[0]
 
     min_ss = xr.apply_ufunc(_pareto_min_ss, pareto_k_values, vectorize=True)
-
     khat_threshold = xr.full_like(pareto_k_values, _pareto_khat_threshold(n_samples))
 
     convergence_rate = xr.apply_ufunc(
