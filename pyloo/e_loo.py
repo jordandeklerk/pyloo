@@ -55,7 +55,6 @@ class ExpectationResult:
 
 def e_loo(
     data: InferenceData | Any,
-    *,
     var_name: str | None = None,
     group: str = "posterior_predictive",
     weights: xr.DataArray | None = None,

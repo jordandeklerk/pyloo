@@ -72,8 +72,7 @@ def test_loo_predictive_metric_with_r_eff(centered_eight):
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
-    # Use a fixed r_eff value for testing
-    r_eff = 0.8  # Example value
+    r_eff = 0.8
 
     result1 = loo_predictive_metric(
         data=idata,
