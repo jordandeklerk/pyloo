@@ -142,21 +142,6 @@ def test_loo_predictive_metric_missing_group(centered_eight):
         )
 
 
-def test_loo_predictive_metric_missing_var_name(centered_eight):
-    """Test loo_predictive_metric with missing variable name."""
-    idata = centered_eight
-    y_obs = idata.observed_data.obs.values
-
-    with pytest.raises(ValueError, match="not found in"):
-        loo_predictive_metric(
-            data=idata,
-            y=y_obs,
-            var_name="nonexistent_var",  # This variable doesn't exist
-            log_lik_var_name="obs",
-            metric="mae",
-        )
-
-
 def test_mae_function():
     """Test the _mae helper function."""
     y = np.array([1.0, 2.0, 3.0])

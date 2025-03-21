@@ -162,21 +162,6 @@ def loo_predictive_metric(
 
     pp_group = getattr(idata, group)
 
-    if var_name is None:
-        pp_var_names = list(pp_group.data_vars)
-        if len(pp_var_names) == 1:
-            var_name = pp_var_names[0]
-        else:
-            raise ValueError(
-                f"Multiple variables found in {group} group. Please specify var_name"
-                f" from: {pp_var_names}"
-            )
-    elif var_name not in pp_group.data_vars:
-        raise ValueError(
-            f"Variable '{var_name}' not found in {group} group. Available variables:"
-            f" {list(pp_group.data_vars)}"
-        )
-
     if log_lik_var_name is None:
         ll_var_names = list(getattr(idata, log_lik_group).data_vars)
         if len(ll_var_names) == 1:
