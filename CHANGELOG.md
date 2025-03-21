@@ -11,8 +11,8 @@ We've built a flexible foundation based on similar implementations in Arviz for 
 - **LOO-CV Implementation**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
 - **WAIC Implementation**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
 - **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy:
-  - Multiple approximation methods (PLPD, LPD, TIS, SIS)
-  - Various estimator approaches (diff_srs, hh_pps, srs)
+  - Multiple approximation methods (`PLPD`, `LPD`)
+  - Various estimator approaches (`diff_srs`, `hh_pps`, `srs`)
   - Enhanced support for multidimensional data
 - **Supporting Utilities**:
   - Pointwise LOO-CV calculations
