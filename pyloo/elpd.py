@@ -12,9 +12,8 @@ Computed from {n_samples} posterior samples and {n_points} observations log-like
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}        -
-looic      {looic:<8.2f}    {looic_se:<.2f}
-{pareto_msg}"""
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
 # Custom format for LOO output without looic line
 CUSTOM_LOO_FMT = """
@@ -22,7 +21,7 @@ Computed from {n_samples} posterior samples and {n_points} observations log-like
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}        -"""
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}"""
 
 # Custom format for LOO approximate posterior output
 APPROX_POSTERIOR_FMT = """
@@ -32,7 +31,8 @@ Posterior approximation correction used.
 
          Estimate       SE
 elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}        -"""
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
 # Format for k-fold cross-validation output
 KFOLD_BASE_FMT = """
@@ -41,19 +41,18 @@ with {n_points} observations.{stratify_msg}
 
            Estimate       SE
 elpd_kfold   {elpd:<8.2f}    {se:<.2f}
-p_kfold       {p_kfold:<8.2f}        -
+p_kfold       {p_kfold:<8.2f}    {p_kfold_se:<.2f}
 kfoldic      {kfoldic:<8.2f}    {kfoldic_se:<.2f}
 """
 
-# Format for subsampled LOO output
 SUBSAMPLE_BASE_FMT = """
 Computed from {n_samples} by {subsample_size} subsampled log-likelihood
 values from {n_data_points} total observations.
 
          Estimate       SE  subsampling SE
-elpd_loo   {0:<8.2f}    {1:<.2f}         {2:<.2f}
-p_loo       {3:<8.2f}        -            -
-looic      {4:<8.2f}    {5:<.2f}         {6:<.2f}
+elpd_loo   {elpd_loo:<8.2f}    {elpd_loo_se:<.2f}         {elpd_loo_subsamp_se:<.2f}
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}         {p_loo_subsamp_se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}         {looic_subsamp_se:<.2f}
 {pareto_msg}"""
 
 POINTWISE_LOO_FMT = """
@@ -153,7 +152,6 @@ class ELPDData(pd.Series):
             ):
                 # Check if all Pareto k values are good
                 bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
-                # Handle both pandas objects and numpy arrays
                 pareto_k_values = (
                     self.pareto_k.values
                     if hasattr(self.pareto_k, "values")
@@ -164,7 +162,6 @@ class ELPDData(pd.Series):
                     # Already set with default message above
                     pass
                 else:
-                    # Format the detailed Pareto k diagnostics for bad values
                     percentages = counts / np.sum(counts) * 100
                     pareto_msg = POINTWISE_LOO_FMT.format(
                         "Count",
@@ -183,19 +180,23 @@ class ELPDData(pd.Series):
             elpd_loo_subsamp_se = self["subsampling_SE"]
 
             p_loo = self["p_loo"]
+            p_loo_se = self.get("p_loo_se", float("nan"))
+            p_loo_subsamp_se = self.get("p_loo_subsampling_se", float("nan"))
 
             looic = -2 * elpd_loo
             looic_se = 2 * elpd_loo_se
             looic_subsamp_se = 2 * elpd_loo_subsamp_se
 
             base = SUBSAMPLE_BASE_FMT.format(
-                elpd_loo,
-                elpd_loo_se,
-                elpd_loo_subsamp_se,
-                p_loo,
-                looic,
-                looic_se,
-                looic_subsamp_se,
+                elpd_loo=elpd_loo,
+                elpd_loo_se=elpd_loo_se,
+                elpd_loo_subsamp_se=elpd_loo_subsamp_se,
+                p_loo=p_loo,
+                p_loo_se=p_loo_se,
+                p_loo_subsamp_se=p_loo_subsamp_se,
+                looic=looic,
+                looic_se=looic_se,
+                looic_subsamp_se=looic_subsamp_se,
                 n_samples=self.n_samples,
                 subsample_size=subsample_size,
                 n_data_points=self.n_data_points,
@@ -220,9 +221,7 @@ class ELPDData(pd.Series):
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                # Check if all Pareto k values are good
                 bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
-                # Handle both pandas objects and numpy arrays
                 pareto_k_values = (
                     self.pareto_k.values
                     if hasattr(self.pareto_k, "values")
@@ -249,31 +248,49 @@ class ELPDData(pd.Series):
                         percentages[2],
                     )
             elif kind == "loo" and method == "psis":
-                pareto_msg = (
-                    "\n\nAll Pareto k estimates are good (k <"
-                    f" {default_good_k:.1f}).\nSee help('pareto-k-diagnostic') for"
-                    " details."
-                )
+                if self.warning:
+                    pareto_msg = (
+                        "\n\nSome Pareto k diagnostic values are high (k >"
+                        f" {default_good_k:.1f}), indicating that the importance"
+                        " sampling approximation is unreliable. Consider using moment"
+                        " matching or exact LOO for more accurate estimates. Use"
+                        " pointwise=True to see detailed diagnostics."
+                    )
+                else:
+                    pareto_msg = (
+                        "\n\nAll Pareto k estimates are good (k <"
+                        f" {default_good_k:.1f}).\nSee help('pareto-k-diagnostic') for"
+                        " details."
+                    )
 
             elpd_loo = self["elpd_loo"]
             se = self["se"]
 
-            # Choose the appropriate format based on whether this is from loo_approximate_posterior
             if hasattr(self, "approximate_posterior"):
+                looic = self["looic"]
+                looic_se = self["looic_se"]
                 base = APPROX_POSTERIOR_FMT.format(
                     n_samples=self.n_samples,
                     n_points=self.n_data_points,
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
+                    p_loo_se=self["p_loo_se"],
+                    looic=looic,
+                    looic_se=looic_se,
                 )
             else:
-                base = CUSTOM_LOO_FMT.format(
+                looic = self["looic"]
+                looic_se = self["looic_se"]
+                base = STD_BASE_FMT.format(
                     n_samples=self.n_samples,
                     n_points=self.n_data_points,
                     elpd=elpd_loo,
                     se=se,
                     p_loo=self["p_loo"],
+                    p_loo_se=self["p_loo_se"],
+                    looic=looic,
+                    looic_se=looic_se,
                 )
 
             if self.warning:
@@ -281,7 +298,6 @@ class ELPDData(pd.Series):
                     "\n\nThere has been a warning during the calculation. Please check"
                     " the results."
                 )
-
             base += pareto_msg
 
             return base

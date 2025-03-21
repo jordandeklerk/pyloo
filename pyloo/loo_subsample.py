@@ -19,6 +19,7 @@ from .constants import EstimatorMethod, LooApproximationMethod
 from .elpd import ELPDData
 from .estimators import SubsampleIndices, get_estimator, subsample_indices
 from .estimators.hansen_hurwitz import compute_sampling_probabilities
+from .estimators.srs import SimpleRandomSamplingEstimator
 from .loo import loo
 from .loo_approximate_posterior import importance_resample
 from .rcparams import rcParams
@@ -35,7 +36,7 @@ __all__ = ["loo_subsample", "update_subsample"]
 
 def loo_subsample(
     data: InferenceData | dict[str, Any],
-    observations: int | np.ndarray | None = 400,
+    observations: int | np.ndarray | None = 100,
     loo_approximation: str = "plpd",
     estimator: str = "diff_srs",
     loo_approximation_draws: int | None = None,
@@ -46,7 +47,6 @@ def loo_subsample(
     log_p: np.ndarray | None = None,
     log_q: np.ndarray | None = None,
     resample_method: str = "psis",
-    n_resamples: int | None = None,
     seed: int | None = None,
 ) -> ELPDData:
     """Compute approximate LOO-CV using subsampling.
@@ -99,9 +99,6 @@ def loo_subsample(
         - "psis": Pareto Smoothed Importance Sampling (without replacement)
         - "psir": Pareto Smoothed Importance Resampling (with replacement)
         - "sis": Standard Importance Sampling (no smoothing)
-    n_resamples : Optional[int], default None
-        Number of samples to draw during importance resampling. Default is same as
-        number of input samples. Only used when log_p and log_q are provided.
     seed : Optional[int], default None
         Random seed for reproducible resampling. Only used when log_p and log_q are provided.
 
@@ -110,8 +107,10 @@ def loo_subsample(
     ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
     elpd_loo: approximated expected log pointwise predictive density (elpd)
     se: standard error of the elpd (includes both approximation and sampling uncertainty)
-    subsampling_SE: standard error from subsampling uncertainty only
     p_loo: effective number of parameters
+    p_loo_se: standard error of p_loo (includes both approximation and sampling uncertainty)
+    p_loo_subsampling_se: standard error of p_loo from subsampling uncertainty only
+    subsampling_SE: standard error from subsampling uncertainty only for elpd_loo
     n_samples: number of samples
     n_data_points: number of data points
     warning: bool
@@ -169,9 +168,7 @@ def loo_subsample(
     See Also
     --------
     loo : Standard LOO-CV computation
-    loo_i : Pointwise LOO-CV values
-    reloo : Exact LOO-CV computation for PyMC models
-    loo_moment_match : Moment matching for problematic observations
+    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
     loo_approximate_posterior : LOO-CV for posterior approximations
     waic : Compute WAIC
@@ -366,14 +363,24 @@ def loo_subsample(
     )
 
     estimator_impl = get_estimator(est_method.value)
+    p_loo_values = log_likelihood_sample.var(dim="__sample__").values
 
+    # Calculate elpd_loo and p_loo based on the current estimator method
     if est_method == EstimatorMethod.HH_PPS:
         z = compute_sampling_probabilities(elpd_loo_approx)
         z_sample = z[indices.idx]
+
         estimates = estimator_impl.estimate(
             z=z_sample,
             m_i=indices.m_i,
             y=loo_lppd_i.values,
+            N=n_data_points,
+        )
+
+        p_loo_estimates = estimator_impl.estimate(
+            z=z_sample,
+            m_i=indices.m_i,
+            y=p_loo_values,
             N=n_data_points,
         )
     elif est_method == EstimatorMethod.SRS:
@@ -381,26 +388,48 @@ def loo_subsample(
             y=loo_lppd_i.values,
             N=n_data_points,
         )
-    else:  # diff_srs
+
+        p_loo_estimates = estimator_impl.estimate(
+            y=p_loo_values,
+            N=n_data_points,
+        )
+    elif est_method == EstimatorMethod.DIFF_SRS:
         estimates = estimator_impl.estimate(
             y_approx=elpd_loo_approx,
             y=loo_lppd_i.values,
             y_idx=indices.idx,
         )
 
-    lppd = np.sum(
-        wrap_xarray_ufunc(
-            _logsumexp,
-            log_likelihood,
-            func_kwargs={"b_inv": n_samples},
-            ufunc_kwargs=ufunc_kwargs,
-            **kwargs,
-        ).values
+        srs_estimator = SimpleRandomSamplingEstimator()
+        p_loo_estimates = srs_estimator.estimate(y=p_loo_values, N=n_data_points)
+
+    p_loo = p_loo_estimates.y_hat
+    p_loo_se = (
+        np.sqrt(p_loo_estimates.hat_v_y)
+        if hasattr(p_loo_estimates, "hat_v_y")
+        else np.nan
+    )
+    p_loo_subsampling_se = (
+        np.sqrt(p_loo_estimates.v_y_hat)
+        if hasattr(p_loo_estimates, "v_y_hat")
+        else np.nan
     )
 
-    warn_mg = False
+    # Calculate standard errors and information criteria
+    # Total variance (hat_v_y) for regular SE and subsampling variance
+    # (v_y_hat) for subsampling SE
+    se = np.sqrt(estimates.hat_v_y) if hasattr(estimates, "hat_v_y") else np.nan
+    subsampling_se = (
+        np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
+    )
+
+    looic = -2 * estimates.y_hat
+    looic_se = 2 * se
+    looic_subsamp_se = 2 * subsampling_se
+
     good_k = min(1 - 1 / np.log10(n_samples), 0.7)
     max_k = np.nanmax(diagnostic) if not np.all(np.isnan(diagnostic)) else 0
+    warn_mg = False
 
     if est_method == EstimatorMethod.SRS:
         min_ess = np.min(diagnostic)
@@ -449,21 +478,9 @@ def loo_subsample(
         warnings.warn(
             "The point-wise LOO is the same with the sum LOO, please double check "
             "the Observed RV in your model to make sure it returns element-wise logp.",
+            UserWarning,
             stacklevel=2,
         )
-
-    p_loo = lppd - estimates.y_hat / scale_value
-
-    # Total variance (hat_v_y) for regular SE and subsampling variance
-    # (v_y_hat) for subsampling SE
-    se = np.sqrt(estimates.hat_v_y) if hasattr(estimates, "hat_v_y") else np.nan
-    subsampling_se = (
-        np.sqrt(estimates.v_y_hat) if hasattr(estimates, "v_y_hat") else np.nan
-    )
-
-    looic = -2 * estimates.y_hat
-    looic_se = 2 * se
-    looic_subsamp_se = 2 * subsampling_se
 
     result_data: list[Any] = []
     result_index: list[str] = []
@@ -473,6 +490,8 @@ def loo_subsample(
             estimates.y_hat,  # elpd_loo
             se,  # Total uncertainty (approximation + sampling)
             p_loo,
+            p_loo_se,  # Total uncertainty for p_loo
+            p_loo_subsampling_se,  # Only subsampling uncertainty for p_loo
             n_samples,
             n_data_points,
             warn_mg,
@@ -490,6 +509,8 @@ def loo_subsample(
             "elpd_loo",
             "se",
             "p_loo",
+            "p_loo_se",
+            "p_loo_subsampling_se",
             "n_samples",
             "n_data_points",
             "warning",
@@ -511,6 +532,8 @@ def loo_subsample(
             estimates.y_hat,
             se,
             p_loo,
+            p_loo_se,  # Total uncertainty for p_loo
+            p_loo_subsampling_se,  # Only subsampling uncertainty for p_loo
             n_samples,
             n_data_points,
             warn_mg,
@@ -530,6 +553,8 @@ def loo_subsample(
             "elpd_loo",
             "se",
             "p_loo",
+            "p_loo_se",
+            "p_loo_subsampling_se",
             "n_samples",
             "n_data_points",
             "warning",
@@ -559,7 +584,6 @@ def loo_subsample(
         result.log_p = log_p
         result.log_q = log_q
         result.resample_method = resample_method
-        result.n_resamples = n_resamples
         result.seed = seed
 
     return result
@@ -634,7 +658,6 @@ def update_subsample(
         "log_p": getattr(loo_data, "log_p", None),
         "log_q": getattr(loo_data, "log_q", None),
         "resample_method": getattr(loo_data, "resample_method", "psis"),
-        "n_resamples": getattr(loo_data, "n_resamples", None),
         "seed": getattr(loo_data, "seed", None),
     }
     params.update(kwargs)

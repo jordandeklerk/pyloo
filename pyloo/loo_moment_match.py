@@ -29,12 +29,6 @@ __all__ = ["loo_moment_match"]
 
 _log = logging.getLogger(__name__)
 
-if not logging.root.handlers:
-    _log.setLevel(logging.INFO)
-    if len(_log.handlers) == 0:
-        handler = logging.StreamHandler()
-        _log.addHandler(handler)
-
 
 def loo_moment_match(
     wrapper: PyMCWrapper,
@@ -138,11 +132,11 @@ def loo_moment_match(
 
     See Also
     --------
-    loo : Leave-one-out cross-validation
-    loo_subsample : Subsampled LOO-CV computation
-    reloo : Exact LOO-CV computation for PyMC models
-    loo_kfold : K-fold cross-validation
-    waic : Compute WAIC
+    loo: Leave-one-out cross-validation
+    loo_subsample: Leave-one-out cross-validation with subsampling
+    loo_approximate: Leave-one-out cross-validation for posterior approximations
+    loo_kfold: K-fold cross-validation
+    waic: Compute WAIC
     """
     converter = ParameterConverter(wrapper)
     loo_data = deepcopy(loo_data)

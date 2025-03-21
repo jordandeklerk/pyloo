@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import pytest
+import xarray as xr
+from arviz import InferenceData
 from pymc_marketing.mmm import MMM, GeometricAdstock, LogisticSaturation
 from pymc_marketing.prior import Prior
 
@@ -692,3 +694,116 @@ def wells_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def loo_predictive_metric_data():
+    """Create test data for loo_predictive_metric tests."""
+    n_chains = 4
+    n_draws = 250
+    n_obs = 10
+
+    rng = np.random.default_rng(42)
+    y = rng.normal(0, 1, n_obs)
+
+    mu_samples = rng.normal(y, 0.1, (n_chains, n_draws, n_obs))
+    log_lik = -0.5 * np.log(2 * np.pi) - 0.5 * ((y - mu_samples) / 1.0) ** 2
+
+    pp_data = xr.Dataset(
+        {"predictions": (["chain", "draw", "observation"], mu_samples)},
+        coords={
+            "chain": np.arange(n_chains),
+            "draw": np.arange(n_draws),
+            "observation": np.arange(n_obs),
+        },
+    )
+
+    ll_data = xr.Dataset(
+        {"obs": (["chain", "draw", "observation"], log_lik)},
+        coords={
+            "chain": np.arange(n_chains),
+            "draw": np.arange(n_draws),
+            "observation": np.arange(n_obs),
+        },
+    )
+
+    obs_data = xr.Dataset(
+        {"obs": (["observation"], y)}, coords={"observation": np.arange(n_obs)}
+    )
+
+    idata = InferenceData(
+        posterior_predictive=pp_data, log_likelihood=ll_data, observed_data=obs_data
+    )
+
+    pp_samples = idata.posterior_predictive.predictions.stack(
+        __sample__=("chain", "draw")
+    )
+    log_lik_samples = idata.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    return {
+        "idata": idata,
+        "y": y,
+        "pp_samples": pp_samples,
+        "log_lik_samples": log_lik_samples,
+    }
+
+
+@pytest.fixture(scope="session")
+def loo_predictive_metric_binary_data():
+    """Create binary test data for loo_predictive_metric tests."""
+    n_chains = 4
+    n_draws = 250
+    n_obs = 100
+
+    rng = np.random.default_rng(42)
+    true_probs = rng.uniform(0.1, 0.9, n_obs)
+    y_binary = rng.binomial(1, true_probs, n_obs)
+
+    y_binary_reshaped = y_binary.reshape(1, 1, -1)
+
+    prob_samples = np.zeros((n_chains, n_draws, n_obs))
+    for i in range(n_chains):
+        for j in range(n_draws):
+            prob_samples[i, j] = rng.beta(y_binary + 1, 2 - y_binary)
+
+    log_lik_binary = y_binary_reshaped * np.log(prob_samples) + (
+        1 - y_binary_reshaped
+    ) * np.log(1 - prob_samples)
+
+    pp_data = xr.Dataset(
+        {"predictions": (["chain", "draw", "observation"], prob_samples)},
+        coords={
+            "chain": np.arange(n_chains),
+            "draw": np.arange(n_draws),
+            "observation": np.arange(n_obs),
+        },
+    )
+
+    ll_data = xr.Dataset(
+        {"obs": (["chain", "draw", "observation"], log_lik_binary)},
+        coords={
+            "chain": np.arange(n_chains),
+            "draw": np.arange(n_draws),
+            "observation": np.arange(n_obs),
+        },
+    )
+
+    obs_data = xr.Dataset(
+        {"obs": (["observation"], y_binary)}, coords={"observation": np.arange(n_obs)}
+    )
+
+    idata = InferenceData(
+        posterior_predictive=pp_data, log_likelihood=ll_data, observed_data=obs_data
+    )
+
+    pp_samples = idata.posterior_predictive.predictions.stack(
+        __sample__=("chain", "draw")
+    )
+    log_lik_samples = idata.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+    return {
+        "idata": idata,
+        "y_binary": y_binary,
+        "pp_samples": pp_samples,
+        "log_lik_samples": log_lik_samples,
+    }

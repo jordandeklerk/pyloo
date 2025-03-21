@@ -1,5 +1,6 @@
 """Tests for moment matching in LOO-CV."""
 
+import logging
 from copy import deepcopy
 
 import numpy as np
@@ -23,6 +24,8 @@ from ...loo_moment_match import (
     update_quantities_i,
 )
 from ...wrapper.pymc import PyMCWrapper
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -392,8 +395,8 @@ def test_loo_moment_match_roaches_model(roaches_model):
         cov=True,
     )
 
-    print(loo_orig)
-    print(loo_mm)
+    logger.info(loo_mm)
+    logger.info(loo_orig)
 
     improvements = loo_orig.pareto_k[high_k] - loo_mm.pareto_k[high_k]
     assert np.any(improvements > 0), "No Pareto k values improved"

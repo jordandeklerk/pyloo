@@ -163,10 +163,10 @@ def loo(
 
     See Also
     --------
-    loo_subsample : Subsampled LOO-CV computation
-    reloo : Exact LOO-CV computation for PyMC models
-    loo_moment_match : LOO-CV computation using moment matching
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
+    loo_approximate : Leave-one-out cross-validation for posterior approximations
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)
@@ -292,6 +292,7 @@ def loo(
     )
 
     p_loo = lppd - loo_lppd / scale_value
+    p_loo_se = np.sqrt(np.sum(np.var(loo_lppd_i.values)))
     looic = -2 * loo_lppd
     looic_se = 2 * loo_lppd_se
 
@@ -303,6 +304,7 @@ def loo(
             loo_lppd,
             loo_lppd_se,
             p_loo,
+            p_loo_se,
             n_samples,
             n_data_points,
             warn_mg,
@@ -314,6 +316,7 @@ def loo(
             "elpd_loo",
             "se",
             "p_loo",
+            "p_loo_se",
             "n_samples",
             "n_data_points",
             "warning",
@@ -352,6 +355,7 @@ def loo(
         loo_lppd,
         loo_lppd_se,
         p_loo,
+        p_loo_se,
         n_samples,
         n_data_points,
         warn_mg,
@@ -364,6 +368,7 @@ def loo(
         "elpd_loo",
         "se",
         "p_loo",
+        "p_loo_se",
         "n_samples",
         "n_data_points",
         "warning",

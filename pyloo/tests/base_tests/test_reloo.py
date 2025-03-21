@@ -12,6 +12,8 @@ from ...reloo import reloo
 from ...wrapper.pymc import PyMCWrapper
 from ..helpers import assert_arrays_allclose
 
+logger = logging.getLogger(__name__)
+
 
 def test_reloo_validates_required_methods():
     """Test that reloo validates required methods and model type."""
@@ -385,8 +387,8 @@ def test_reloo_with_problematic_k(problematic_k_model):
 
     result = reloo(wrapper, loo_result, k_thresh=0.7)
 
-    print(loo_result)
-    print(result)
+    logger.info(loo_result)
+    logger.info(result)
 
     assert np.all(result.pareto_k <= loo_result.pareto_k)
     assert np.all(result.elpd_loo > loo_result.elpd_loo)

@@ -104,9 +104,6 @@ class Laplace:
         Gaussian. This assumption may not hold for posteriors with significant skewness,
         multimodality, or heavy tails. In such cases, the approximation may be poor and
         lead to unreliable inference.
-
-        Currently, this wrapper only implements Laplace approximation. Future versions
-        will include additional approximation methods for more complex posteriors.
         """
         self.model = model
         self.idata = idata

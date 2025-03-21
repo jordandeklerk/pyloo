@@ -9,16 +9,7 @@ from .utils import _logsumexp, wrap_xarray_ufunc
 
 
 def sislw(log_weights):
-    """
-    Standard importance sampling (SIS).
-
-    Notes
-    -----
-    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
-    named ``__sample__`` (recommended) ``sislw`` will interpret this dimension as samples,
-    and all other dimensions as dimensions of the observed data, looping over them to
-    calculate the sislw of each observation. If no ``__sample__`` dimension is present or
-    the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
+    """Standard importance sampling (SIS).
 
     Parameters
     ----------
@@ -31,6 +22,14 @@ def sislw(log_weights):
         Normalized log weights
     ess : DataArray or (...) ndarray
         Effective sample sizes
+
+    Notes
+    -----
+    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
+    named ``__sample__`` (recommended) ``sislw`` will interpret this dimension as samples,
+    and all other dimensions as dimensions of the observed data, looping over them to
+    calculate the sislw of each observation. If no ``__sample__`` dimension is present or
+    the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
 
     See Also
     --------
@@ -85,8 +84,7 @@ def sislw(log_weights):
 
 
 def _sislw(log_weights):
-    """
-    Standard importance sampling (SIS) for a 1D vector.
+    """Standard importance sampling (SIS) for a 1D vector.
 
     Parameters
     ----------

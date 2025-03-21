@@ -1,5 +1,7 @@
 """Tests for the LOO approximate posterior module."""
 
+import logging
+
 import numpy as np
 import pymc as pm
 import pytest
@@ -12,6 +14,8 @@ from ...wrapper.laplace import Laplace
 from ...wrapper.utils import compute_log_weights
 from ..helpers import assert_arrays_allclose
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture
 def simple_model_with_approximation(simple_model):
@@ -20,8 +24,8 @@ def simple_model_with_approximation(simple_model):
     wrapper = Laplace(model)
     result = wrapper.fit()
 
-    log_p = wrapper.compute_logp().flatten()
-    log_q = wrapper.compute_logq().flatten()
+    log_p = wrapper.compute_logp()
+    log_q = wrapper.compute_logq()
 
     return model, result.idata, log_p, log_q
 
@@ -32,7 +36,7 @@ def test_loo_approximate_posterior_basic(simple_model_with_approximation):
 
     result = loo_approximate_posterior(idata, log_p, log_q)
 
-    print(result)
+    logger.info(result)
 
     assert result is not None
     assert "elpd_loo" in result
@@ -56,8 +60,8 @@ def test_loo_approximate_posterior_scales(simple_model_with_approximation, scale
 
     standard_loo = loo(idata, scale=scale)
 
-    print(result)
-    print(standard_loo)
+    logger.info(result)
+    logger.info(standard_loo)
 
     assert np.sign(result["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
@@ -276,8 +280,8 @@ def test_loo_approximate_posterior_variational_with_laplace(simple_model):
 
     standard_loo = loo(idata, pointwise=True)
 
-    print(standard_loo)
-    print(loo_result_psis)
+    logger.info(standard_loo)
+    logger.info(loo_result_psis)
 
     assert np.sign(loo_result_psis["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
@@ -295,13 +299,17 @@ def test_loo_approximate_posterior_wells(wells_model):
     standard_loo = loo(idata, pointwise=True)
 
     if hasattr(standard_loo, "pareto_k"):
-        print(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
-        print(
+        logger.info(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
+        logger.info(
             f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
             f" {np.max(standard_loo.pareto_k)}"
         )
-        print(f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}")
-        print(f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}")
+        logger.info(
+            f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}"
+        )
+        logger.info(
+            f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}"
+        )
 
     loo_result_psis = loo_approximate_posterior(
         result.idata,
@@ -316,24 +324,24 @@ def test_loo_approximate_posterior_wells(wells_model):
     assert "pareto_k" in loo_result_psis
     assert np.isfinite(loo_result_psis["elpd_loo"])
 
-    print(standard_loo)
-    print(loo_result_psis)
+    logger.info(standard_loo)
+    logger.info(loo_result_psis)
 
     if hasattr(loo_result_psis, "pareto_k"):
-        print(f"Approximate LOO pareto_k shape: {loo_result_psis.pareto_k.shape}")
-        print(
+        logger.info(f"Approximate LOO pareto_k shape: {loo_result_psis.pareto_k.shape}")
+        logger.info(
             f"Approximate LOO pareto_k min: {np.min(loo_result_psis.pareto_k)}, max:"
             f" {np.max(loo_result_psis.pareto_k)}"
         )
-        print(
+        logger.info(
             f"Approximate LOO pareto_k > 0.7: {np.sum(loo_result_psis.pareto_k > 0.7)}"
         )
-        print(
+        logger.info(
             f"Approximate LOO pareto_k > 1.0: {np.sum(loo_result_psis.pareto_k > 1.0)}"
         )
 
         if np.sum(loo_result_psis.pareto_k > 1.0) > 0:
-            print(f"Bad pareto_k value: {loo_result_psis.pareto_k}")
+            logger.info(f"Bad pareto_k value: {loo_result_psis.pareto_k}")
 
     assert np.sign(loo_result_psis["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
@@ -372,13 +380,17 @@ def test_loo_approximate_posterior_wells_advi(wells_model):
     standard_loo = loo(idata, pointwise=True)
 
     if hasattr(standard_loo, "pareto_k"):
-        print(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
-        print(
+        logger.info(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
+        logger.info(
             f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
             f" {np.max(standard_loo.pareto_k)}"
         )
-        print(f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}")
-        print(f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}")
+        logger.info(
+            f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}"
+        )
+        logger.info(
+            f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}"
+        )
 
     loo_approx = loo_approximate_posterior(
         data=trace,
@@ -394,20 +406,24 @@ def test_loo_approximate_posterior_wells_advi(wells_model):
     assert "pareto_k" in loo_approx
     assert np.isfinite(loo_approx["elpd_loo"])
 
-    print(standard_loo)
-    print(loo_approx)
+    logger.info(standard_loo)
+    logger.info(loo_approx)
 
     if hasattr(loo_approx, "pareto_k"):
-        print(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
-        print(
+        logger.info(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
+        logger.info(
             f"Approximate LOO pareto_k min: {np.min(loo_approx.pareto_k)}, max:"
             f" {np.max(loo_approx.pareto_k)}"
         )
-        print(f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}")
-        print(f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}")
+        logger.info(
+            f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}"
+        )
+        logger.info(
+            f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}"
+        )
 
         if np.sum(loo_approx.pareto_k > 1.0) > 0:
-            print(f"Bad pareto_k value: {loo_approx.pareto_k}")
+            logger.info(f"Bad pareto_k value: {loo_approx.pareto_k}")
 
     assert np.sign(loo_approx["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
@@ -426,13 +442,17 @@ def test_loo_approximate_posterior_wells_full_rank_advi(wells_model):
     standard_loo = loo(idata, pointwise=True)
 
     if hasattr(standard_loo, "pareto_k"):
-        print(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
-        print(
+        logger.info(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
+        logger.info(
             f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
             f" {np.max(standard_loo.pareto_k)}"
         )
-        print(f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}")
-        print(f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}")
+        logger.info(
+            f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}"
+        )
+        logger.info(
+            f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}"
+        )
 
     loo_approx = loo_approximate_posterior(
         data=trace,
@@ -448,19 +468,23 @@ def test_loo_approximate_posterior_wells_full_rank_advi(wells_model):
     assert "pareto_k" in loo_approx
     assert np.isfinite(loo_approx["elpd_loo"])
 
-    print(standard_loo)
-    print(loo_approx)
+    logger.info(standard_loo)
+    logger.info(loo_approx)
 
     if hasattr(loo_approx, "pareto_k"):
-        print(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
-        print(
+        logger.info(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
+        logger.info(
             f"Approximate LOO pareto_k min: {np.min(loo_approx.pareto_k)}, max:"
             f" {np.max(loo_approx.pareto_k)}"
         )
-        print(f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}")
-        print(f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}")
+        logger.info(
+            f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}"
+        )
+        logger.info(
+            f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}"
+        )
 
         if np.sum(loo_approx.pareto_k > 1.0) > 0:
-            print(f"Bad pareto_k value: {loo_approx.pareto_k}")
+            logger.info(f"Bad pareto_k value: {loo_approx.pareto_k}")
 
     assert np.sign(loo_approx["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])

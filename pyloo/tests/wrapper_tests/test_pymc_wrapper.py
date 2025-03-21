@@ -19,6 +19,8 @@ from ..helpers import (
     assert_shape_equal,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def test_wrapper_initialization(simple_model):
     """Test wrapper initialization and validation."""
@@ -495,19 +497,19 @@ def test_parameter_transformations(simple_model, caplog):
     posterior_sigma = idata.posterior["sigma"].values
     unconstrained_sigma = unconstrained["sigma"].values
 
-    print("\nTransformation visualization for sigma parameter:")
-    print("Chain 0, Draws 0-4:")
-    print(
+    logger.info("\nTransformation visualization for sigma parameter:")
+    logger.info("Chain 0, Draws 0-4:")
+    logger.info(
         f"{'Original posterior':20} | {'Unconstrained space':20} |"
         f" {'Log of posterior':20}"
     )
-    print("-" * 65)
+    logger.info("-" * 65)
 
     for i in range(5):
         orig = posterior_sigma[0, i]
         uncon = unconstrained_sigma[0, i]
         log_orig = np.log(orig)
-        print(f"{orig:20.6f} | {uncon:20.6f} | {log_orig:20.6f}")
+        logger.info(f"{orig:20.6f} | {uncon:20.6f} | {log_orig:20.6f}")
 
     sigma_var = None
     for var in model.free_RVs:
@@ -518,36 +520,38 @@ def test_parameter_transformations(simple_model, caplog):
     if sigma_var is not None:
         transform = model.rvs_to_transforms.get(sigma_var)
         if transform is not None:
-            print("\nVerifying PyMC's direct transformation vs wrapper:")
+            logger.info("\nVerifying PyMC's direct transformation vs wrapper:")
             sample_values = posterior_sigma[0, :5]
 
             try:
                 direct_transform = transform.backward(sample_values).eval()
-                print("\nDirect transform application:")
-                print(
+                logger.info("\nDirect transform application:")
+                logger.info(
                     f"{'Original sigma':20} | {'Direct transform':20} |"
                     f" {'Wrapper transform':20}"
                 )
-                print("-" * 65)
+                logger.info("-" * 65)
 
                 for i in range(5):
                     orig = sample_values[i]
                     direct = direct_transform[i]
                     wrapper_result = unconstrained_sigma[0, i]
-                    print(f"{orig:20.6f} | {direct:20.6f} | {wrapper_result:20.6f}")
+                    logger.info(
+                        f"{orig:20.6f} | {direct:20.6f} | {wrapper_result:20.6f}"
+                    )
 
                 direct_all = transform.backward(posterior_sigma).eval()
                 transform_match = np.allclose(
                     direct_all, unconstrained_sigma, rtol=1e-5
                 )
-                print(
+                logger.info(
                     f"\nDirect transform matches wrapper transform: {transform_match}"
                 )
 
             except Exception as e:
-                print(f"Couldn't apply transform directly: {e}")
+                logger.info(f"Couldn't apply transform directly: {e}")
 
-            print(
+            logger.info(
                 f"\nTransform details:\nType: {type(transform)}\nAttributes:"
                 f" {dir(transform)}"
             )
@@ -555,14 +559,14 @@ def test_parameter_transformations(simple_model, caplog):
     constrained = wrapper.constrain_parameters(unconstrained)
     assert set(constrained.keys()) == {"alpha", "beta", "sigma"}
 
-    print("\nReconstituted values:")
-    print(f"{'Original posterior':20} | {'Recalculated constrained':20}")
-    print("-" * 45)
+    logger.info("\nReconstituted values:")
+    logger.info(f"{'Original posterior':20} | {'Recalculated constrained':20}")
+    logger.info("-" * 45)
 
     for i in range(5):
         orig = posterior_sigma[0, i]
         recon = constrained["sigma"].values[0, i]
-        print(f"{orig:20.6f} | {recon:20.6f}")
+        logger.info(f"{orig:20.6f} | {recon:20.6f}")
 
     assert_shape_equal(constrained["alpha"], unconstrained["alpha"])
     assert_shape_equal(constrained["beta"], unconstrained["beta"])
@@ -652,19 +656,19 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
     posterior_sigma_y = idata.posterior["sigma_y"].values
     unconstrained_sigma_y = unconstrained["sigma_y"].values
 
-    print("\nTransformation visualization for sigma_y parameter:")
-    print("Chain 0, Draws 0-4:")
-    print(
+    logger.info("\nTransformation visualization for sigma_y parameter:")
+    logger.info("Chain 0, Draws 0-4:")
+    logger.info(
         f"{'Original posterior':20} | {'Unconstrained space':20} |"
         f" {'Log of posterior':20}"
     )
-    print("-" * 65)
+    logger.info("-" * 65)
 
     for i in range(5):
         orig = posterior_sigma_y[0, i]
         uncon = unconstrained_sigma_y[0, i]
         log_orig = np.log(orig)
-        print(f"{orig:20.6f} | {uncon:20.6f} | {log_orig:20.6f}")
+        logger.info(f"{orig:20.6f} | {uncon:20.6f} | {log_orig:20.6f}")
 
     sigma_y_var = None
     for var in model.free_RVs:
@@ -675,36 +679,38 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
     if sigma_y_var is not None:
         transform = model.rvs_to_transforms.get(sigma_y_var)
         if transform is not None:
-            print("\nVerifying PyMC's direct transformation vs wrapper:")
+            logger.info("\nVerifying PyMC's direct transformation vs wrapper:")
             sample_values = posterior_sigma_y[0, :5]
 
             try:
                 direct_transform = transform.backward(sample_values).eval()
-                print("\nDirect transform application:")
-                print(
+                logger.info("\nDirect transform application:")
+                logger.info(
                     f"{'Original sigma_y':20} | {'Direct transform':20} |"
                     f" {'Wrapper transform':20}"
                 )
-                print("-" * 65)
+                logger.info("-" * 65)
 
                 for i in range(5):
                     orig = sample_values[i]
                     direct = direct_transform[i]
                     wrapper_result = unconstrained_sigma_y[0, i]
-                    print(f"{orig:20.6f} | {direct:20.6f} | {wrapper_result:20.6f}")
+                    logger.info(
+                        f"{orig:20.6f} | {direct:20.6f} | {wrapper_result:20.6f}"
+                    )
 
                 direct_all = transform.backward(posterior_sigma_y).eval()
                 transform_match = np.allclose(
                     direct_all, unconstrained_sigma_y, rtol=1e-5
                 )
-                print(
+                logger.info(
                     f"\nDirect transform matches wrapper transform: {transform_match}"
                 )
 
             except Exception as e:
-                print(f"Couldn't apply transform directly: {e}")
+                logger.info(f"Couldn't apply transform directly: {e}")
 
-            print(
+            logger.info(
                 f"\nTransform details:\nType: {type(transform)}\nAttributes:"
                 f" {dir(transform)}"
             )
@@ -713,14 +719,14 @@ def test_hierarchical_parameter_transformations(hierarchical_model):
 
     assert set(constrained.keys()) == expected_params
 
-    print("\nReconstituted values:")
-    print(f"{'Original posterior':20} | {'Recalculated constrained':20}")
-    print("-" * 45)
+    logger.info("\nReconstituted values:")
+    logger.info(f"{'Original posterior':20} | {'Recalculated constrained':20}")
+    logger.info("-" * 45)
 
     for i in range(5):
         orig = posterior_sigma_y[0, i]
         recon = constrained["sigma_y"].values[0, i]
-        print(f"{orig:20.6f} | {recon:20.6f}")
+        logger.info(f"{orig:20.6f} | {recon:20.6f}")
 
     for param in expected_params:
         if param in idata.posterior:

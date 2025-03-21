@@ -9,16 +9,7 @@ from .utils import _logsumexp, wrap_xarray_ufunc
 
 
 def tislw(log_weights):
-    """
-    Truncated importance sampling (TIS).
-
-    Notes
-    -----
-    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
-    named ``__sample__`` (recommended) ``tislw`` will interpret this dimension as samples,
-    and all other dimensions as dimensions of the observed data, looping over them to
-    calculate the tislw of each observation. If no ``__sample__`` dimension is present or
-    the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
+    """Truncated importance sampling (TIS).
 
     Parameters
     ----------
@@ -31,6 +22,14 @@ def tislw(log_weights):
         Truncated and normalized log weights
     ess : DataArray or (...) ndarray
         Effective sample sizes
+
+    Notes
+    -----
+    If the ``log_weights`` input is an :class:`~xarray.DataArray` with a dimension
+    named ``__sample__`` (recommended) ``tislw`` will interpret this dimension as samples,
+    and all other dimensions as dimensions of the observed data, looping over them to
+    calculate the tislw of each observation. If no ``__sample__`` dimension is present or
+    the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
 
     References
     ----------
@@ -92,8 +91,7 @@ def tislw(log_weights):
 
 
 def _tislw(log_weights, n_samples):
-    """
-    Truncated importance sampling (TIS) for a 1D vector.
+    """Truncated importance sampling (TIS) for a 1D vector.
 
     Parameters
     ----------

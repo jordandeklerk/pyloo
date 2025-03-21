@@ -122,8 +122,10 @@ def loo_compare(
 
         import arviz as az
         import pyloo as pl
+
         data1 = az.load_arviz_data("centered_eight")
         data2 = az.load_arviz_data("non_centered_eight")
+
         compare_dict = {"centered": data1, "non_centered": data2}
         pl.loo_compare(compare_dict)
 
@@ -164,15 +166,6 @@ def loo_compare(
 
         compare_dict = {"informative_priors": wrapper1, "weak_priors": wrapper2}
         pl.loo_compare(compare_dict, ic="kfold", K=5)
-
-    See Also
-    --------
-    loo : Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
-    loo_subsample : Compute approximate LOO-CV using subsampling.
-    waic : Compute the widely applicable information criterion (WAIC).
-    kfold : Compute K-fold cross-validation for PyMC models.
-    loo_moment_match : Moment matching for problematic observations.
-    reloo : Compute exact LOO-CV for PyMC models.
     """
     if not isinstance(compare_dict, dict):
         raise TypeError("compare_dict must be a dictionary")

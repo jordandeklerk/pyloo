@@ -85,24 +85,20 @@ Standard PSIS-LOO-CV
 
 .. code-block:: text
 
-   Computed from 4000 samples using all 8 observations.
+   Computed from 2000 posterior samples and 8 observations log-likelihood matrix.
 
-              Estimate   SE
-   elpd_loo   -11.2     2.1
-   p_loo       3.1      -
-   looic       22.4     4.2
+          Estimate       SE
+   elpd_loo   -30.78      1.35
+   p_loo       0.95        0.48
+   looic      61.56       2.69
 
    All Pareto k estimates are good (k < 0.7).
    See help('pareto-k-diagnostic') for details.
 
-   Pareto k diagnostic values:
-                             Count    Pct.
-   (-Inf, 0.70)                 8   100.0
-   [0.70, 1)                    0     0.0
-   [1, Inf)                     0     0.0
-
 Model Comparison
 ~~~~~~~~~~~~~~
+
+Compare multiple models with `compare` using stacking weights or other methods:
 
 .. code-block:: python
 
@@ -125,9 +121,9 @@ Model Comparison
 
    Model comparison using LOO (scale: log)
 
-                   elpd_loo   se    p_loo   weight    elpd_diff    dse
-   non_centered     -11.2    2.1    3.1     0.62        0.0       0.0
-   centered         -11.5    2.3    3.3     0.38       -0.3       0.4
+                 elpd_loo   se      p_loo   weight    elpd_diff    dse     warning
+   non_centered     -30.72   1.33     0.90    1.00e+00     0.0      0.00      True
+   centered         -30.78   1.35     0.95    2.50e-16    -0.06     0.06      False
 
    All Pareto k estimates are good (k < 0.7)
 
@@ -139,7 +135,7 @@ We provide several advanced features beyond the core capabilities for PyMC model
 Reloo
 ^^^^^
 
-For observations where PSIS-LOO approximation fails (indicated by large Pareto k values), pyloo can perform exact LOO-CV by refitting the model without those observations:
+For observations where PSIS-LOO approximation fails, we can perform exact LOO-CV with `reloo`:
 
 .. code-block:: python
 
@@ -175,7 +171,7 @@ For observations where PSIS-LOO approximation fails (indicated by large Pareto k
 K-fold Cross-Validation
 ^^^^^^^^^^^^^^^^^^^^^^
 
-When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
+When you have a moderate amount of data or when individual observations have strong influence on the model, K-fold cross-validation with `loo_kfold` can provide a more stable estimate of out-of-sample predictive performance than LOO-CV:
 
 .. code-block:: python
 
@@ -258,7 +254,7 @@ You can also save the fitted models for each fold for further analysis:
 Moment Matching
 ^^^^^^^^^^^^^
 
-When PSIS-LOO approximation fails, moment matching can improve the reliability of LOO-CV estimates without the computational cost of refitting the model. Moment matching transforms posterior draws to better approximate leave-one-out posteriors:
+When PSIS-LOO approximation fails, moment matching with `loo_moment_match` can improve the reliability of LOO-CV estimates without the computational cost of refitting the model:
 
 .. code-block:: python
 
@@ -322,7 +318,7 @@ Alternatively, you can compute LOO-CV with moment matching by setting ``moment_m
 Posterior Approximations
 ^^^^^^^^^^^^^^^^^^^^^^
 
-When working with posterior approximations like the Laplace approximation, you can use ``loo_approximate_posterior`` to compute LOO-CV. This is particularly useful for variational inference or other approximate inference methods:
+When working with posterior approximations, we can use ``loo_approximate_posterior`` to compute LOO-CV:
 
 .. code-block:: python
 
@@ -365,7 +361,7 @@ When working with posterior approximations like the Laplace approximation, you c
        method="psis"
    )
 
-For large datasets, you can combine posterior approximations with subsampling for even more efficient computation:
+For large datasets, we can combine posterior approximations with sub-sampling for even more efficient computation:
 
 .. code-block:: python
 

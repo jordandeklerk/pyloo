@@ -31,20 +31,17 @@ def compute_importance_weights(
     method: ISMethod | str = ISMethod.PSIS,
     reff: float = 1.0,
 ) -> tuple[xr.DataArray | np.ndarray, xr.DataArray | np.ndarray]:
-    """
-    Unified importance sampling computation that supports multiple methods.
+    """Unified importance sampling computation that supports multiple methods.
 
     Parameters
     ----------
     log_weights : DataArray or (..., N) array-like
         Array of size (n_observations, n_samples)
-    method : {'psis', 'sis', 'tis', 'psir', 'identity'}, default 'psis'
+    method : {'psis', 'sis', 'tis'}, default 'psis'
         The importance sampling method to use:
         - 'psis': Pareto Smoothed Importance Sampling
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
-        - 'psir': Pareto Smoothed Importance Resampling (for variational inference)
-        - 'identity': Apply log importance weights directly (for variational inference)
     reff : float, default 1.0
         Relative MCMC efficiency (only used for PSIS method)
 
@@ -54,9 +51,8 @@ def compute_importance_weights(
         Processed log weights (smoothed/truncated/normalized depending on method)
     diagnostic : DataArray or (...) ndarray
         Method-specific diagnostic value:
-        - PSIS/PSIR: Pareto shape parameter (k)
+        - PSIS: Pareto shape parameter (k)
         - SIS/TIS: Effective sample size (ESS)
-        - IDENTITY: None
 
     Notes
     -----
@@ -66,16 +62,11 @@ def compute_importance_weights(
     calculate the importance weights for each observation. If no ``__sample__`` dimension is
     present or the input is a numpy array, the last dimension will be interpreted as ``__sample__``.
 
-    For variational inference models, use the variational=True parameter and provide the
-    required samples, logP, logQ, and num_draws parameters. This will use the vi_psis_sampling
-    function which is specifically designed for variational inference.
-
     See Also
     --------
     psislw : Pareto Smoothed Importance Sampling (original implementation)
     sislw : Standard Importance Sampling (original implementation)
     tislw : Truncated Importance Sampling (original implementation)
-    vi_psis_sampling : Importance sampling for variational inference
 
     Examples
     --------
@@ -99,6 +90,13 @@ def compute_importance_weights(
         # Using TIS
         lw_tis, ess = pl.compute_importance_weights(-log_likelihood, method="tis")
     """
+    if isinstance(log_weights, xr.DataArray):
+        if "__sample__" not in log_weights.dims:
+            if "chain" in log_weights.dims and "draw" in log_weights.dims:
+                log_weights = log_weights.stack(__sample__=("chain", "draw"))
+            else:
+                raise ValueError("log_weights must have a __sample__ dimension")
+
     if isinstance(method, str):
         try:
             method = ISMethod(method.lower())

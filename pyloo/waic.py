@@ -58,11 +58,11 @@ def waic(
 
     See Also
     --------
-    loo : Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
-    loo_subsample : Compute approximate LOO-CV using subsampling.
-    loo_kfold : K-fold cross-validation.
-    loo_moment_match : Moment matching for problematic observations
-    reloo : Exact LOO-CV computation for PyMC models
+    loo: Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
+    loo_subsample: Compute approximate LOO-CV using subsampling.
+    loo_approximate_posterior: Compute approximate LOO-CV using posterior approximation.
+    loo_kfold: K-fold cross-validation.
+    loo_moment_match: Moment matching for problematic observations
 
     Examples
     --------

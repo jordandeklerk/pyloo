@@ -1,5 +1,6 @@
 """Tests for the LOO-CV subsampling module."""
 
+import logging
 import time
 from copy import deepcopy
 
@@ -21,6 +22,8 @@ from ..helpers import (
     assert_arrays_allclose,
     create_large_model,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -322,9 +325,9 @@ def test_loo_subsample_with_posterior_correction(simple_model):
     assert_arrays_allclose(result.log_p, log_p)
     assert_arrays_allclose(result.log_q, log_q)
 
-    print(result)
-    print(loo_approx)
-    print(reg_loo_subsample)
+    logger.info(result)
+    logger.info(loo_approx)
+    logger.info(reg_loo_subsample)
 
 
 def test_update_subsample_with_posterior_correction(simple_model):
@@ -359,5 +362,5 @@ def test_update_subsample_with_posterior_correction(simple_model):
 
     assert updated_result["subsampling_SE"] <= initial_result["subsampling_SE"]
 
-    print(initial_result)
-    print(updated_result)
+    logger.info(initial_result)
+    logger.info(updated_result)
