@@ -128,16 +128,27 @@ def loo_predictive_metric(
         idata = az.load_arviz_data("centered_eight")
         y_obs = idata.observed_data.obs.values
 
-        ess_values = az.ess(idata, var_names=["obs"], method="mean")
-        r_eff = ess_values.obs.mean().item() / (len(idata.chain) * len(idata.draw))
+        log_likelihood = idata.log_likelihood.stack(__sample__=("chain", "draw"))
+        shape = log_likelihood.__sample__.shape
+        n_samples = shape[-1]
 
-        result_with_reff = pl.loo_predictive_metric(
+        posterior = idata.posterior
+        n_chains = len(posterior.chain)
+        n_draws = len(posterior.draw)
+
+        ess_p = az.ess(posterior, method="mean")
+        reff = (
+            np.hstack([ess_p[v].values.flatten() for v in ess_p.data_vars]).mean()
+            / n_samples
+        )
+
+        result_with_reff = loo_predictive_metric(
             data=idata,
             y=y_obs,
             var_name="obs",
             log_lik_var_name="obs",
             metric="mae",
-            r_eff=r_eff
+            r_eff=reff
         )
     """
     y = np.asarray(y).flatten()
