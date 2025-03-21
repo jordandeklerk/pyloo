@@ -26,8 +26,8 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 ### Core
 
-- **LOO-CV Implementation**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
-- **WAIC Implementation**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
+- **LOO-CV**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
+- **WAIC**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
 - **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy.
 - **Model Comparison**: Compare models based on their expected log pointwise predictive density (ELPD).
 
