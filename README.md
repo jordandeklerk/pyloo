@@ -40,7 +40,7 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 ## Quickstart
 
-### PSIS-LOO-CV Example
+### PSIS-LOO
 
 ```python
 import pyloo as pl
