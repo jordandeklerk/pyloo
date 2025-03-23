@@ -10,6 +10,7 @@ from arviz import InferenceData
 
 from ...loo_score import (
     EXX_loo_compute,
+    LooScoreResult,
     _crps,
     _get_data,
     loo_score,
@@ -35,12 +36,10 @@ def test_loo_score_basic(prepare_inference_data_for_crps):
     logging.info(result)
 
     assert result is not None
-    assert "loo_crps" in result
-    assert "se" in result
-    assert result["loo_crps"] < 0
-    assert result["se"] > 0
-    assert result["n_data_points"] == 8
-    assert result["n_samples"] > 0
+    assert isinstance(result, LooScoreResult)
+    assert hasattr(result, "estimates")
+    assert hasattr(result, "pointwise")
+    assert len(result.pointwise) == 8
 
 
 def test_loo_score_scaled(prepare_inference_data_for_crps):
@@ -61,10 +60,10 @@ def test_loo_score_scaled(prepare_inference_data_for_crps):
     logging.info(result)
 
     assert result is not None
-    assert "loo_scrps" in result
-    assert "se" in result
-    assert result["n_data_points"] == 8
-    assert result["n_samples"] > 0
+    assert isinstance(result, LooScoreResult)
+    assert hasattr(result, "estimates")
+    assert hasattr(result, "pointwise")
+    assert len(result.pointwise) == 8
 
 
 def test_loo_score_pointwise(prepare_inference_data_for_crps):
@@ -83,11 +82,13 @@ def test_loo_score_pointwise(prepare_inference_data_for_crps):
     )
 
     assert result is not None
-    assert "loo_crps_i" in result
-    assert "pareto_k" in result
-    assert "good_k" in result
-    assert result["loo_crps_i"].shape == (8,)
-    assert result["pareto_k"].shape == (8,)
+    assert isinstance(result, LooScoreResult)
+    assert hasattr(result, "estimates")
+    assert hasattr(result, "pointwise")
+    assert hasattr(result, "pareto_k")
+    assert hasattr(result, "good_k")
+    assert len(result.pointwise) == 8
+    assert len(result.pareto_k) == 8
 
 
 def test_loo_score_with_reff(prepare_inference_data_for_crps):
@@ -106,8 +107,9 @@ def test_loo_score_with_reff(prepare_inference_data_for_crps):
     )
 
     assert result is not None
-    assert "loo_crps" in result
-    assert "se" in result
+    assert isinstance(result, LooScoreResult)
+    assert hasattr(result, "estimates")
+    assert hasattr(result, "pointwise")
 
 
 def test_loo_score_permutations(prepare_inference_data_for_crps):
@@ -126,8 +128,9 @@ def test_loo_score_permutations(prepare_inference_data_for_crps):
     )
 
     assert result is not None
-    assert "loo_crps" in result
-    assert "se" in result
+    assert isinstance(result, LooScoreResult)
+    assert hasattr(result, "estimates")
+    assert hasattr(result, "pointwise")
 
 
 def test_loo_score_missing_posterior(prepare_inference_data_for_crps):
@@ -164,7 +167,9 @@ def test_loo_score_missing_posterior(prepare_inference_data_for_crps):
     )
 
     assert result is not None
-    assert "loo_crps" in result
+    assert isinstance(result, LooScoreResult)
+    assert hasattr(result, "estimates")
+    assert hasattr(result, "pointwise")
 
 
 def test_loo_score_missing_groups(centered_eight):
@@ -272,8 +277,8 @@ def test_loo_score_warning_high_k(prepare_inference_data_for_crps):
         assert any(
             "shape parameter of Pareto distribution" in str(msg.message) for msg in w
         )
-        assert result["warning"] is True
-        assert np.any(result["pareto_k"] > result["good_k"])
+        assert result.warning is True
+        assert np.any(result.pareto_k > result.good_k)
 
 
 def test_validate_crps_input():
@@ -531,8 +536,9 @@ def test_loo_score_nan_handling(prepare_inference_data_for_crps):
 
         assert any("NaN values detected" in str(msg.message) for msg in w)
         assert result is not None
-        assert "loo_crps" in result
-        assert not np.isnan(result["loo_crps"])
+        assert isinstance(result, LooScoreResult)
+        assert hasattr(result, "estimates")
+        assert not np.isnan(result.estimates["Estimate"])
 
 
 def test_loo_score_inf_handling(prepare_inference_data_for_crps):
@@ -564,8 +570,9 @@ def test_loo_score_inf_handling(prepare_inference_data_for_crps):
 
         assert any("Infinite values detected" in str(msg.message) for msg in w)
         assert result is not None
-        assert "loo_crps" in result
-        assert not np.isinf(result["loo_crps"])
+        assert isinstance(result, LooScoreResult)
+        assert hasattr(result, "estimates")
+        assert not np.isinf(result.estimates["Estimate"])
 
 
 def test_loo_score_with_var_name(prepare_inference_data_for_crps):
@@ -605,5 +612,6 @@ def test_loo_score_with_var_name(prepare_inference_data_for_crps):
     )
 
     assert result is not None
-    assert "loo_crps" in result
-    assert "se" in result
+    assert isinstance(result, LooScoreResult)
+    assert hasattr(result, "estimates")
+    assert hasattr(result, "pointwise")

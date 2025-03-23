@@ -1,6 +1,7 @@
 """Leave-one-out cross-validation score functions with importance sampling."""
 
 import warnings
+from dataclasses import dataclass
 from typing import Any, Tuple
 
 import numpy as np
@@ -8,12 +9,40 @@ import xarray as xr
 from arviz.data import InferenceData
 
 from .e_loo import e_loo
-from .elpd import ELPDData
 from .psis import psislw
 from .rcparams import rcParams
 from .utils import get_log_likelihood, to_inference_data
 
-__all__ = ["loo_score"]
+__all__ = ["loo_score", "LooScoreResult"]
+
+
+@dataclass
+class LooScoreResult:
+    """Container for results from LOO-CRPS and LOO-SCRPS calculations.
+
+    Attributes
+    ----------
+    estimates : np.ndarray
+        A numpy array with named fields 'Estimate' and 'SE' containing the
+        mean score and its standard error.
+    pointwise : np.ndarray
+        A numpy array with the pointwise score values.
+    pareto_k : xr.DataArray, optional
+        Pareto shape parameter diagnostic values. Only present if pointwise=True
+        was specified in the loo_score function call.
+    good_k : float, optional
+        Threshold for good Pareto k values. Only present if pointwise=True
+        was specified in the loo_score function call.
+    warning : bool, optional
+        Whether any Pareto k values exceed good_k. Only present if pointwise=True
+        was specified in the loo_score function call.
+    """
+
+    estimates: np.ndarray
+    pointwise: np.ndarray
+    pareto_k: xr.DataArray | None = None
+    good_k: float | None = None
+    warning: bool | None = None
 
 
 def loo_score(
@@ -30,7 +59,7 @@ def loo_score(
     reff: float | None = None,
     scale: bool = False,
     **kwargs,
-) -> ELPDData:
+) -> LooScoreResult:
     r"""Compute the leave-one-out continuously ranked probability score (LOO-CRPS) or
     leave-one-out scaled continuously ranked probability score (LOO-SCRPS).
 
@@ -77,11 +106,14 @@ def loo_score(
 
     Returns
     -------
-    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
-    loo_crps or loo_scrps : approximated leave-one-out (scaled) continuously ranked probability score
-    se : standard error of the score
-    loo_crps_i or loo_scrps_i : :class:`~xarray.DataArray` with the pointwise values, only if pointwise=True
-    pareto_k : Pareto shape parameter diagnostic values, only if pointwise=True
+    LooScoreResult
+        Container with results from LOO-CRPS or LOO-SCRPS calculations:
+        - estimates: A numpy array with named fields 'Estimate' and 'SE' containing the
+          mean score and its standard error.
+        - pointwise: A numpy array with the pointwise score values.
+        - pareto_k: (Only if pointwise=True) Pareto shape parameter diagnostic values.
+        - good_k: (Only if pointwise=True) Threshold for good Pareto k values.
+        - warning: (Only if pointwise=True) Whether any Pareto k values exceed good_k.
 
     Notes
     -----
@@ -201,40 +233,25 @@ def loo_score(
     ).value
 
     score_pw = _crps(EXX, EXy, scale=scale)
-    metric = "loo_scrps" if scale else "loo_crps"
-
-    result_data = []
-    result_index = []
 
     score_value = float(score_pw.mean())
     score_se = float(score_pw.std() / np.sqrt(score_pw.size))
 
-    result_data = [
-        score_value,
-        score_se,
-        x_data.sizes["__sample__"],
-        score_pw.size,
-        False,
-    ]
-    result_index = [
-        metric,
-        "se",
-        "n_samples",
-        "n_data_points",
-        "warning",
-    ]
+    estimates = np.array([score_value, score_se])
+    estimates.setflags(write=True)
+    estimates.dtype = np.dtype([("Estimate", float), ("SE", float)])
+
+    result = LooScoreResult(
+        estimates=estimates,
+        pointwise=score_pw.values,
+    )
 
     if pointwise:
-        result_data.append(score_pw.rename(f"{metric}_i"))
-        result_index.append(f"{metric}_i")
-
-        result_data.append(pareto_k)
-        result_index.append("pareto_k")
-
         n_samples = x_data.sizes["__sample__"]
         good_k = min(1 - 1 / np.log10(n_samples), 0.7)
-        result_data.append(good_k)
-        result_index.append("good_k")
+
+        result.pareto_k = pareto_k
+        result.good_k = good_k
 
         if np.any(pareto_k > good_k):
             n_high_k = np.sum(pareto_k > good_k)
@@ -246,9 +263,11 @@ def loo_score(
                 UserWarning,
                 stacklevel=2,
             )
-            result_data[4] = True
+            result.warning = True
+        else:
+            result.warning = False
 
-    return ELPDData(data=result_data, index=result_index)
+    return result
 
 
 def EXX_loo_compute(
