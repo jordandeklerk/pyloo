@@ -9,12 +9,12 @@ import xarray as xr
 from arviz import InferenceData
 
 from ...loo_score import (
-    EXX_loo_compute,
     LooScoreResult,
+    _compute_expected_diff_loo,
     _crps,
     _get_data,
+    _validate_crps_input,
     loo_score,
-    validate_crps_input,
 )
 from ..helpers import assert_arrays_allclose, assert_finite, assert_positive
 
@@ -346,7 +346,7 @@ def test_validate_crps_input():
         coords={"obs_id": range(n_obs)},
     )
 
-    validate_crps_input(x, x2, y, log_lik)
+    _validate_crps_input(x, x2, y, log_lik)
 
     x2_wrong_dims = xr.DataArray(
         np.random.randn(n_samples, n_obs),
@@ -355,7 +355,7 @@ def test_validate_crps_input():
     )
 
     with pytest.raises(ValueError, match="x and x2 must have the same dimensions"):
-        validate_crps_input(x, x2_wrong_dims, y, log_lik)
+        _validate_crps_input(x, x2_wrong_dims, y, log_lik)
 
     x2_wrong_shape = xr.DataArray(
         np.random.randn(n_samples, n_obs - 1),
@@ -364,7 +364,7 @@ def test_validate_crps_input():
     )
 
     with pytest.raises(ValueError, match="x and x2 must have the same shape"):
-        validate_crps_input(x, x2_wrong_shape, y, log_lik)
+        _validate_crps_input(x, x2_wrong_shape, y, log_lik)
 
     y_wrong_dims = xr.DataArray(
         np.random.randn(n_obs),
@@ -373,7 +373,7 @@ def test_validate_crps_input():
     )
 
     with pytest.raises(ValueError, match="y dimensions .* are not compatible"):
-        validate_crps_input(x, x2, y_wrong_dims, log_lik)
+        _validate_crps_input(x, x2, y_wrong_dims, log_lik)
 
     log_lik_wrong_dims = xr.DataArray(
         np.random.randn(n_samples, n_obs),
@@ -382,7 +382,7 @@ def test_validate_crps_input():
     )
 
     with pytest.raises(ValueError, match="log_lik dimensions .* are not compatible"):
-        validate_crps_input(x, x2, y, log_lik_wrong_dims)
+        _validate_crps_input(x, x2, y, log_lik_wrong_dims)
 
     log_lik_no_sample = xr.DataArray(
         np.random.randn(n_obs),
@@ -391,7 +391,7 @@ def test_validate_crps_input():
     )
 
     with pytest.raises(ValueError, match="log_lik must have '__sample__' dimension"):
-        validate_crps_input(x, x2, y, log_lik_no_sample)
+        _validate_crps_input(x, x2, y, log_lik_no_sample)
 
 
 def test_get_data(prepare_inference_data_for_crps):
@@ -487,15 +487,15 @@ def test_get_data(prepare_inference_data_for_crps):
         )
 
 
-def test_EXX_loo_compute(prepare_inference_data_for_crps):
-    """Test EXX_loo_compute function with real model data."""
+def test_compute_expected_diff_loo(prepare_inference_data_for_crps):
+    """Test _compute_expected_diff_loo function with real model data."""
     idata = prepare_inference_data_for_crps
 
     x_data = idata.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     x2_data = idata.posterior_predictive.obs2.stack(__sample__=("chain", "draw"))
     log_lik = idata.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
-    result = EXX_loo_compute(x_data, x2_data, log_lik, r_eff=0.8)
+    result = _compute_expected_diff_loo(x_data, x2_data, log_lik, r_eff=0.8)
 
     assert isinstance(result, xr.DataArray)
     assert result.dims == ("school",)

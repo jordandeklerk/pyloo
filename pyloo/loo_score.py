@@ -195,7 +195,7 @@ def loo_score(
         log_likelihood=log_likelihood,
     )
 
-    validate_crps_input(x_data, x2_data, y_data, log_likelihood)
+    _validate_crps_input(x_data, x2_data, y_data, log_likelihood)
 
     if reff is None:
         if not hasattr(inference_data, "posterior"):
@@ -215,7 +215,9 @@ def loo_score(
             )
 
     repeats = [
-        EXX_loo_compute(x_data, x2_data, log_likelihood, r_eff=reff, **kwargs)
+        _compute_expected_diff_loo(
+            x_data, x2_data, log_likelihood, r_eff=reff, **kwargs
+        )
         for _ in range(permutations)
     ]
     EXX = sum(repeats) / permutations
@@ -270,7 +272,7 @@ def loo_score(
     return result
 
 
-def EXX_loo_compute(
+def _compute_expected_diff_loo(
     x: xr.DataArray,
     x2: xr.DataArray,
     log_lik: xr.DataArray,
@@ -342,7 +344,7 @@ def _crps(EXX: xr.DataArray, EXy: xr.DataArray, scale: bool = False) -> xr.DataA
         return 0.5 * EXX - EXy
 
 
-def validate_crps_input(
+def _validate_crps_input(
     x: xr.DataArray, x2: xr.DataArray, y: xr.DataArray, log_lik: xr.DataArray = None
 ) -> None:
     """Validate input of CRPS functions.
