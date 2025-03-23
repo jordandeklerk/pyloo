@@ -139,23 +139,6 @@ def test_loo_i_nan_handling(centered_eight):
         assert not np.isnan(result["elpd_loo"])
 
 
-def test_loo_i_inf_handling(centered_eight):
-    """Test LOO-i computation with infinite values in log-likelihood."""
-    centered_eight = deepcopy(centered_eight)
-    log_likelihood = centered_eight.log_likelihood["obs"]
-    log_like_values = log_likelihood.values.copy()
-    log_like_values[0, 0, 0] = np.inf
-
-    centered_eight.log_likelihood["obs"] = xr.DataArray(
-        log_like_values, dims=log_likelihood.dims, coords=log_likelihood.coords
-    )
-
-    with pytest.warns(UserWarning):
-        result = loo_i(0, centered_eight)
-        assert result is not None
-        assert not np.isinf(result["elpd_loo"])
-
-
 def test_loo_i_multiple_groups(centered_eight):
     """Test LOO-i computation with multiple log_likelihood groups."""
     centered_eight = deepcopy(centered_eight)

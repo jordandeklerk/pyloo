@@ -107,7 +107,6 @@ def loo_i(
     n_samples = shape[-1]
     n_data_points = 1  # Always 1 for loo_i since we're processing a single observation
 
-    # Extract the i-th observation's log likelihood
     if isinstance(i, (list, tuple, np.ndarray)):
         raise ValueError("loo_i only accepts a single integer index")
     try:
@@ -123,11 +122,9 @@ def loo_i(
         )
 
     try:
-        # Handle different possible shapes of log_likelihood
         if len(shape) == 2:  # (observation, sample)
             log_likelihood_i = log_likelihood[i : i + 1]
-        else:  # Handle multi-dimensional cases
-            # Convert flat index to multi-dimensional index
+        else:
             idx = np.unravel_index(i, shape[:-1])
             log_likelihood_i = log_likelihood.isel(
                 {dim: idx[n] for n, dim in enumerate(log_likelihood.dims[:-1])}
@@ -165,7 +162,6 @@ def loo_i(
             )
 
     has_nan = np.any(np.isnan(log_likelihood_i.values))
-    has_inf = np.any(np.isinf(log_likelihood_i.values))
 
     if has_nan:
         warnings.warn(
@@ -175,18 +171,6 @@ def loo_i(
             stacklevel=2,
         )
         log_likelihood_i = log_likelihood_i.where(~np.isnan(log_likelihood_i), -1e10)
-
-    if has_inf:
-        warnings.warn(
-            "Infinite values detected in log-likelihood. These will be ignored in the"
-            " LOO calculation.",
-            UserWarning,
-            stacklevel=2,
-        )
-        log_likelihood_i = log_likelihood_i.where(
-            ~np.isinf(log_likelihood_i),
-            np.where(np.isinf(log_likelihood_i) & (log_likelihood_i > 0), 1e10, -1e10),
-        )
 
     try:
         method = method if isinstance(method, ISMethod) else ISMethod(method.lower())
@@ -246,7 +230,6 @@ def loo_i(
     )
     loo_lppd = loo_lppd_i.values.sum()
 
-    # Convert to linear scale for variance calculation
     weights = np.exp(
         log_weights.values - np.max(log_weights.values, axis=-1, keepdims=True)
     )
@@ -255,10 +238,7 @@ def loo_i(
     lik = np.exp(log_likelihood_i.values)
     E_epd = np.exp(loo_lppd)
 
-    # Variance in linear scale (Equation 6 in Vehtari et al. 2024)
     var_epd = np.sum(w2 * (lik - E_epd) ** 2) / reff
-
-    # Convert to log scale using log-normal approximation
     loo_lppd_se = np.sqrt(np.log1p(var_epd / E_epd**2))
 
     lppd = np.sum(
