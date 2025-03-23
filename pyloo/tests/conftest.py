@@ -602,7 +602,12 @@ def problematic_k_model():
 @pytest.fixture(scope="session")
 def roaches_model():
     """Create a model for the roaches dataset."""
-    data = pd.read_csv("pyloo/data/roaches.csv")
+    file_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "data",
+        "roaches.csv",
+    )
+    data = pd.read_csv(file_path)
     data["roach1"] = np.sqrt(data["roach1"])
 
     X = data[["roach1", "treatment", "senior"]].values
@@ -666,7 +671,10 @@ def approximate_posterior_model():
 @pytest.fixture(scope="session")
 def wells_model():
     """Create a logistic regression model for the arsenic wells dataset."""
-    data = pd.read_csv("pyloo/data/wells.csv")
+    file_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "wells.csv"
+    )
+    data = pd.read_csv(file_path)
 
     y = data["switch"].values
 
