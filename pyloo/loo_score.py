@@ -179,6 +179,11 @@ def loo_score(
             y_var="obs",
             permutations=5
         )
+
+    See Also
+    --------
+    e_loo : Compute the expected value of a function using importance sampling.
+    psislw : Compute importance sampling weights.
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
