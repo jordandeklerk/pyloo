@@ -75,6 +75,8 @@ class DifferenceEstimator(EstimatorProtocol[DiffEstimate]):
                 y = y.mean(axis=tuple(range(1, y.ndim)))
             if y_approx_m.ndim > 1:
                 y_approx_m = y_approx_m.mean(axis=tuple(range(1, y_approx_m.ndim)))
+            if y_approx.ndim > 1:
+                y_approx = y_approx.mean(axis=tuple(range(1, y_approx.ndim)))
 
         e_i = y - y_approx_m
 
