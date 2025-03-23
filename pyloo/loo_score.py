@@ -120,15 +120,6 @@ def loo_score(
     To compute LOO-CRPS or LOO-SCRPS, the user needs to provide two sets of draws from the predictive
     distribution, along with the log-likelihood data.
 
-    References
-    ----------
-    Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
-    proper scoring rules. Statistical Science, 38(1):140-159.
-
-    Gneiting, T., & Raftery, A. E. (2007). Strictly Proper Scoring Rules,
-    Prediction, and Estimation. Journal of the American Statistical Association,
-    102(477), 359–378.
-
     Examples
     --------
     Calculate LOO-CRPS for a model using InferenceData:
@@ -184,6 +175,15 @@ def loo_score(
     --------
     e_loo : Compute the expected value of a function using importance sampling.
     psislw : Compute importance sampling weights.
+
+    References
+    ----------
+    Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
+    proper scoring rules. Statistical Science, 38(1):140-159.
+
+    Gneiting, T., & Raftery, A. E. (2007). Strictly Proper Scoring Rules,
+    Prediction, and Estimation. Journal of the American Statistical Association,
+    102(477), 359–378.
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)

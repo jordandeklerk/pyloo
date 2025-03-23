@@ -45,24 +45,16 @@ def waic(
     Returns
     -------
     ELPDData object (inherits from pandas.Series) with the following row/attributes:
-        elpd_waic: approximated expected log pointwise predictive density (elpd)
-        se: standard error of the elpd
-        p_waic: effective number of parameters
-        n_samples: number of samples
-        n_data_points: number of data points
-        warning: bool
-            True if posterior variance of the log predictive densities exceeds 0.4
-        waic_i: xarray.DataArray with the pointwise predictive accuracy,
-                only if pointwise=True
-        scale: scale of the elpd
-
-    See Also
-    --------
-    loo: Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
-    loo_subsample: Compute approximate LOO-CV using subsampling.
-    loo_approximate_posterior: Compute approximate LOO-CV using posterior approximation.
-    loo_kfold: K-fold cross-validation.
-    loo_moment_match: Moment matching for problematic observations
+    elpd_waic: approximated expected log pointwise predictive density (elpd)
+    se: standard error of the elpd
+    p_waic: effective number of parameters
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: bool
+        True if posterior variance of the log predictive densities exceeds 0.4
+    waic_i: xarray.DataArray with the pointwise predictive accuracy,
+            only if pointwise=True
+    scale: scale of the elpd
 
     Examples
     --------
@@ -81,6 +73,14 @@ def waic(
 
         data_waic = pl.waic(data, pointwise=True)
         data_waic.waic_i
+
+    See Also
+    --------
+    loo: Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
+    loo_subsample: Compute approximate LOO-CV using subsampling.
+    loo_approximate_posterior: Compute approximate LOO-CV using posterior approximation.
+    loo_kfold: K-fold cross-validation.
+    loo_moment_match: Moment matching for problematic observations
 
     References
     ----------
