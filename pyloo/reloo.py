@@ -100,11 +100,26 @@ def reloo(
 
     Returns
     -------
-    ELPDData
-        An ELPDData instance that merges the PSIS-LOO approximations with the exact LOO-CV estimates obtained
-        by refitting. For observations where exact LOO-CV was performed, the Pareto shape value is set to 0.
-        This combined result provides a more reliable assessment of model fit when some observations are highly
-        influential.
+    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
+    elpd_loo: approximated expected log pointwise predictive density (elpd)
+    se: standard error of the elpd
+    p_loo: effective number of parameters
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: bool
+        True if using PSIS and the estimated shape parameter of Pareto distribution
+        is greater than ``good_k``.
+    loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+            only if pointwise=True
+    pareto_k: :class:`~xarray.DataArray` with the Pareto shape parameter k diagnostic values,
+            with values set to 0 for observations where exact LOO-CV was performed
+    scale: scale of the elpd
+    looic: leave-one-out information criterion (looic = -2 * elpd_loo)
+    looic_se: standard error of the looic
+
+    The returned object merges the PSIS-LOO approximations with the exact LOO-CV estimates obtained
+    by refitting. This combined result provides a more reliable assessment of model fit when a model
+    has a few observations that are highly influential.
 
     Notes
     -----
@@ -155,11 +170,12 @@ def reloo(
 
     See Also
     --------
-    loo : Compute LOO-CV using importance sampling
-    loo_i : Pointwise LOO-CV values
-    loo_subsample : Subsampled LOO-CV computation
-    loo_moment_match : Moment matching for problematic observations
-    loo_kfold : K-fold cross-validation
+    loo: Compute LOO-CV using importance sampling
+    loo_i: Pointwise LOO-CV values
+    loo_subsample: Subsampled LOO-CV computation
+    loo_moment_match: Moment matching for problematic observations
+    loo_approximate_posterior: Approximate LOO-CV using posterior approximation
+    loo_kfold: K-fold cross-validation
     """
     if not isinstance(wrapper.model, pm.Model):
         raise TypeError(
