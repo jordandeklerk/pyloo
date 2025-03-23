@@ -15,7 +15,6 @@ __all__ = ["reloo"]
 
 _log = logging.getLogger(__name__)
 
-# Required methods for reloo
 RELOO_REQUIRED_METHODS: tuple[str, ...] = (
     "select_observations",
     "sample_posterior",
