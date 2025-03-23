@@ -268,12 +268,12 @@ def compute_pareto_k(
     log_ratios: xr.DataArray | np.ndarray,
     tail_len: int = 20,
 ) -> xr.DataArray | float:
-    """Compute Pareto k diagnostic for expectation calculations.
+    r"""Compute Pareto k diagnostic for expectation calculations.
 
     Parameters
     ----------
     x : xr.DataArray, np.ndarray, or None
-        Values of function h(theta). The interpretation depends on the type of expectation:
+        Values of function :math:`h(\theta)`. The interpretation depends on the type of expectation:
         - For mean: the original values
         - For variance/sd: the squared values
         - For quantiles: None
@@ -328,14 +328,14 @@ def compute_pareto_k(
 def k_hat(
     x_vals: np.ndarray | None, log_ratios_vals: np.ndarray, tail_len: int = 20
 ) -> float:
-    """Calculate Pareto k diagnostic by fitting a Generalized Pareto Distribution
-    to one or two tails of ``x``. This can be used to estimate the number of fractional
+    r"""Calculate Pareto k diagnostic by fitting a Generalized Pareto Distribution
+    to one or two tails of :math:`h(\theta)`. This can be used to estimate the number of fractional
     moments that is useful for convergence diagnostics.
 
     Parameters
     ----------
     x_vals : np.ndarray or None
-        Values of function h(theta). For mean, this is the original values.
+        Values of function :math:`h(\theta)`. For mean, this is the original values.
         For variance/sd, this is the squared values. For quantiles, this is None.
     log_ratios_vals : np.ndarray
         Log ratios (log importance weights before normalization)
