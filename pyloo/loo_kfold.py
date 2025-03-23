@@ -69,9 +69,22 @@ def kfold(
 
     Returns
     -------
-    ELPDData
-        Object containing expected log pointwise predictive density (ELPD) and related
-        statistics from K-fold cross-validation
+    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
+    elpd_kfold: expected log pointwise predictive density (elpd)
+    se: standard error of the elpd
+    p_kfold: effective number of parameters
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: boolean indicating whether any warnings occurred during fitting
+    scale: scale of the elpd
+    K: number of folds
+    kfoldic: K-fold information criterion
+    kfoldic_se: standard error of the kfoldic
+    kfold_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+        only if pointwise=True
+    diagnostic: array of diagnostic values, only if pointwise=True
+        - For PSIS: Pareto shape parameter (pareto_k)
+        - For SIS/TIS: Effective sample size (ess)
 
     Raises
     ------
@@ -79,14 +92,6 @@ def kfold(
         If data is not a PyMCWrapper instance
     ValueError
         If K is invalid, folds are improperly specified, or scale is invalid
-
-    See Also
-    --------
-    loo : Leave-one-out cross-validation for PyMC models
-    loo_subsample : Leave-one-out cross-validation with subsampling
-    loo_moment_match : Leave-one-out cross-validation with moment matching
-    loo_approximate : Leave-one-out cross-validation for posterior approximations
-    waic : Widely applicable information criterion
 
     Examples
     --------
@@ -171,6 +176,14 @@ def kfold(
 
         wrapper = PyMCWrapper(model, idata)
         kfold_result = pl.loo_kfold(wrapper, K=5, stratify=wrapper.get_observed_data(), random_seed=123)
+
+    See Also
+    --------
+    loo : Leave-one-out cross-validation for PyMC models
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
+    loo_approximate : Leave-one-out cross-validation for posterior approximations
+    waic : Widely applicable information criterion
     """
     if not isinstance(data, PyMCWrapper):
         raise TypeError(f"Expected PyMCWrapper, got {type(data).__name__}")

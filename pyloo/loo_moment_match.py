@@ -60,8 +60,22 @@ def loo_moment_match(
 
     Returns
     -------
-    ELPDData
-        Updated loo object with improved estimates
+    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
+    elpd_loo: approximated expected log pointwise predictive density (elpd)
+    se: standard error of the elpd
+    p_loo: effective number of parameters
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: bool
+        True if using PSIS and the estimated shape parameter of Pareto distribution
+        is greater than ``good_k``.
+    loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+            only if pointwise=True
+    pareto_k: :class:`~xarray.DataArray` with the Pareto shape parameter k diagnostic values,
+            only if pointwise=True and using PSIS method
+    scale: scale of the elpd
+    looic: leave-one-out information criterion (looic = -2 * elpd_loo)
+    looic_se: standard error of the looic
 
     Notes
     -----

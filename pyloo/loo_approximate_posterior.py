@@ -75,35 +75,25 @@ def loo_approximate_posterior(
     Returns
     -------
     ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
-        elpd_loo: approximated expected log pointwise predictive density (elpd)
-        se: standard error of the elpd
-        p_loo: effective number of parameters
-        n_samples: number of samples
-        n_data_points: number of data points
-        warning: bool
-            True if using PSIS and the estimated shape parameter of Pareto distribution
-            is greater than ``good_k``.
-        loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
-                only if pointwise=True
-        diagnostic: array of diagnostic values, only if pointwise=True
-            - For PSIS: Pareto shape parameter (pareto_k)
-            - For SIS/TIS: Effective sample size (ess)
-        scale: scale of the elpd
-        good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
-        approximate_posterior: dictionary with log_p and log_g values
-        ess_ratio: effective sample size ratio from importance resampling
-        resample_pareto_k: Pareto k diagnostic values from resampling (if using PSIS)
-        method: The method used for computation ("loo_approximate_posterior")
-
-        The returned object has a custom print method that overrides pd.Series method.
-
-    See Also
-    --------
-    loo: Efficient LOO-CV computation
-    loo_subsample : Subsampled LOO-CV computation
-    loo_moment_match : LOO-CV computation using moment matching
-    loo_kfold : K-fold cross-validation
-    waic : Compute WAIC
+    elpd_loo: approximated expected log pointwise predictive density (elpd)
+    se: standard error of the elpd
+    p_loo: effective number of parameters
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: bool
+        True if using PSIS and the estimated shape parameter of Pareto distribution
+        is greater than ``good_k``.
+    loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+            only if pointwise=True
+    diagnostic: array of diagnostic values, only if pointwise=True
+        - For PSIS: Pareto shape parameter (pareto_k)
+        - For SIS/TIS: Effective sample size (ess)
+    scale: scale of the elpd
+    good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
+    approximate_posterior: dictionary with log_p and log_g values
+    ess_ratio: effective sample size ratio from importance resampling
+    resample_pareto_k: Pareto k diagnostic values from resampling (if using PSIS)
+    method: The method used for computation ("loo_approximate_posterior")
 
     Examples
     --------
@@ -167,6 +157,14 @@ def loo_approximate_posterior(
             log_q,
             pointwise=True
         )
+
+    See Also
+    --------
+    loo: Efficient LOO-CV computation
+    loo_subsample : Subsampled LOO-CV computation
+    loo_moment_match : LOO-CV computation using moment matching
+    loo_kfold : K-fold cross-validation
+    waic : Compute WAIC
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)

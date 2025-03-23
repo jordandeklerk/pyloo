@@ -103,63 +103,61 @@ def loo(
     scale: scale of the elpd
     good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
 
-        The returned object has a custom print method that overrides pd.Series method.
+    Examples
+    --------
+    Calculate the Leave-One-Out Cross-Validation (LOO-CV) for a model by providing InferenceData:
 
-        Examples
-        --------
-        Calculate the Leave-One-Out Cross-Validation (LOO-CV) for a model by providing InferenceData:
+    .. code-block:: python
 
-        .. code-block:: python
+        import pyloo as pl
+        import arviz as az
 
-            import pyloo as pl
-            import arviz as az
+        data = az.load_arviz_data("centered_eight")
+        loo_results = pl.loo(data)
+        print(loo_results)
 
-            data = az.load_arviz_data("centered_eight")
-            loo_results = pl.loo(data)
-            print(loo_results)
+    Calculate LOO with pointwise values to examine individual observation contributions:
 
-        Calculate LOO with pointwise values to examine individual observation contributions:
+    .. code-block:: python
 
-        .. code-block:: python
+        import pyloo as pl
+        import arviz as az
 
-            import pyloo as pl
-            import arviz as az
+        data = az.load_arviz_data("centered_eight")
+        data_loo = pl.loo(data, pointwise=True)
+        print(data_loo.loo_i)
 
-            data = az.load_arviz_data("centered_eight")
-            data_loo = pl.loo(data, pointwise=True)
-            print(data_loo.loo_i)
+        if hasattr(data_loo, "pareto_k"):
+            print(data_loo.pareto_k)
 
-            if hasattr(data_loo, "pareto_k"):
-                print(data_loo.pareto_k)
+    Calculate LOO with moment matching to improve estimates for observations with high Pareto k values:
 
-        Calculate LOO with moment matching to improve estimates for observations with high Pareto k values:
+    .. code-block:: python
 
-        .. code-block:: python
+        import pyloo as pl
+        import arviz as az
+        import pymc as pm
 
-            import pyloo as pl
-            import arviz as az
-            import pymc as pm
+        with pm.Model() as model:
+            mu = pm.Normal('mu', mu=0, sigma=10)
+            sigma = pm.HalfNormal('sigma', sigma=10)
+            y = pm.Normal('y', mu=mu, sigma=sigma, observed=data)
+            idata = pm.sample(1000, tune=1000, idata_kwargs={"log_likelihood": True})
 
-            with pm.Model() as model:
-                mu = pm.Normal('mu', mu=0, sigma=10)
-                sigma = pm.HalfNormal('sigma', sigma=10)
-                y = pm.Normal('y', mu=mu, sigma=sigma, observed=data)
-                idata = pm.sample(1000, tune=1000, idata_kwargs={"log_likelihood": True})
+        wrapper = pl.PyMCWrapper(model, idata)
 
-            wrapper = pl.PyMCWrapper(model, idata)
+        # Calculate LOO with moment matching
+        loo_results = pl.loo(
+            idata,
+            pointwise=True,
+            moment_match=True,
+            wrapper=wrapper,
+            max_iters=30,
+            split=True,
+            cov=True
+        )
 
-            # Calculate LOO with moment matching
-            loo_results = pl.loo(
-                idata,
-                pointwise=True,
-                moment_match=True,
-                wrapper=wrapper,
-                max_iters=30,
-                split=True,
-                cov=True
-            )
-
-            print(loo_results.pareto_k)
+        print(loo_results.pareto_k)
 
     See Also
     --------
