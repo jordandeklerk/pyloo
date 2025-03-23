@@ -64,7 +64,7 @@ Advanced
 Quickstart
 ---------
 
-PSIS-LOO
+PSIS-LOO-CV
 ~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
