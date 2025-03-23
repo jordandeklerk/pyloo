@@ -1,4 +1,4 @@
-"""Leave-one-out cross-validation score functions."""
+"""Leave-one-out cross-validation score functions with importance sampling."""
 
 import warnings
 from typing import Any, Tuple
@@ -96,6 +96,57 @@ def loo_score(
     Gneiting, T., & Raftery, A. E. (2007). Strictly Proper Scoring Rules,
     Prediction, and Estimation. Journal of the American Statistical Association,
     102(477), 359–378.
+
+    Examples
+    --------
+    Calculate LOO-CRPS for a model using InferenceData:
+
+    .. code-block:: python
+
+        import pyloo as pl
+        import arviz as az
+        import numpy as np
+
+        idata = az.load_arviz_data("centered_eight")
+
+        # For this example, we need two sets of predictive samples
+        # In practice, these would typically be different
+        pp_data = idata.posterior_predictive.copy()
+        pp_data["obs2"] = pp_data["obs"] + np.random.normal(0, 0.1, size=pp_data["obs"].shape)
+
+        # Create a new InferenceData object with both sets of predictive samples
+        idata_with_two_pp = az.InferenceData(
+            posterior=idata.posterior,
+            posterior_predictive=pp_data,
+            log_likelihood=idata.log_likelihood,
+            observed_data=idata.observed_data
+        )
+
+        # LOO-CRPS
+        result = pl.loo_score(
+            idata_with_two_pp,
+            x_group="posterior_predictive",
+            x_var="obs",
+            x2_group="posterior_predictive",
+            x2_var="obs2",
+            y_group="observed_data",
+            y_var="obs"
+        )
+
+    Using multiple permutations to reduce variance:
+
+    .. code-block:: python
+
+        result = pl.loo_score(
+            idata_with_two_pp,
+            x_group="posterior_predictive",
+            x_var="obs",
+            x2_group="posterior_predictive",
+            x2_var="obs2",
+            y_group="observed_data",
+            y_var="obs",
+            permutations=5
+        )
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
