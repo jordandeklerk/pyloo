@@ -54,7 +54,7 @@ class ExpectationResult:
 
 
 def e_loo(
-    data: InferenceData | Any,
+    data: InferenceData | xr.DataArray | Any,
     var_name: str | None = None,
     group: str = "posterior_predictive",
     weights: xr.DataArray | None = None,
@@ -71,15 +71,17 @@ def e_loo(
 
     Parameters
     ----------
-    data : InferenceData or convertible object
-        An ArviZ InferenceData object or any object that can be converted to
-        InferenceData containing posterior or posterior predictive samples.
+    data : InferenceData, xr.DataArray, or convertible object
+        An ArviZ InferenceData object, xarray DataArray, or any object that can be converted
+        to InferenceData containing posterior or posterior predictive samples.
     var_name : str, optional
         Name of the variable in the specified group to compute expectations for.
         If None and there is only one variable, that variable will be used.
+        Not used if data is already a DataArray.
     group : str, default "posterior_predictive"
         Name of the InferenceData group containing the variable to compute
         expectations for. Typically "posterior_predictive" or "posterior".
+        Not used if data is already a DataArray.
     weights : xr.DataArray, optional
         Pre-computed importance sampling weights (not log weights).
         Either weights or log_weights must be provided.
@@ -148,8 +150,6 @@ def e_loo(
         print(result.khat_threshold)  # Threshold for reliable k-hat values
         print(result.convergence_rate)  # Relative convergence rate
     """
-    idata = to_inference_data(data)
-
     if type not in ["mean", "variance", "sd", "quantile"]:
         raise ValueError("type must be 'mean', 'variance', 'sd' or 'quantile'")
 
@@ -168,27 +168,32 @@ def e_loo(
     if weights is None and log_weights is None:
         raise ValueError("Either weights or log_weights must be provided")
 
-    if not hasattr(idata, group):
-        raise ValueError(f"InferenceData object does not have a {group} group")
+    if isinstance(data, xr.DataArray):
+        x_data = data
+    else:
+        idata = to_inference_data(data)
 
-    data_group = getattr(idata, group)
+        if not hasattr(idata, group):
+            raise ValueError(f"InferenceData object does not have a {group} group")
 
-    if var_name is None:
-        var_names = list(data_group.data_vars)
-        if len(var_names) == 1:
-            var_name = var_names[0]
-        else:
+        data_group = getattr(idata, group)
+
+        if var_name is None:
+            var_names = list(data_group.data_vars)
+            if len(var_names) == 1:
+                var_name = var_names[0]
+            else:
+                raise ValueError(
+                    f"Multiple variables found in {group} group. Please specify"
+                    f" var_name from: {var_names}"
+                )
+        elif var_name not in data_group.data_vars:
             raise ValueError(
-                f"Multiple variables found in {group} group. Please specify var_name"
-                f" from: {var_names}"
+                f"Variable '{var_name}' not found in {group} group. Available"
+                f" variables: {list(data_group.data_vars)}"
             )
-    elif var_name not in data_group.data_vars:
-        raise ValueError(
-            f"Variable '{var_name}' not found in {group} group. Available variables:"
-            f" {list(data_group.data_vars)}"
-        )
 
-    x_data = data_group[var_name]
+        x_data = data_group[var_name]
 
     if "chain" in x_data.dims and "draw" in x_data.dims:
         x_data = x_data.stack(__sample__=("chain", "draw"))

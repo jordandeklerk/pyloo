@@ -807,3 +807,35 @@ def loo_predictive_metric_binary_data():
         "pp_samples": pp_samples,
         "log_lik_samples": log_lik_samples,
     }
+
+
+@pytest.fixture(scope="session")
+def prepare_inference_data_for_crps(centered_eight):
+    """Prepare inference data for CRPS calculations using real model data."""
+    idata = centered_eight
+    pp_orig = idata.posterior_predictive.obs.values
+
+    rng = np.random.default_rng(42)
+    pp_new = pp_orig + rng.normal(0, 0.1, size=pp_orig.shape)
+
+    pp_combined = xr.Dataset(
+        {
+            "obs": (["chain", "draw", "school"], pp_orig),
+            "obs2": (["chain", "draw", "school"], pp_new),
+        },
+        coords=idata.posterior_predictive.coords,
+        attrs=idata.posterior_predictive.attrs,
+    )
+
+    new_idata = InferenceData(
+        posterior=idata.posterior,
+        posterior_predictive=pp_combined,
+        log_likelihood=idata.log_likelihood,
+        observed_data=idata.observed_data,
+    )
+
+    assert hasattr(new_idata, "posterior_predictive")
+    assert "obs" in new_idata.posterior_predictive.data_vars
+    assert "obs2" in new_idata.posterior_predictive.data_vars
+
+    return new_idata
