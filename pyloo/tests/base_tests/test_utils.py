@@ -2,13 +2,7 @@ import arviz as az
 import numpy as np
 import pytest
 
-from ...utils import (
-    get_log_likelihood,
-    is_constant,
-    reshape_draws,
-    smooth_data,
-    to_inference_data,
-)
+from ...utils import get_log_likelihood, reshape_draws, to_inference_data
 from ..helpers import assert_arrays_equal, assert_shape_equal
 
 
@@ -38,45 +32,6 @@ def test_reshape_draws(multidim_data):
 
     flat_ll1, _ = reshape_draws(ll1)
     assert flat_ll1.shape == (ll1.shape[0] * ll1.shape[1], ll1.shape[2])
-
-
-def test_is_constant(rng):
-    x = np.full(10, 1.5)
-    assert is_constant(x)
-
-    x = rng.normal(size=100)
-    assert not is_constant(x)
-
-    x = np.ones(10) + rng.normal(0, 1e-10, 10)
-    assert is_constant(x, tol=1e-9)
-    assert not is_constant(x, tol=1e-11)
-
-
-def test_smooth_data(rng):
-    n_obs = 50
-    t = np.linspace(0, 1, n_obs)
-    signal = np.sin(2 * np.pi * t)
-    noise = 0.1 * rng.normal(size=n_obs)
-    obs = signal + noise
-
-    n_samples = 100
-    pp = np.array([signal + 0.1 * rng.normal(size=n_obs) for _ in range(n_samples)])
-
-    obs_smooth, pp_smooth = smooth_data(obs, pp)
-
-    assert obs_smooth.shape == obs.shape
-    assert pp_smooth.shape == pp.shape
-
-    assert np.corrcoef(obs_smooth, signal)[0, 1] > 0.95
-    assert all(np.corrcoef(pp_smooth[i], signal)[0, 1] > 0.95 for i in range(n_samples))
-
-    obs_diff = np.abs(np.diff(obs))
-    obs_smooth_diff = np.abs(np.diff(obs_smooth))
-    assert np.mean(obs_smooth_diff) < np.mean(obs_diff)
-
-    pp_diff = np.abs(np.diff(pp, axis=1))
-    pp_smooth_diff = np.abs(np.diff(pp_smooth, axis=1))
-    assert np.mean(np.mean(pp_smooth_diff, axis=1)) < np.mean(np.mean(pp_diff, axis=1))
 
 
 def test_get_log_likelihood(centered_eight):

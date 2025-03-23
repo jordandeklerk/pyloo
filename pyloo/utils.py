@@ -7,20 +7,15 @@ from typing import Any, Optional, Tuple
 import arviz as az
 import numpy as np
 from arviz import InferenceData
-from scipy.interpolate import CubicSpline
 from xarray import apply_ufunc
 
 __all__ = [
     "to_inference_data",
     "reshape_draws",
-    "is_constant",
     "get_log_likelihood",
-    "smooth_data",
     "wrap_xarray_ufunc",
     "_logsumexp",
 ]
-
-_FLOAT_EPS = np.finfo(float).eps
 
 
 def to_inference_data(obj: Any) -> InferenceData:
@@ -259,11 +254,6 @@ def reshape_draws(
         return x, chain_ids
 
 
-def is_constant(x: np.ndarray, tol: float = _FLOAT_EPS) -> bool:
-    """Check if array is constant within tolerance."""
-    return np.abs(np.max(x) - np.min(x)) < tol
-
-
 def get_log_likelihood(idata, var_name=None, single_var=True):
     """Retrieve the log likelihood dataarray of a given variable.
 
@@ -310,39 +300,6 @@ def get_log_likelihood(idata, var_name=None, single_var=True):
         except KeyError as err:
             raise TypeError(f"No log likelihood data named {var_name} found") from err
         return log_likelihood
-
-
-def smooth_data(
-    obs_vals: np.ndarray, pp_vals: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Smooth data using a cubic spline.
-
-    This function is particularly useful for discrete data in PSIS-LOO-CV
-    visualizations, helping to create smoother plots.
-
-    Parameters
-    ----------
-    obs_vals : np.ndarray
-        Observed data with shape (N,)
-    pp_vals : np.ndarray
-        Posterior predictive samples with shape (S, N), where S is the
-        number of samples and N is the number of observations
-
-    Returns
-    -------
-    Tuple[np.ndarray, np.ndarray]
-        - Smoothed observed data with shape (N,)
-        - Smoothed posterior predictive samples with shape (S, N)
-    """
-    x = np.linspace(0, 1, len(obs_vals))
-    csi = CubicSpline(x, obs_vals)
-    obs_vals = csi(np.linspace(0.01, 0.99, len(obs_vals)))
-
-    x = np.linspace(0, 1, pp_vals.shape[1])
-    csi = CubicSpline(x, pp_vals, axis=1)
-    pp_vals = csi(np.linspace(0.01, 0.99, pp_vals.shape[1]))
-
-    return obs_vals, pp_vals
 
 
 def _logsumexp(
