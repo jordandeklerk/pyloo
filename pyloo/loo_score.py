@@ -309,12 +309,14 @@ def EXX_loo_compute(
 
     abs_diff = abs(x - x2_shuffled)
 
-    return e_loo(
+    result = e_loo(
         abs_diff,
         log_weights=log_weights,
         log_ratios=joint_log_lik,
         **kwargs,
     ).value
+
+    return result
 
 
 def _crps(EXX: xr.DataArray, EXy: xr.DataArray, scale: bool = False) -> xr.DataArray:
