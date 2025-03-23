@@ -20,8 +20,6 @@ from .utils import (
     _format_log_likelihood_result,
     _get_coords,
     _process_and_validate_indices,
-    _transform_to_constrained,
-    _transform_to_unconstrained,
     _validate_model_state,
 )
 
@@ -689,9 +687,7 @@ class PyMCWrapper:
                 try:
                     # Apply transformation
                     data = self.idata.posterior[var_name].values
-                    transformed_data = _transform_to_unconstrained(
-                        self, data, transform
-                    )
+                    transformed_data = self._transform_to_unconstrained(data, transform)
 
                     unconstrained_samples = xr.DataArray(
                         transformed_data,
@@ -823,7 +819,7 @@ class PyMCWrapper:
                 try:
                     # Apply transformation
                     data = unconstrained.values
-                    transformed_data = _transform_to_constrained(self, data, transform)
+                    transformed_data = self._transform_to_constrained(data, transform)
 
                     constrained = xr.DataArray(
                         transformed_data,
@@ -1152,3 +1148,25 @@ class PyMCWrapper:
             var = self._untransformed_model.named_vars[var_name]
             return tuple(d.eval() if hasattr(d, "eval") else d for d in var.shape)
         return None
+
+    def _transform_to_unconstrained(self, values, transform):
+        """Transform values from constrained to unconstrained space."""
+        try:
+            result = transform.backward(values)
+            if hasattr(result, "eval"):
+                result = result.eval()
+            return np.asarray(result)
+        except Exception as e:
+            _log.warning("Backward transform failed: %s", str(e))
+            raise
+
+    def _transform_to_constrained(self, values, transform):
+        """Transform values from unconstrained to constrained space."""
+        try:
+            result = transform.forward(values)
+            if hasattr(result, "eval"):
+                result = result.eval()
+            return np.asarray(result)
+        except Exception as e:
+            _log.warning("Forward transform failed: %s", str(e))
+            raise

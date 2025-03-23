@@ -2,7 +2,7 @@
 
 import logging
 import warnings
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 import numpy as np
 import xarray as xr
@@ -10,16 +10,11 @@ from pymc.blocking import DictToArrayBijection
 from pymc.distributions.dist_math import rho2sigma
 from scipy import linalg
 
-from ..utils import wrap_xarray_ufunc
-
 __all__ = [
     "get_approximation_params",
     "compute_log_p",
     "compute_log_q",
     "compute_log_weights",
-    "_apply_ufunc",
-    "_transform_to_unconstrained",
-    "_transform_to_constrained",
     "_process_and_validate_indices",
     "_format_log_likelihood_result",
     "_create_selection_mask",
@@ -82,7 +77,7 @@ def get_approximation_params(approx) -> dict[str, Any]:
 
 
 def compute_log_p(model, samples, verbose=False) -> np.ndarray:
-    r"""Compute math:`\log p(\theta, y)` for a set of samples.
+    r"""Compute ::math:`\log p(\theta, y)` for a set of samples.
 
     Parameters
     ----------
@@ -96,7 +91,7 @@ def compute_log_p(model, samples, verbose=False) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Array of log p(θ,y) values
+        Array of :math:`\log p(\theta, y)` values
     """
     nsample = len(next(iter(samples.values())))
     log_p = np.zeros(nsample)
@@ -121,7 +116,7 @@ def compute_log_p(model, samples, verbose=False) -> np.ndarray:
 
 
 def compute_log_q(samples, approx_params, verbose=False) -> np.ndarray:
-    r"""Compute math:`\log q(\theta)` for a set of samples.
+    r"""Compute ::math:`\log q(\theta)` for a set of samples.
 
     Parameters
     ----------
@@ -135,7 +130,7 @@ def compute_log_q(samples, approx_params, verbose=False) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Array of log q(θ) values
+        Array of :math:`\log q(\theta)` values
     """
     nsample = len(next(iter(samples.values())))
     log_q = np.zeros(nsample)
@@ -181,7 +176,7 @@ def compute_log_q(samples, approx_params, verbose=False) -> np.ndarray:
 def compute_log_weights(
     approx, nsample=1000, verbose=False
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    r"""Calculate math:`\log w_i(\theta)` for variational approximations.
+    r"""Calculate ::math:`\log w_i(\theta)` for variational approximations.
     Works with both MeanField and FullRank ADVI.
 
     Parameters
@@ -196,8 +191,8 @@ def compute_log_weights(
     Returns
     -------
     tuple of np.ndarray
-        (log_p, log_q, log_weights) - Arrays of log model probabilities,
-        log approximation probabilities, and log importance weights
+        (log_p, log_q, log_weights) - Arrays of :math:`\log p(\theta, y)`,
+        :math:`\log q(\theta)`, and :math:`\log w_i(\theta)`
     """
     model = getattr(approx, "model", approx.model)
     approx_params = get_approximation_params(approx)
@@ -220,83 +215,6 @@ def compute_log_weights(
     log_weights = log_p - log_q
 
     return log_p, log_q, log_weights
-
-
-def _apply_ufunc(
-    self,
-    func: Callable[..., Any],
-    var_name: str | None = None,
-    input_core_dims: list[list[str]] | None = None,
-    output_core_dims: list[list[str]] | None = None,
-    func_kwargs: dict | None = None,
-    **kwargs: Any,
-) -> xr.DataArray:
-    """This is a utility method that applies a function to posterior samples using
-    ``wrap_xarray_ufunc``."""
-    if not hasattr(self.idata, "posterior"):
-        raise PyMCWrapperError(
-            "InferenceData object must contain posterior samples. "
-            "The model does not appear to be fitted."
-        )
-
-    if input_core_dims is None:
-        input_core_dims = [["chain", "draw"]]
-    if output_core_dims is None:
-        output_core_dims = [["chain", "draw"]]
-
-    if var_name is not None:
-        if var_name not in self.idata.posterior:
-            raise PyMCWrapperError(
-                f"Variable '{var_name}' not found in posterior. Available"
-                f" variables: {list(self.idata.posterior.data_vars.keys())}"
-            )
-        data = self.idata.posterior[var_name]
-    else:
-        input_vars = kwargs.pop("input_vars", None)
-        if input_vars is not None:
-            for var in input_vars:
-                if var not in self.idata.posterior:
-                    raise PyMCWrapperError(
-                        f"Variable '{var}' not found in posterior. Available"
-                        f" variables: {list(self.idata.posterior.data_vars.keys())}"
-                    )
-                data = [self.idata.posterior[var] for var in input_vars]
-        else:
-            data = self.idata.posterior
-
-    result = wrap_xarray_ufunc(
-        func,
-        data if isinstance(data, list) else [data],
-        input_core_dims=input_core_dims,
-        output_core_dims=output_core_dims,
-        func_kwargs=func_kwargs,
-        **kwargs,
-    )
-    return result
-
-
-def _transform_to_unconstrained(self, values, transform):
-    """Transform values from constrained to unconstrained space."""
-    try:
-        result = transform.backward(values)
-        if hasattr(result, "eval"):
-            result = result.eval()
-        return np.asarray(result)
-    except Exception as e:
-        _log.warning("Backward transform failed: %s", str(e))
-        raise
-
-
-def _transform_to_constrained(self, values, transform):
-    """Transform values from unconstrained to constrained space."""
-    try:
-        result = transform.forward(values)
-        if hasattr(result, "eval"):
-            result = result.eval()
-        return np.asarray(result)
-    except Exception as e:
-        _log.warning("Forward transform failed: %s", str(e))
-        raise
 
 
 def _process_and_validate_indices(
