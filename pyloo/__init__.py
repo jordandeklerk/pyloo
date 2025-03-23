@@ -18,6 +18,7 @@ from .loo_approximate_posterior import loo_approximate_posterior
 from .loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
 from .loo_moment_match import loo_moment_match, loo_moment_match_split
 from .loo_predictive_metric import loo_predictive_metric
+from .loo_score import loo_score
 from .psis import psislw
 from .reloo import reloo
 from .sis import sislw
@@ -37,6 +38,7 @@ __all__ = [
     "loo_moment_match",
     "loo_moment_match_split",
     "loo_predictive_metric",
+    "loo_score",
     "PyMCWrapper",
     "psislw",
     "reloo",
