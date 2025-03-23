@@ -1,4 +1,4 @@
-"""Leave-one-out cross-validation score functions with importance sampling."""
+"""Leave-one-out cross-validation with score functions using importance sampling."""
 
 import warnings
 from dataclasses import dataclass
