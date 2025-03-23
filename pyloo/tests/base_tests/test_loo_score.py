@@ -133,6 +133,42 @@ def test_loo_score_permutations(prepare_inference_data_for_crps):
     assert hasattr(result, "pointwise")
 
 
+def test_loo_score_with_e_loo_args(prepare_inference_data_for_crps):
+    """Test loo_score with additional arguments passed to e_loo."""
+    idata = prepare_inference_data_for_crps
+
+    result_variance = loo_score(
+        idata,
+        x_group="posterior_predictive",
+        x_var="obs",
+        x2_group="posterior_predictive",
+        x2_var="obs2",
+        y_group="observed_data",
+        y_var="obs",
+        type="variance",
+    )
+
+    assert result_variance is not None
+    assert isinstance(result_variance, LooScoreResult)
+    assert hasattr(result_variance, "estimates")
+    assert hasattr(result_variance, "pointwise")
+
+    result_mean = loo_score(
+        idata,
+        x_group="posterior_predictive",
+        x_var="obs",
+        x2_group="posterior_predictive",
+        x2_var="obs2",
+        y_group="observed_data",
+        y_var="obs",
+    )
+
+    assert not np.allclose(
+        result_variance.estimates["Estimate"], result_mean.estimates["Estimate"]
+    )
+    assert not np.allclose(result_variance.pointwise, result_mean.pointwise)
+
+
 def test_loo_score_missing_posterior(prepare_inference_data_for_crps):
     """Test loo_score with missing posterior group."""
     idata = prepare_inference_data_for_crps
