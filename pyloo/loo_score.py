@@ -31,7 +31,7 @@ def loo_score(
     scale: bool = False,
     **kwargs,
 ) -> ELPDData:
-    """Compute the leave-one-out continuously ranked probability score (LOO-CRPS) or
+    r"""Compute the leave-one-out continuously ranked probability score (LOO-CRPS) or
     leave-one-out scaled continuously ranked probability score (LOO-SCRPS).
 
     This function computes CRPS or SCRPS using importance sampling weights from leave-one-out
@@ -63,8 +63,8 @@ def loo_score(
         If True, the pointwise values will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
     permutations : int, default 1
-        An integer specifying how many times the expected value of |X - X'| (|x - x2|)
-        is computed. The row order of x2 is shuffled as elements x and x2 are typically
+        An integer specifying how many times the expected value of ::math:`|X - X'|`
+        (::math:`|x - x2|`) is computed. The row order of x2 is shuffled as elements x and x2 are typically
         drawn given the same values of parameters. Generating more permutations is
         expected to decrease the variance of the computed expected value.
     reff : float, optional
@@ -200,7 +200,7 @@ def loo_score(
         **kwargs,
     ).value
 
-    score_pw = _crps_fun(EXX, EXy, scale=scale)
+    score_pw = _crps(EXX, EXy, scale=scale)
     metric = "loo_scrps" if scale else "loo_crps"
 
     result_data = []
@@ -298,9 +298,7 @@ def EXX_loo_compute(
     ).value
 
 
-def _crps_fun(
-    EXX: xr.DataArray, EXy: xr.DataArray, scale: bool = False
-) -> xr.DataArray:
+def _crps(EXX: xr.DataArray, EXy: xr.DataArray, scale: bool = False) -> xr.DataArray:
     r"""Function to compute CRPS and SCRPS.
 
     Parameters

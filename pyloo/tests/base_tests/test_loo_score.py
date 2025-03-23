@@ -10,7 +10,7 @@ from arviz import InferenceData
 
 from ...loo_score import (
     EXX_loo_compute,
-    _crps_fun,
+    _crps,
     _get_data,
     loo_score,
     validate_crps_input,
@@ -481,7 +481,7 @@ def test_crps_fun():
         coords={"school": [f"school_{i}" for i in range(n_obs)]},
     )
 
-    crps = _crps_fun(EXX, EXy, scale=False)
+    crps = _crps(EXX, EXy, scale=False)
 
     assert isinstance(crps, xr.DataArray)
     assert crps.dims == ("school",)
@@ -491,7 +491,7 @@ def test_crps_fun():
     expected_crps = 0.5 * EXX - EXy
     assert_arrays_allclose(crps, expected_crps)
 
-    scrps = _crps_fun(EXX, EXy, scale=True)
+    scrps = _crps(EXX, EXy, scale=True)
 
     assert isinstance(scrps, xr.DataArray)
     assert scrps.dims == ("school",)
