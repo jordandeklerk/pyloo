@@ -63,9 +63,6 @@ def loo_score(
     r"""Compute the leave-one-out continuously ranked probability score (LOO-CRPS) or
     leave-one-out scaled continuously ranked probability score (LOO-SCRPS).
 
-    This function computes CRPS or SCRPS using importance sampling weights from leave-one-out
-    cross-validation.
-
     Parameters
     ----------
     data : InferenceData or convertible object

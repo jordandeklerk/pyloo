@@ -63,9 +63,7 @@ def e_loo(
     type: str = "mean",
     probs: float | Sequence[float] | None = None,
 ) -> ExpectationResult:
-    """Compute weighted expectations using importance sampling weights.
-
-    This function computes expectations (mean, variance, standard deviation, or quantiles)
+    """Computes expectations (mean, variance, standard deviation, or quantiles)
     of posterior or posterior predictive samples, weighted by importance sampling weights.
     The weights must be pre-computed, typically from leave-one-out cross-validation.
 
