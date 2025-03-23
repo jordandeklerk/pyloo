@@ -1,4 +1,4 @@
-"""Helper functions for pyloo package."""
+"""Utility functions."""
 
 import warnings
 from collections.abc import Sequence
