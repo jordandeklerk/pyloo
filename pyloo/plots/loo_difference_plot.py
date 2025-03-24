@@ -164,25 +164,6 @@ def plot_loo_difference(
                               alpha=0.7, size=1.5)
         plt.title("LOO Difference Plot with Groups")
         plt.xlabel("X")
-
-    Adding a smoothed trend line
-
-    .. code-block:: python
-
-        from scipy.ndimage import gaussian_filter1d
-
-        ax = pl.plot_loo_difference(X, loo_t, loo_normal,
-                                   jitter=(0.1, 0.1), alpha=0.5, size=1.5)
-
-        sorted_indices = np.argsort(X)
-        x_sorted = X[sorted_indices]
-        elpd_diff_sorted = (loo_t.loo_i.values - loo_normal.loo_i.values)[sorted_indices]
-        smoothed = gaussian_filter1d(elpd_diff_sorted, sigma=5)
-        plt.plot(x_sorted, smoothed, 'r-', linewidth=2, label="Smoothed trend")
-
-        plt.title("LOO Difference Plot with Smoothed Trend")
-        plt.xlabel("X")
-        plt.legend()
     """
     if backend is None:
         backend = rcParams["plot.backend"]
