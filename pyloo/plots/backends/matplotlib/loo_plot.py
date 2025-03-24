@@ -18,7 +18,7 @@ def plot_loo(
     show,
     **kwargs,
 ):
-    """Matplotlib loo plot."""
+    """LOO plot."""
     if ax is None:
         _, ax = plt.subplots(
             figsize=figsize, **({} if backend_kwargs is None else backend_kwargs)
@@ -69,7 +69,7 @@ def plot_loo(
     if show_elpd and elpd_loo is not None:
         x = np.arange(len(elpd_loo))
         ax.scatter(x, elpd_loo, color=color, alpha=0.5, **kwargs)
-        ax.set_xlabel("Observations", fontsize=label_fontsize)
+        ax.set_xlabel("Index", fontsize=label_fontsize)
         ax.set_ylabel("ELPD LOO", fontsize=label_fontsize)
 
         if var_name is not None:
@@ -79,7 +79,7 @@ def plot_loo(
     elif show_pareto_k and pareto_k is not None:
         x = np.arange(len(pareto_k))
         ax.scatter(x, pareto_k, color=color, alpha=0.5, **kwargs)
-        ax.set_xlabel("Observations", fontsize=label_fontsize)
+        ax.set_xlabel("Index", fontsize=label_fontsize)
         ax.set_ylabel("Pareto k", fontsize=label_fontsize)
 
         if threshold is not None:
