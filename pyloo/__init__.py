@@ -19,6 +19,7 @@ from .loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
 from .loo_moment_match import loo_moment_match, loo_moment_match_split
 from .loo_predictive_metric import loo_predictive_metric
 from .loo_score import loo_score
+from .plots import plot_loo
 from .psis import psislw
 from .reloo import reloo
 from .sis import sislw
@@ -45,4 +46,5 @@ __all__ = [
     "sislw",
     "tislw",
     "waic",
+    "plot_loo",
 ]
