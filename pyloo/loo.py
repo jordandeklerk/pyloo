@@ -35,7 +35,7 @@ def loo(
 
     For observations with high Pareto k diagnostics, moment matching can be used to transform
     posterior draws to better approximate leave-one-out posteriors. This approach is computationally
-    more efficient than exact refitting ('reloo') while still providing improved estimates.
+    more efficient than exact refitting (``reloo``) while still providing improved estimates.
 
     Parameters
     ----------

@@ -19,9 +19,18 @@ def _validate_scale(value: Any) -> str:
     raise ValueError(f"Scale must be one of {valid_scales}, not {value}")
 
 
+def _validate_backend(value: Any) -> str:
+    """Validate backend parameter."""
+    valid_backends: Set[str] = {"matplotlib"}
+    if isinstance(value, str) and value.lower() in valid_backends:
+        return value.lower()
+    raise ValueError(f"Backend must be one of {valid_backends}, not {value}")
+
+
 defaultParams = {
     "stats.ic_pointwise": (False, _validate_boolean),
     "stats.ic_scale": ("log", _validate_scale),
+    "plot.backend": ("matplotlib", _validate_backend),
 }
 
 
@@ -36,7 +45,6 @@ class RcParams(MutableMapping):
         super().__init__()
         for key, (value, _) in defaultParams.items():
             self._underlying_storage[key] = value
-        self.update(*args, **kwargs)
         self.update(*args, **kwargs)
 
     def __setitem__(self, key: str, val: Any) -> None:
