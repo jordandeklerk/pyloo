@@ -1,4 +1,4 @@
-"""Utilities for plotting."""
+"""Utilities for plotting based on Arviz."""
 
 import importlib
 import warnings
