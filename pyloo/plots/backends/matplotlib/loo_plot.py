@@ -68,7 +68,7 @@ def plot_loo(
 
     if show_elpd and elpd_loo is not None:
         x = np.arange(len(elpd_loo))
-        ax.scatter(x, elpd_loo, color=color, alpha=0.5, **kwargs)
+        ax.scatter(x, elpd_loo, color=color, marker="+", alpha=0.7, **kwargs)
         ax.set_xlabel("Index", fontsize=label_fontsize)
         ax.set_ylabel("ELPD LOO", fontsize=label_fontsize)
 
@@ -78,7 +78,7 @@ def plot_loo(
             ax.set_title("ELPD LOO values", fontsize=title_fontsize)
     elif show_pareto_k and pareto_k is not None:
         x = np.arange(len(pareto_k))
-        ax.scatter(x, pareto_k, color=color, alpha=0.5, **kwargs)
+        ax.scatter(x, pareto_k, color=color, marker="+", alpha=0.7, **kwargs)
         ax.set_xlabel("Index", fontsize=label_fontsize)
         ax.set_ylabel("Pareto k", fontsize=label_fontsize)
 
