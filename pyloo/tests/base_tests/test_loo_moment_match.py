@@ -42,6 +42,8 @@ def test_loo_moment_match_basic(problematic_model):
     loo_orig = loo(problematic_model.idata, pointwise=True)
     original_k_values = loo_orig.pareto_k.values.copy()
 
+    logger.info(loo_orig)
+
     high_k_indices = np.where(original_k_values > 0.7)[0]
     assert len(high_k_indices) > 0, "Test requires observations with high Pareto k"
 
@@ -61,6 +63,8 @@ def test_loo_moment_match_basic(problematic_model):
         split=True,
         cov=True,
     )
+
+    logger.info(loo_mm)
 
     improvements = []
     for idx in high_k_indices:
