@@ -6,6 +6,15 @@ from copy import deepcopy as _deepcopy
 import numpy as np
 import pandas as pd
 
+# Format for LOGO (Leave-One-Group-Out) output
+LOGO_BASE_FMT = """
+Computed from {n_samples} posterior samples and {n_groups} groups log-likelihood matrix.
+
+         Estimate       SE
+elpd_logo   {elpd:<8.2f}    {se:<.2f}
+p_logo       {p_logo:<8.2f}    {p_logo_se:<.2f}
+logoic      {logoic:<8.2f}    {logoic_se:<.2f}"""
+
 # Format for standard LOO output
 STD_BASE_FMT = """
 Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
@@ -96,7 +105,7 @@ class ELPDData(pd.Series):
         """
         kind = self.index[0].split("_")[1]
 
-        if kind not in ("loo", "waic", "kfold"):
+        if kind not in ("loo", "waic", "kfold", "logo"):
             raise ValueError("Invalid ELPDData object")
 
         is_subsampled = "subsampling_SE" in self
@@ -133,6 +142,63 @@ class ELPDData(pd.Series):
                     "\n\nThere has been a warning during the calculation. Please check"
                     " the results."
                 )
+
+            return base
+
+        elif kind == "logo":
+            elpd_logo = self["elpd_logo"]
+            se = self["se"]
+            p_logo = self["p_logo"]
+            p_logo_se = self.get("p_logo_se", float("nan"))
+            logoic = self["logoic"]
+            logoic_se = self["logoic_se"]
+
+            base = LOGO_BASE_FMT.format(
+                n_samples=self.n_samples,
+                n_groups=self.n_groups,
+                elpd=elpd_logo,
+                se=se,
+                p_logo=p_logo,
+                p_logo_se=p_logo_se,
+                logoic=logoic,
+                logoic_se=logoic_se,
+            )
+
+            if self.warning:
+                base += (
+                    "\n\nThere has been a warning during the calculation. Please check"
+                    " the results."
+                )
+            if (
+                "pareto_k" in self
+                and hasattr(self, "good_k")
+                and self.good_k is not None
+            ):
+                bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
+                pareto_k_values = (
+                    self.pareto_k.values
+                    if hasattr(self.pareto_k, "values")
+                    else self.pareto_k
+                )
+                counts, *_ = _histogram(pareto_k_values, bins)
+                if counts[1] == 0 and counts[2] == 0:
+                    base += (
+                        f"\n\nAll Pareto k estimates are good (k < {self.good_k:.1f})."
+                        "\nSee help('pareto-k-diagnostic') for details."
+                    )
+                else:
+                    percentages = counts / np.sum(counts) * 100
+                    base += POINTWISE_LOO_FMT.format(
+                        "Count",
+                        "Pct.",
+                        self.good_k,
+                        counts[0],
+                        counts[1],
+                        counts[2],
+                        percentages[0],
+                        percentages[1],
+                        percentages[2],
+                    )
 
             return base
 
@@ -325,6 +391,11 @@ class ELPDData(pd.Series):
     def n_data_points(self):
         """Get number of data points."""
         return self["n_data_points"]
+
+    @property
+    def n_groups(self):
+        """Get number of groups."""
+        return self.get("n_groups", None)
 
     @property
     def warning(self):
