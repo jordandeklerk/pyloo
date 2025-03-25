@@ -59,22 +59,6 @@ def loo_group(
 
             A higher log-score (or a lower deviance or negative log_score) indicates a model with
             better predictive accuracy.
-    moment_match: bool, default False
-        Whether to perform moment matching to improve the LOGO estimates for groups with
-        high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
-    **kwargs:
-        Additional keyword arguments for moment matching. These include:
-        - wrapper: PyMCWrapper, required if moment_match=True
-            PyMC model wrapper instance
-        - max_iters: int, default 30
-            Maximum number of moment matching iterations
-        - k_threshold: float, optional
-            Threshold value for Pareto k values above which moment matching is used.
-            If None, uses min(1 - 1/log10(n_samples), 0.7)
-        - split: bool, default True
-            Whether to do the split transformation at the end of moment matching
-        - cov: bool, default True
-            Whether to match the covariance matrix of the samples
 
     Returns
     -------
