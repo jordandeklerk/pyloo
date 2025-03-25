@@ -4,20 +4,12 @@ import logging
 
 import arviz as az
 import numpy as np
-import pytest
+import pymc as pm
 
 import pyloo as pl
 from pyloo.loo_group import loo_group
 
-try:
-    import pymc as pm
 
-    HAS_PYMC = True
-except ImportError:
-    HAS_PYMC = False
-
-
-@pytest.mark.skipif(not HAS_PYMC, reason="PyMC not installed")
 def test_loo_group_radon():
     """Test leave-one-group-out cross-validation with radon data."""
     data = az.load_arviz_data("radon")
@@ -52,7 +44,6 @@ def test_loo_group_radon():
     assert logo_results.p_logo < loo_results.p_loo
 
 
-@pytest.mark.skipif(not HAS_PYMC, reason="PyMC not installed")
 def test_loo_group_synthetic():
     """Test leave-one-group-out cross-validation with synthetic data."""
     np.random.seed(42)
