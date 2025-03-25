@@ -1,4 +1,4 @@
-"""Python implementation of the R package 'loo' for LOO-CV and WAIC."""
+"""Modules for LOO-CV."""
 
 import logging
 
@@ -15,6 +15,7 @@ from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
 from .loo import loo
 from .loo_approximate_posterior import loo_approximate_posterior
+from .loo_group import loo_group
 from .loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
 from .loo_moment_match import loo_moment_match, loo_moment_match_split
 from .loo_predictive_metric import loo_predictive_metric
@@ -36,6 +37,7 @@ __all__ = [
     "_kfold_split_stratified",
     "loo",
     "loo_approximate_posterior",
+    "loo_group",
     "loo_moment_match",
     "loo_moment_match_split",
     "loo_predictive_metric",
