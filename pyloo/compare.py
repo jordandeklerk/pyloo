@@ -422,6 +422,7 @@ def _calculate_ics(
                         dataset,
                         K=K if K is not None else 10,
                         folds=folds,
+                        pointwise=True,
                         var_name=var_name,
                         scale=scale,
                         stratify=stratify,

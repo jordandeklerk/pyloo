@@ -1,11 +1,13 @@
 """Tests for model comparison functionality."""
 
+import logging
 from copy import deepcopy
 
 import arviz as az
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 from numpy.testing import assert_allclose
 
 from ...compare import loo_compare
@@ -500,3 +502,54 @@ def test_kfold_compare_stratified(simple_model):
         assert "elpd_kfold" in result.columns
     except Exception as e:
         pytest.skip(f"Skipping K-fold test due to error: {e}")
+
+
+def test_loo_compare_with_jacobian_adjustments(centered_eight):
+    """Test model comparison with Jacobian adjustments for different transformations."""
+    original_model = deepcopy(centered_eight)
+    squared_model = deepcopy(centered_eight)
+    log_model = deepcopy(centered_eight)
+
+    y = centered_eight.observed_data.obs.values
+    positive_y = np.abs(y) + 1
+
+    log_model.observed_data["obs"] = xr.DataArray(
+        positive_y,
+        dims=log_model.observed_data.obs.dims,
+        coords=log_model.observed_data.obs.coords,
+    )
+
+    original_loo = loo(original_model, pointwise=True)
+
+    squared_jacobian = np.log(np.abs(2 * y))
+    squared_loo = loo(
+        squared_model, pointwise=True, jacobian_adjustment=squared_jacobian
+    )
+
+    log_jacobian = -np.log(positive_y)
+    log_loo = loo(log_model, pointwise=True, jacobian_adjustment=log_jacobian)
+
+    loo_dict = {
+        "original": original_loo,
+        "squared": squared_loo,
+        "log": log_loo,
+    }
+
+    comparison = loo_compare(loo_dict)
+
+    logging.info(original_loo)
+    logging.info(squared_loo)
+    logging.info(log_loo)
+
+    assert isinstance(comparison, pd.DataFrame)
+    assert len(comparison) == 3
+    assert all(comparison["scale"] == comparison["scale"].iloc[0])
+    assert comparison.loc[comparison["rank"] == 0, "elpd_diff"].item() == 0
+    assert_allclose(comparison["weight"].sum(), 1.0, rtol=1e-7)
+    assert all(comparison["se"] > 0)
+    assert comparison.loc[comparison["rank"] == 0, "dse"].item() == 0
+
+    elpd_values = comparison["elpd_loo"].values
+    assert not np.allclose(elpd_values[0], elpd_values[1]) or not np.allclose(
+        elpd_values[0], elpd_values[2]
+    )

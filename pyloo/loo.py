@@ -24,6 +24,7 @@ def loo(
     scale: str | None = None,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
     moment_match: bool = False,
+    jacobian: np.ndarray | None = None,
     **kwargs,
 ) -> ELPDData:
     """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
@@ -70,6 +71,12 @@ def loo(
     moment_match: bool, default False
         Whether to perform moment matching to improve the LOO estimates for observations with
         high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
+    jacobian_adjustment: array-like, optional
+        Adjustment for the Jacobian of a transformation applied to the response variable.
+        This is necessary when comparing models with different transformations of the response.
+        The adjustment should be the log of the absolute Jacobian determinant.
+        For example, for a log transformation, the adjustment would be log(1/y) = -log(y).
+        The array should have the same shape as the pointwise log-likelihood values.
     **kwargs:
         Additional keyword arguments for moment matching. These include:
         - wrapper: PyMCWrapper, required if moment_match=True
@@ -171,6 +178,12 @@ def loo(
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
 
+    if jacobian is not None and not pointwise:
+        raise ValueError(
+            "Jacobian adjustment requires pointwise LOO results. "
+            "Please set pointwise=True when using jacobian_adjustment."
+        )
+
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
     shape = log_likelihood.shape
     n_samples = shape[-1]
@@ -253,7 +266,6 @@ def loo(
 
             warn_mg = True
     else:
-        # For SIS/TIS, warn if effective sample size is too low
         min_ess = np.min(diagnostic)
         if min_ess < n_samples * 0.1:
             warnings.warn(
@@ -327,13 +339,11 @@ def loo(
             result_data.append(good_k)
             result_index.append("good_k")
 
-        # Add subsample_size if needed
         result_data.append(n_data_points)
         result_index.append("subsample_size")
 
         result = ELPDData(data=result_data, index=result_index)
 
-        # We can't do moment matching without pointwise values
         if moment_match:
             raise ValueError(
                 "Moment matching requires pointwise LOO results. "
@@ -385,13 +395,38 @@ def loo(
         result_data.append(diagnostic)
         result_index.append("ess")
 
-    # Add subsample_size if needed
     result_data.append(n_data_points)
     result_index.append("subsample_size")
 
     result = ELPDData(data=result_data, index=result_index)
 
-    # Moment matching
+    if jacobian is not None:
+        jacobian_adj = np.asarray(jacobian)
+
+        if jacobian_adj.shape != result.loo_i.shape:
+            raise ValueError(
+                f"Jacobian adjustment shape {jacobian_adj.shape} does not match "
+                f"loo_i shape {result.loo_i.shape}"
+            )
+
+        result.loo_i.values = result.loo_i.values + jacobian_adj
+
+        loo_lppd = result.loo_i.values.sum()
+        loo_lppd_se = (n_data_points * np.var(result.loo_i.values)) ** 0.5
+
+        p_loo = lppd - loo_lppd / scale_value
+        p_loo_se = np.sqrt(np.sum(np.var(result.loo_i.values)))
+
+        looic = -2 * loo_lppd
+        looic_se = 2 * loo_lppd_se
+
+        result["elpd_loo"] = loo_lppd
+        result["se"] = loo_lppd_se
+        result["p_loo"] = p_loo
+        result["p_loo_se"] = p_loo_se
+        result["looic"] = looic
+        result["looic_se"] = looic_se
+
     if moment_match:
         wrapper = kwargs.get("wrapper", None)
         if wrapper is None:
