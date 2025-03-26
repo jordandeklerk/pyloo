@@ -12,6 +12,7 @@ import xarray as xr
 from arviz import InferenceData
 from pymc.model import Model
 from pymc.model.transform.conditioning import remove_value_transforms
+from pymc.variational.approximations import Approximation
 
 from .utils import (
     PyMCWrapperError,
@@ -68,14 +69,14 @@ class PyMCWrapper:
     constant_data: dict[str, np.ndarray]
     observed_dims: dict[str, tuple[str, ...]]
     _untransformed_model: Model
-    approximation: Any | None
+    approximation: Approximation | None
 
     def __init__(
         self,
         model: Model,
         idata: InferenceData,
         var_names: Sequence[str] | None = None,
-        approximation: Any = None,
+        approximation: Approximation | None = None,
     ):
         """Initialize a PyMCWrapper.
 
@@ -87,9 +88,9 @@ class PyMCWrapper:
             ArviZ InferenceData object containing the model's posterior samples
         var_names : Sequence[str] | None
             Names of specific variables to focus on. If None, all variables are included
-        approximation : Any, optional
-            A PyMC approximation object (e.g., from pm.fit()). If provided, it can be used
-            for approximate posterior calculations without passing it explicitly each time.
+        approximation : Approximation | None, optional
+            A PyMC variational approximation object (e.g., from `pm.fit()`). If provided,
+            it can be used for approximate posterior calculations.
         """
         self.model = model
         self.idata = idata
@@ -103,11 +104,19 @@ class PyMCWrapper:
             self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
         except KeyError as e:
             _log.warning(
-                "KeyError during model cloning: %s. Using original model.", str(e)
+                "KeyError during model cloning and transform removal: %s. Using"
+                " original model. This might affect parameter transformations if value"
+                " transforms were present.",
+                str(e),
             )
             self._untransformed_model = model
         except Exception as e:
-            _log.warning("Failed to clone model: %s. Using original model.", str(e))
+            _log.warning(
+                "Failed to clone model and remove transforms: %s. Using original model."
+                " This might affect parameter transformations if value transforms were"
+                " present.",
+                str(e),
+            )
             self._untransformed_model = model
 
         _validate_model_state(self)
@@ -341,17 +350,13 @@ class PyMCWrapper:
     ) -> xr.DataArray:
         r"""Compute pointwise log likelihood for one or more observations using a fitted model.
 
-        This method computes the log likelihood for one or more observations intended to be used
-        in cross-validation procedures like leave-one-out cross-validation (LOO-CV) or k-fold CV.
-        It uses a fitted model (i.e. one that has been refitted without the observation(s) at the given
-        index/indices) to evaluate the likelihood of the observation(s).
-
         Parameters
         ----------
         idx : int | np.ndarray | slice
             Index or indices of the held-out observation(s).
         idata : InferenceData
-            InferenceData object from a model that was refitted without the observation(s) at index `idx`.
+            InferenceData object containing posterior samples from a model that was refitted
+            without the observation(s) specified by `idx`.
         var_name : str | None
             Name of the variable for which to compute the log likelihood.
             If None, uses the first observed variable.
@@ -380,7 +385,7 @@ class PyMCWrapper:
 
         Examples
         --------
-        First, let's import the necessary libraries and create a synthetic dataset for a simple linear regression model:
+        Create a synthetic dataset for a simple linear regression model:
 
         .. code-block:: python
 
@@ -389,7 +394,6 @@ class PyMCWrapper:
             import numpy as np
             from pyloo.wrapper import PyMCWrapper
 
-            # Generate some example data
             x = np.random.normal(0, 1, size=100)
             true_alpha = 1.0
             true_beta = 2.5
