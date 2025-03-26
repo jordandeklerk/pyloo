@@ -76,11 +76,12 @@ def waic(
 
     See Also
     --------
-    loo: Compute Pareto-smoothed importance sampling leave-one-out cross-validation.
-    loo_subsample: Compute approximate LOO-CV using subsampling.
-    loo_approximate_posterior: Compute approximate LOO-CV using posterior approximation.
-    loo_kfold: K-fold cross-validation.
-    loo_moment_match: Moment matching for problematic observations
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
+    loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
 
     References
     ----------

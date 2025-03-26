@@ -207,13 +207,12 @@ def loo_kfold(
 
     See Also
     --------
-    loo: Leave-one-out cross-validation for PyMC models
-    loo_subsample: Leave-one-out cross-validation with subsampling
-    loo_moment_match: Leave-one-out cross-validation with moment matching
-    loo_approximate: Leave-one-out cross-validation for posterior approximations
-    loo_group: Leave-one-group-out cross-validation for PyMC models
-    loo_score: Score-based cross-validation for PyMC models
-    waic: Widely applicable information criterion
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
+    waic : Compute WAIC
     """
     if not isinstance(data, PyMCWrapper):
         raise TypeError(f"Expected PyMCWrapper, got {type(data).__name__}")

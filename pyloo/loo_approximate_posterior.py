@@ -156,10 +156,11 @@ def loo_approximate_posterior(
 
     See Also
     --------
-    loo: Efficient LOO-CV computation
-    loo_subsample : Subsampled LOO-CV computation
-    loo_moment_match : LOO-CV computation using moment matching
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)

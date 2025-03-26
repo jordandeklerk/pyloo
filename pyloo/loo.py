@@ -167,7 +167,9 @@ def loo(
     loo_subsample : Leave-one-out cross-validation with subsampling
     loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
-    loo_approximate : Leave-one-out cross-validation for posterior approximations
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)

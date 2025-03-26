@@ -119,10 +119,11 @@ def loo_group(
 
     See Also
     --------
-    loo : Leave-one-out cross-validation
-    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)

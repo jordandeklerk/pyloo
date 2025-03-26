@@ -146,11 +146,12 @@ def loo_moment_match(
 
     See Also
     --------
-    loo: Leave-one-out cross-validation
-    loo_subsample: Leave-one-out cross-validation with subsampling
-    loo_approximate: Leave-one-out cross-validation for posterior approximations
-    loo_kfold: K-fold cross-validation
-    waic: Compute WAIC
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
+    waic : Compute WAIC
     """
     converter = ParameterConverter(wrapper)
     loo_data = deepcopy(loo_data)
