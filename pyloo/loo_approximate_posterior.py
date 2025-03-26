@@ -31,10 +31,6 @@ def loo_approximate_posterior(
 ) -> ELPDData:
     """Efficient approximate leave-one-out cross-validation (LOO) for posterior approximations.
 
-    This function computes LOO-CV for posterior approximations where it is possible to compute
-    the log density for the posterior approximation. Performs importance resampling
-    for better numerical stability.
-
     Parameters
     ----------
     data : InferenceData or Any
