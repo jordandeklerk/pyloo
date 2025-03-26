@@ -16,7 +16,12 @@ from .elpd import ELPDData
 from .loo import loo
 from .loo_approximate_posterior import loo_approximate_posterior
 from .loo_group import loo_group
-from .loo_kfold import _kfold_split_random, _kfold_split_stratified, kfold
+from .loo_kfold import (
+    _kfold_split_grouped,
+    _kfold_split_random,
+    _kfold_split_stratified,
+    loo_kfold,
+)
 from .loo_moment_match import loo_moment_match, loo_moment_match_split
 from .loo_predictive_metric import loo_predictive_metric
 from .loo_score import loo_score
@@ -32,9 +37,10 @@ __all__ = [
     "compute_importance_weights",
     "ELPDData",
     "ISMethod",
-    "kfold",
+    "loo_kfold",
     "_kfold_split_random",
     "_kfold_split_stratified",
+    "_kfold_split_grouped",
     "loo",
     "loo_approximate_posterior",
     "loo_group",

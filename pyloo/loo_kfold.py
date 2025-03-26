@@ -14,12 +14,12 @@ from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
 from .wrapper.pymc import PyMCWrapper
 
-__all__ = ["kfold"]
+__all__ = ["loo_kfold"]
 
 _log = logging.getLogger(__name__)
 
 
-def kfold(
+def loo_kfold(
     data: PyMCWrapper,
     K: int = 10,
     pointwise: bool | None = None,
