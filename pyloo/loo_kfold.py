@@ -1,6 +1,7 @@
 """K-fold cross-validation for PyMC models."""
 
 import logging
+import warnings
 from copy import deepcopy
 from typing import Any
 
@@ -9,6 +10,7 @@ import pymc as pm
 import xarray as xr
 
 from .elpd import ELPDData
+from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
 from .wrapper.pymc import PyMCWrapper
 
@@ -20,12 +22,14 @@ _log = logging.getLogger(__name__)
 def kfold(
     data: PyMCWrapper,
     K: int = 10,
+    pointwise: bool | None = None,
     folds: np.ndarray | None = None,
     var_name: str | None = None,
     scale: str | None = None,
     save_fits: bool = False,
     progressbar: bool = False,
     stratify: np.ndarray | None = None,
+    groups: np.ndarray | None = None,
     random_seed: int | None = None,
     **kwargs: Any,
 ) -> ELPDData:
@@ -46,6 +50,9 @@ def kfold(
         A PyMCWrapper object containing the fitted model and data
     K : int
         Number of folds for cross-validation (default: 10)
+    pointwise : bool, optional
+        If True, return the pointwise predictive accuracy values. Defaults to
+        ``stats.ic_pointwise`` rcParam.
     folds : np.ndarray | None
         Optional pre-specified fold assignments. If None, folds are created randomly.
         Fold indices must be integers from 1 to K.
@@ -62,6 +69,11 @@ def kfold(
         Array of values to use for stratified k-fold cross-validation. If provided,
         folds will be created to preserve the distribution of these values across folds.
         Ignored if folds is not None.
+    groups : np.ndarray | None
+        Array of group identifiers for each observation. If provided, folds will be created
+        such that all observations from the same group are assigned to the same fold.
+        Ignored if folds is not None. Takes precedence over stratify if both
+        are provided.
     random_seed : int | None
         Random seed for reproducibility when creating folds. Ignored if folds is not None.
     **kwargs : Any
@@ -82,9 +94,6 @@ def kfold(
     kfoldic_se: standard error of the kfoldic
     kfold_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
         only if pointwise=True
-    diagnostic: array of diagnostic values, only if pointwise=True
-        - For PSIS: Pareto shape parameter (pareto_k)
-        - For SIS/TIS: Effective sample size (ess)
 
     Raises
     ------
@@ -145,7 +154,7 @@ def kfold(
 
     For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide
     more reliable performance estimates. You can use the stratify parameter to ensure each fold
-    has a similar distribution of values:
+    has a similar distribution of values
 
     .. code-block:: python
 
@@ -177,19 +186,41 @@ def kfold(
         wrapper = PyMCWrapper(model, idata)
         kfold_result = pl.loo_kfold(wrapper, K=5, stratify=wrapper.get_observed_data(), random_seed=123)
 
+    For hierarchical or grouped data, it's important to ensure that all observations from the same
+    group are assigned to the same fold. This can be achieved using the groups parameter:
+
+    .. code-block:: python
+
+        import pymc as pm
+        import numpy as np
+        import pyloo as pl
+        import arviz as az
+        from pyloo.wrapper import PyMCWrapper
+
+        data = az.load_arviz_data("radon")
+
+        group_ids = data.constant_data.county_idx.values
+        wrapper = PyMCWrapper.from_arviz(data)
+
+        kfold_result = pl.loo_kfold(wrapper, K=5, groups=group_ids, random_seed=123)
+        print(kfold_result)
+
     See Also
     --------
-    loo : Leave-one-out cross-validation for PyMC models
-    loo_subsample : Leave-one-out cross-validation with subsampling
-    loo_moment_match : Leave-one-out cross-validation with moment matching
-    loo_approximate : Leave-one-out cross-validation for posterior approximations
-    waic : Widely applicable information criterion
+    loo: Leave-one-out cross-validation for PyMC models
+    loo_subsample: Leave-one-out cross-validation with subsampling
+    loo_moment_match: Leave-one-out cross-validation with moment matching
+    loo_approximate: Leave-one-out cross-validation for posterior approximations
+    loo_group: Leave-one-group-out cross-validation for PyMC models
+    loo_score: Score-based cross-validation for PyMC models
+    waic: Widely applicable information criterion
     """
     if not isinstance(data, PyMCWrapper):
         raise TypeError(f"Expected PyMCWrapper, got {type(data).__name__}")
 
     wrapper = data
     original_idata = wrapper.idata
+    pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
 
     if var_name is None:
         var_name = wrapper.get_observed_name()
@@ -208,12 +239,23 @@ def kfold(
     else:
         scale_factor = 1
 
-    folds, K = _prepare_folds(folds, K, n_obs, stratify, random_seed)
+    folds, K = _prepare_folds(folds, K, n_obs, stratify, groups, random_seed)
     log_lik_full = get_log_likelihood(original_idata, var_name=var_name)
 
     obs_dims = [dim for dim in log_lik_full.dims if dim not in ("chain", "draw")]
     if not obs_dims:
         raise ValueError("Could not identify observation dimension in log_likelihood")
+
+    has_nan = np.any(np.isnan(log_lik_full.values))
+
+    if has_nan:
+        warnings.warn(
+            "NaN values detected in log-likelihood. These will be ignored in the LOGO "
+            "calculation.",
+            UserWarning,
+            stacklevel=2,
+        )
+        log_lik_full = log_lik_full.where(~np.isnan(log_lik_full), -1e10)
 
     lpds_full = _compute_lpds_full(log_lik_full)
     elpds = np.zeros(n_obs)
@@ -246,6 +288,7 @@ def kfold(
             fits.append(fold_fits)
 
     p_kfold = lpds_full - elpds
+    p_kfold_se = np.sqrt(n_obs * np.var(p_kfold))
     elpds = scale_factor * elpds
 
     elpd_kfold = np.sum(elpds)
@@ -254,46 +297,88 @@ def kfold(
     kfoldic = -2 * elpd_kfold / scale_factor
     kfoldic_se = 2 * se
 
-    pointwise = np.column_stack((elpds, p_kfold, -2 * elpds / scale_factor))
-    pointwise_df = xr.DataArray(
-        pointwise,
-        dims=("observation", "metric"),
-        coords={
-            "observation": np.arange(n_obs),
-            "metric": ["elpd_kfold", "p_kfold", "kfoldic"],
-        },
-    )
+    n_samples = log_lik_full.sizes.get("chain", 1) * log_lik_full.sizes.get("draw", 1)
+    is_stratified = stratify is not None and folds is None
+    is_grouped = groups is not None and folds is None
 
-    result_data: list[Any] = [
-        elpd_kfold,
-        se,
-        p_kfold_sum,
-        log_lik_full.sizes.get("chain", 1) * log_lik_full.sizes.get("draw", 1),
-        n_obs,
-        False,
-        scale,
-        K,
-        kfoldic,
-        kfoldic_se,
-        pointwise_df.sel(metric="elpd_kfold"),
-    ]
+    result_data: list[Any] = []
+    index: list[str] = []
 
-    index: list[str] = [
-        "elpd_kfold",
-        "se",
-        "p_kfold",
-        "n_samples",
-        "n_data_points",
-        "warning",
-        "scale",
-        "K",
-        "kfoldic",
-        "kfoldic_se",
-        "kfold_i",
-    ]
+    if pointwise:
+        pointwise_metrics = xr.DataArray(
+            np.column_stack((elpds, p_kfold, -2 * elpds / scale_factor)),
+            dims=("observation", "metric"),
+            coords={
+                "observation": np.arange(n_obs),
+                "metric": ["elpd_kfold", "p_kfold", "kfoldic"],
+            },
+            name="kfold_metrics",
+        )
+        kfold_i = pointwise_metrics.sel(metric="elpd_kfold").rename("kfold_i")
 
-    result_data.append(stratify is not None and folds is None)
-    index.append("stratified")
+        result_data = [
+            elpd_kfold,
+            se,
+            p_kfold_sum,
+            p_kfold_se,
+            n_samples,
+            n_obs,
+            False,
+            kfold_i,
+            scale,
+            K,
+            kfoldic,
+            kfoldic_se,
+            is_stratified,
+            is_grouped,
+        ]
+        index = [
+            "elpd_kfold",
+            "se",
+            "p_kfold",
+            "p_kfold_se",
+            "n_samples",
+            "n_data_points",
+            "warning",
+            "kfold_i",
+            "scale",
+            "K",
+            "kfoldic",
+            "kfoldic_se",
+            "stratified",
+            "grouped",
+        ]
+    else:
+        result_data = [
+            elpd_kfold,
+            se,
+            p_kfold_sum,
+            p_kfold_se,
+            n_samples,
+            n_obs,
+            False,  # warning
+            scale,
+            K,
+            kfoldic,
+            kfoldic_se,
+            is_stratified,
+            is_grouped,
+        ]
+        index = [
+            "elpd_kfold",
+            "se",
+            "p_kfold",
+            "p_kfold_se",
+            "n_samples",
+            "n_data_points",
+            "warning",
+            "scale",
+            "K",
+            "kfoldic",
+            "kfoldic_se",
+            "stratified",
+            "grouped",
+        ]
 
     if fits is not None:
         result_data.append(fits)
@@ -302,7 +387,8 @@ def kfold(
     elpd_data = ELPDData(data=result_data, index=index)
     elpd_data.method = "kfold"
     elpd_data.K = K
-    elpd_data.stratified = stratify is not None and folds is None
+    elpd_data.stratified = is_stratified
+    elpd_data.grouped = is_grouped
 
     return elpd_data
 
@@ -312,6 +398,7 @@ def _prepare_folds(
     K: int,
     n_obs: int,
     stratify: np.ndarray | None,
+    groups: np.ndarray | None,
     random_seed: int | None,
 ) -> tuple[np.ndarray, int]:
     """Prepare or validate fold assignments for K-fold cross-validation.
@@ -352,6 +439,21 @@ def _prepare_folds(
             raise ValueError("Fold indices must be >= 1")
         return folds, len(unique_folds)
 
+    if groups is not None:
+        if not isinstance(groups, np.ndarray):
+            groups = np.asarray(groups)
+
+        if len(groups) != n_obs:
+            raise ValueError(
+                f"Length of groups ({len(groups)}) must match observations ({n_obs})"
+            )
+
+        _log.info(f"Creating group-based folds with K={K}")
+        try:
+            return _kfold_split_grouped(K=K, groups=groups, seed=random_seed), K
+        except Exception as e:
+            raise ValueError(f"Failed to create group-based folds: {str(e)}")
+
     if stratify is not None:
         if not isinstance(stratify, np.ndarray):
             stratify = np.asarray(stratify)
@@ -371,6 +473,57 @@ def _prepare_folds(
     _log.info(f"Creating random folds with K={K}")
 
     return _kfold_split_random(K=K, N=n_obs, seed=random_seed), K
+
+
+def _kfold_split_grouped(
+    K: int, groups: np.ndarray, seed: int | None = None
+) -> np.ndarray:
+    """Create group-based folds for K-fold cross-validation.
+
+    Parameters
+    ----------
+    K : int
+        Number of folds
+    groups : np.ndarray
+        Array of group identifiers for each observation
+    seed : int | None
+        Random seed for reproducibility
+
+    Returns
+    -------
+    np.ndarray
+        Array of fold assignments (integers from 1 to K)
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    unique_groups = np.unique(groups)
+    n_groups = len(unique_groups)
+
+    if n_groups < K:
+        _log.warning(
+            f"Number of groups ({n_groups}) is less than K ({K}). Setting K={n_groups}"
+        )
+        K = n_groups
+
+    if K <= 1:
+        raise ValueError(f"K must be > 1 for group-based folds, got {K}")
+
+    group_to_fold = {}
+
+    group_indices = np.random.permutation(n_groups)
+    fold_sizes = np.zeros(K, dtype=int)
+
+    for _, group_idx in enumerate(group_indices):
+        fold = np.argmin(fold_sizes) + 1
+        group_to_fold[unique_groups[group_idx]] = fold
+        fold_sizes[fold - 1] += 1
+
+    folds = np.zeros(len(groups), dtype=int)
+    for i, group in enumerate(groups):
+        folds[i] = group_to_fold[group]
+
+    return folds
 
 
 def _kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:

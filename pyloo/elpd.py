@@ -116,7 +116,7 @@ class ELPDData(pd.Series):
             elpd_kfold = self["elpd_kfold"]
             se = self["se"]
             p_kfold = self["p_kfold"]
-            p_kfold_se = self.get("se_p_kfold", float("nan"))
+            p_kfold_se = self["p_kfold_se"]
             kfoldic = -2 * elpd_kfold
             kfoldic_se = 2 * se
 
@@ -216,7 +216,6 @@ class ELPDData(pd.Series):
                 and hasattr(self, "good_k")
                 and self.good_k is not None
             ):
-                # Check if all Pareto k values are good
                 bins = np.asarray([-np.inf, self.good_k, 1, np.inf])
                 pareto_k_values = (
                     self.pareto_k.values
@@ -225,7 +224,6 @@ class ELPDData(pd.Series):
                 )
                 counts, *_ = _histogram(pareto_k_values, bins)
                 if counts[1] == 0 and counts[2] == 0:
-                    # Already set with default message above
                     pass
                 else:
                     percentages = counts / np.sum(counts) * 100

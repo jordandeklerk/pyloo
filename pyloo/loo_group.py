@@ -1,7 +1,7 @@
 """Leave-one-group-out cross-validation (LOGO-CV) using importance sampling methods."""
 
 import warnings
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -17,13 +17,13 @@ __all__ = ["loo_group"]
 
 
 def loo_group(
-    data: Union[InferenceData, Any],
+    data: InferenceData | Any,
     group_ids: np.ndarray,
-    pointwise: Optional[bool] = None,
-    var_name: Optional[str] = None,
-    reff: Optional[float] = None,
-    scale: Optional[str] = None,
-    method: Union[Literal["psis", "sis", "tis"], ISMethod] = "psis",
+    pointwise: bool | None = None,
+    var_name: str | None = None,
+    reff: float | None = None,
+    scale: str | None = None,
+    method: ISMethod | Literal["psis", "sis", "tis"] = "psis",
 ) -> ELPDData:
     """Compute leave-one-group-out cross-validation (LOGO-CV) using importance sampling methods.
 
