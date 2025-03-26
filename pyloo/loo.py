@@ -40,38 +40,35 @@ def loo(
 
     Parameters
     ----------
-    data: obj
+    data: InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Refer to documentation of
         :func:`arviz.convert_to_dataset` for details.
-    pointwise: bool, optional
+    pointwise: bool | None
         If True the pointwise predictive accuracy will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
-    var_name : str, optional
+    var_name : str | None
         The name of the variable in log_likelihood groups storing the pointwise log
         likelihood data to use for loo computation.
-    reff: float, optional
+    reff: float | None
         Relative MCMC efficiency, ``ess / n`` i.e. number of effective samples divided by the number
         of actual samples. Computed from trace by default.
-    scale: str
+    scale: str | None
         Output scale for loo. Available options are:
-    method: {'psis', 'sis', 'tis'}, default 'psis'
+    method: Literal['psis', 'sis', 'tis'] | ISMethod
         The importance sampling method to use:
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
-            Output scale for loo. Available options are:
-
-            - ``log`` : (default) log-score
-            - ``negative_log`` : -1 * log-score
-            - ``deviance`` : -2 * log-score
-
-            A higher log-score (or a lower deviance or negative log_score) indicates a model with
-            better predictive accuracy.
-    moment_match: bool, default False
+    scale : str | None
+        Output scale for LOO. Available options are:
+        - "log": (default) log-score
+        - "negative_log": -1 * log-score
+        - "deviance": -2 * log-score
+    moment_match: bool
         Whether to perform moment matching to improve the LOO estimates for observations with
         high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
-    jacobian: array-like, optional
+    jacobian: array-like | None
         Adjustment for the Jacobian of a transformation applied to the response variable.
     **kwargs:
         Additional keyword arguments for moment matching. These include:

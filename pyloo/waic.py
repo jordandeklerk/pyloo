@@ -26,21 +26,20 @@ def waic(
 
     Parameters
     ----------
-    data: obj
+    data: InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Refer to documentation of arviz.convert_to_dataset for details.
-    pointwise: bool, optional
+    pointwise: bool | None, optional
         If True the pointwise predictive accuracy will be returned. Defaults to
         stats.ic_pointwise rcParam.
     var_name : str, optional
         The name of the variable in log_likelihood groups storing the pointwise log
         likelihood data to use for waic computation.
-    scale: str, optional
+    scale: str | None, optional
         Output scale for WAIC. Available options are:
         - 'log' : (default) log-score
         - 'negative_log' : -1 * log-score
         - 'deviance' : -2 * log-score
-        A higher log-score (or a lower deviance) indicates better predictive accuracy.
 
     Returns
     -------

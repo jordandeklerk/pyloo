@@ -35,7 +35,7 @@ __all__ = ["loo_subsample", "update_subsample"]
 
 
 def loo_subsample(
-    data: InferenceData | dict[str, Any],
+    data: InferenceData | Any,
     observations: int | np.ndarray | None = 100,
     loo_approximation: str = "plpd",
     estimator: str = "diff_srs",
@@ -53,10 +53,10 @@ def loo_subsample(
 
     Parameters
     ----------
-    data : Union[InferenceData, Dict[str, Any]]
+    data : InferenceData | Any
         Any object that can be converted to an InferenceData object
         containing the log likelihood data.
-    observations : Optional[Union[int, np.ndarray]], default 400
+    observations : int | np.ndarray | None, default 100
         The subsample observations to use:
         - An integer specifying the number of observations to subsample
         - An array of integers providing specific indices to use
@@ -72,26 +72,26 @@ def loo_subsample(
         - "diff_srs": Difference estimator with simple random sampling (default)
         - "hh_pps": Hansen-Hurwitz estimator
         - "srs": Simple random sampling
-    loo_approximation_draws : Optional[int], default None
+    loo_approximation_draws : int | None, default None
         The number of posterior draws to use for approximation methods that
         require integration over the posterior.
-    pointwise : Optional[bool], default None
+    pointwise : bool | None, default None
         If True, returns pointwise values. Defaults to rcParams["stats.ic_pointwise"].
-    var_name : Optional[str], default None
+    var_name : str | None, default None
         Name of the variable in log_likelihood groups storing the pointwise log
         likelihood data.
-    reff : Optional[float], default None
+    reff : float | None, default None
         Relative MCMC efficiency, ess / n. If not provided, computed from trace.
-    scale : Optional[str], default None
-        Output scale for LOO. Available options are:
+    scale : str | None, default None
+        Output scale for LOO_subsample. Available options are:
         - "log": (default) log-score
         - "negative_log": -1 * log-score
         - "deviance": -2 * log-score
-    log_p : Optional[np.ndarray], default None
+    log_p : np.ndarray | None, default None
         The log-posterior (target) evaluated at S samples from the proposal distribution (q).
         A vector of length S where S is the number of samples. If provided along with log_q,
         importance resampling will be performed for better numerical stability.
-    log_q : Optional[np.ndarray], default None
+    log_q : np.ndarray | None, default None
         The log-density (proposal) evaluated at S samples from the proposal distribution (q).
         A vector of length S. Must be provided if log_p is provided.
     resample_method : str, default "psis"
@@ -99,7 +99,7 @@ def loo_subsample(
         - "psis": Pareto Smoothed Importance Sampling (without replacement)
         - "psir": Pareto Smoothed Importance Resampling (with replacement)
         - "sis": Standard Importance Sampling (no smoothing)
-    seed : Optional[int], default None
+    seed : int | None, default None
         Random seed for reproducible resampling. Only used when log_p and log_q are provided.
 
     Returns

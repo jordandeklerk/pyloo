@@ -41,19 +41,19 @@ def loo_predictive_metric(
 
     Parameters
     ----------
-    data : InferenceData or convertible object
+    data : InferenceData | Any
         An ArviZ InferenceData object or any object that can be converted to
         InferenceData containing posterior predictive samples and log likelihood values.
     y : array-like
         A numeric vector of observations with shape (n_observations,).
-    var_name : str, optional
+    var_name : str | None, optional
         Name of the variable in the posterior predictive group to compute metrics for.
         If None and there is only one variable, that variable will be used.
     group : str, default "posterior_predictive"
         Name of the InferenceData group containing the predictions.
     log_lik_group : str, default "log_likelihood"
         Name of the InferenceData group containing the log likelihood values.
-    log_lik_var_name : str, optional
+    log_lik_var_name : str | None, optional
         Name of the variable in the log likelihood group to use.
         If None and there is only one variable, that variable will be used.
     metric : str, default "mae"
@@ -63,7 +63,7 @@ def loo_predictive_metric(
         - "rmse": Root mean squared error (square root of MSE)
         - "acc": Accuracy (proportion of predictions indicating the correct outcome)
         - "balanced_acc": Balanced accuracy (average of true positive and true negative rates)
-    r_eff : float or array-like, default 1.0
+    r_eff : float | np.ndarray, default 1.0
         Relative effective sample size estimates. If a scalar, the same value is used
         for all observations. If an array, should contain one element per observation.
     **kwargs

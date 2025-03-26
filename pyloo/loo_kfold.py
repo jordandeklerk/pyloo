@@ -50,7 +50,7 @@ def loo_kfold(
         A PyMCWrapper object containing the fitted model and data
     K : int
         Number of folds for cross-validation (default: 10)
-    pointwise : bool, optional
+    pointwise : bool | None, optional
         If True, return the pointwise predictive accuracy values. Defaults to
         ``stats.ic_pointwise`` rcParam.
     folds : np.ndarray | None
@@ -59,8 +59,11 @@ def loo_kfold(
         If provided, this overrides the stratify parameter.
     var_name : str | None
         Name of the observed variable to use. If None, uses the first observed variable.
-    scale : str | None
-        Scale for the returned statistics: "log" (default), "negative_log", or "deviance"
+    scale : str | None, default None
+        Output scale for K-fold cross-validation. Available options are:
+        - "log": (default) log-score
+        - "negative_log": -1 * log-score
+        - "deviance": -2 * log-score
     save_fits : bool
         Whether to save the fitted models for each fold (default: False)
     progressbar : bool
@@ -207,6 +210,7 @@ def loo_kfold(
 
     See Also
     --------
+    loo : Leave-one-out cross-validation
     loo_subsample : Leave-one-out cross-validation with subsampling
     loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations

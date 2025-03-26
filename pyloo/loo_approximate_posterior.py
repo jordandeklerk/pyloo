@@ -33,29 +33,29 @@ def loo_approximate_posterior(
 
     Parameters
     ----------
-    data : InferenceData or Any
+    data : InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Refer to documentation of :func:`arviz.convert_to_dataset` for details.
-    log_p : array-like
+    log_p : np.ndarray
         The log-posterior (target) evaluated at S samples from the proposal distribution (q).
         A vector of length S where S is the number of samples.
-    log_q : array-like
+    log_q : np.ndarray
         The log-density (proposal) evaluated at S samples from the proposal distribution (q).
         A vector of length S.
-    pointwise : bool, optional
+    pointwise : bool | None, optional
         If True, returns pointwise values. Defaults to rcParams["stats.ic_pointwise"].
-    var_name : str, optional
+    var_name : str | None, optional
         The name of the variable in log_likelihood groups storing the pointwise log
         likelihood data to use for loo computation.
     reff : float, optional
         Relative MCMC efficiency, ``ess / n`` i.e. number of effective samples divided by the number
         of actual samples. Computed from trace by default.
-    scale : str, optional
-        Output scale for LOO. Available options are:
+    scale : str | None, default None
+        Output scale for LOO_approximate_posterior. Available options are:
         - "log": (default) log-score
         - "negative_log": -1 * log-score
         - "deviance": -2 * log-score
-    method : {'psis', 'sis', 'tis'}, default 'psis'
+    method : Literal['psis', 'sis', 'tis'] | ISMethod, default 'psis'
         The importance sampling method to use for LOO computation:
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
@@ -65,7 +65,7 @@ def loo_approximate_posterior(
         - "psis": Pareto Smoothed Importance Sampling (without replacement)
         - "psir": Pareto Smoothed Importance Resampling (with replacement)
         - "sis": Standard Importance Sampling (no smoothing)
-    seed : int, optional
+    seed : int | None, optional
         Random seed for reproducible resampling.
 
     Returns

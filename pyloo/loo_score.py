@@ -65,27 +65,27 @@ def loo_score(
 
     Parameters
     ----------
-    data : InferenceData or convertible object
+    data : InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
     x_group : str, default "posterior_predictive"
         Name of the InferenceData group containing the first set of predictive samples.
-    x_var : str, optional
+    x_var : str | None, optional
         Name of the variable in x_group to use. If None and there is only one variable,
         that variable will be used.
-    x2_group : str, optional
+    x2_group : str | None, optional
         Name of the InferenceData group containing the second set of predictive samples.
         If None, uses the same group as x_group.
-    x2_var : str, optional
+    x2_var : str | None, optional
         Name of the variable in x2_group to use. If None, uses the same variable as x_var.
     y_group : str, default "observed_data"
         Name of the InferenceData group containing the observed data.
-    y_var : str, optional
+    y_var : str | None, optional
         Name of the variable in y_group to use. If None and there is only one variable,
         that variable will be used.
-    var_name : str, optional
+    var_name : str | None, optional
         The name of the variable in log_likelihood groups storing the pointwise log
         likelihood data to use for LOO computation.
-    pointwise : bool, optional
+    pointwise : bool | None, optional
         If True, the pointwise values will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
     permutations : int, default 1
@@ -93,7 +93,7 @@ def loo_score(
         (::math:`|x - x2|`) is computed. The row order of x2 is shuffled as elements x and x2 are typically
         drawn given the same values of parameters. Generating more permutations is
         expected to decrease the variance of the computed expected value.
-    reff : float, optional
+    reff : float | None, optional
         Relative MCMC efficiency, ``ess / n`` i.e. number of effective samples divided by the number
         of actual samples. Computed from trace by default.
     scale : bool, default False
