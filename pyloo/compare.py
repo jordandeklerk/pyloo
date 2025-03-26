@@ -12,7 +12,7 @@ from scipy import optimize
 
 from .elpd import ELPDData
 from .loo import loo
-from .loo_kfold import kfold
+from .loo_kfold import loo_kfold
 from .loo_subsample import loo_subsample
 from .rcparams import _validate_scale
 from .waic import waic
@@ -407,7 +407,7 @@ def _calculate_ics(
     if ic == "waic":
         ic_func = waic
     elif ic == "kfold":
-        ic_func = kfold
+        ic_func = loo_kfold
     elif observations is not None:
         ic_func = loo_subsample
     else:
