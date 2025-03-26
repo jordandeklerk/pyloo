@@ -330,6 +330,42 @@ def test_loo_moment_matching_no_pointwise(problematic_k_model):
         loo(idata, moment_match=True, wrapper=wrapper)
 
 
+def test_loo_jacobian_adjustment(centered_eight):
+    """Test Jacobian adjustment for transformed response variables."""
+    centered_eight = deepcopy(centered_eight)
+
+    y = centered_eight.observed_data.obs.values
+
+    result_no_adj = loo(centered_eight, pointwise=True)
+
+    jacobian_adj = np.log(np.abs(2 * y))
+
+    result_with_adj = loo(centered_eight, pointwise=True, jacobian=jacobian_adj)
+
+    expected_adjusted_loo_i = result_no_adj.loo_i.values + jacobian_adj
+    assert_array_almost_equal(result_with_adj.loo_i.values, expected_adjusted_loo_i)
+
+    assert result_with_adj["elpd_loo"] == np.sum(result_with_adj.loo_i.values)
+    assert result_with_adj["elpd_loo"] != result_no_adj["elpd_loo"]
+
+    assert_array_almost_equal(result_with_adj.pareto_k, result_no_adj.pareto_k)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Jacobian adjustment requires pointwise LOO results. Please set"
+            " pointwise=True when using jacobian_adjustment."
+        ),
+    ):
+        loo(centered_eight, pointwise=False, jacobian=jacobian_adj)
+
+    wrong_shape_adj = np.ones(len(y) + 1)
+    with pytest.raises(
+        ValueError, match="Jacobian adjustment shape .* does not match loo_i shape"
+    ):
+        loo(centered_eight, pointwise=True, jacobian=wrong_shape_adj)
+
+
 def test_loo_wells(wells_model):
     """Test LOO computation with the wells dataset."""
     _, idata = wells_model

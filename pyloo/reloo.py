@@ -62,13 +62,13 @@ def reloo(
     wrapper : PyMCWrapper
         A PyMCWrapper instance that holds the fitted model and its data. The implementation is optimized
         specifically for PyMC models.
-    loo_orig : ELPDData, optional
+    loo_orig : ELPDData | None, optional
         An ELPDData instance containing initial pointwise LOO results. If provided, its Pareto shape values
         are used to identify problematic observations. If omitted, PSIS-LOO is computed first.
     k_thresh : float, default 0.7
         The threshold for the Pareto shape value. Observations with a Pareto shape above this value will
         trigger a model refit. The default threshold of 0.7 is based on simulation studies.
-    scale : str, optional
+    scale : str | None, optional
         The output scale for LOO. Options are:
         - 'log' (default): log-score,
         - 'negative_log': -1 * log-score,
@@ -78,7 +78,7 @@ def reloo(
         being refitted.
     use_subsample : bool, default False
         If True, uses the subsampling approach from loo_subsample for the initial LOO computation.
-    subsample_observations : int or numpy.ndarray or None, default 400
+    subsample_observations : int | np.ndarray | None, default 400
         The subsample observations to use when use_subsample is True:
         - An integer specifying the number of observations to subsample
         - An array of integers providing specific indices to use
@@ -170,12 +170,13 @@ def reloo(
 
     See Also
     --------
-    loo: Compute LOO-CV using importance sampling
-    loo_i: Pointwise LOO-CV values
-    loo_subsample: Subsampled LOO-CV computation
-    loo_moment_match: Moment matching for problematic observations
-    loo_approximate_posterior: Approximate LOO-CV using posterior approximation
-    loo_kfold: K-fold cross-validation
+    loo : Leave-one-out cross-validation
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
+    waic : Compute WAIC
     """
     if not isinstance(wrapper.model, pm.Model):
         raise TypeError(

@@ -29,13 +29,13 @@ def loo_group(
 
     Parameters
     ----------
-    data: obj
+    data: InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Refer to documentation of :func:`arviz.convert_to_dataset` for details.
     group_ids: np.ndarray
         Array of group identifiers for each observation. Must have the same length as
         the number of observations in the log likelihood.
-    pointwise: bool, optional
+    pointwise: bool | None, optional
         If True the pointwise predictive accuracy will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
     var_name : str, optional
@@ -44,21 +44,16 @@ def loo_group(
     reff: float, optional
         Relative MCMC efficiency, ``ess / n`` i.e. number of effective samples divided by the number
         of actual samples. Computed from trace by default.
-    scale: str
-        Output scale for loo. Available options are:
-    method: {'psis', 'sis', 'tis'}, default 'psis'
+    scale : str | None, default None
+        Output scale for LOO_group. Available options are:
+        - "log": (default) log-score
+        - "negative_log": -1 * log-score
+        - "deviance": -2 * log-score
+    method: Literal['psis', 'sis', 'tis'] | ISMethod, default 'psis'
         The importance sampling method to use:
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
-            Output scale for loo. Available options are:
-
-            - ``log`` : (default) log-score
-            - ``negative_log`` : -1 * log-score
-            - ``deviance`` : -2 * log-score
-
-            A higher log-score (or a lower deviance or negative log_score) indicates a model with
-            better predictive accuracy.
 
     Returns
     -------
@@ -119,10 +114,11 @@ def loo_group(
 
     See Also
     --------
-    loo : Leave-one-out cross-validation
-    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)

@@ -24,6 +24,7 @@ def loo(
     scale: str | None = None,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
     moment_match: bool = False,
+    jacobian: np.ndarray | None = None,
     **kwargs,
 ) -> ELPDData:
     """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
@@ -39,37 +40,36 @@ def loo(
 
     Parameters
     ----------
-    data: obj
+    data: InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Refer to documentation of
         :func:`arviz.convert_to_dataset` for details.
-    pointwise: bool, optional
+    pointwise: bool | None
         If True the pointwise predictive accuracy will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
-    var_name : str, optional
+    var_name : str | None
         The name of the variable in log_likelihood groups storing the pointwise log
         likelihood data to use for loo computation.
-    reff: float, optional
+    reff: float | None
         Relative MCMC efficiency, ``ess / n`` i.e. number of effective samples divided by the number
         of actual samples. Computed from trace by default.
-    scale: str
+    scale: str | None
         Output scale for loo. Available options are:
-    method: {'psis', 'sis', 'tis'}, default 'psis'
+    method: Literal['psis', 'sis', 'tis'] | ISMethod
         The importance sampling method to use:
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
-            Output scale for loo. Available options are:
-
-            - ``log`` : (default) log-score
-            - ``negative_log`` : -1 * log-score
-            - ``deviance`` : -2 * log-score
-
-            A higher log-score (or a lower deviance or negative log_score) indicates a model with
-            better predictive accuracy.
-    moment_match: bool, default False
+    scale : str | None
+        Output scale for LOO. Available options are:
+        - "log": (default) log-score
+        - "negative_log": -1 * log-score
+        - "deviance": -2 * log-score
+    moment_match: bool
         Whether to perform moment matching to improve the LOO estimates for observations with
         high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
+    jacobian: array-like | None
+        Adjustment for the Jacobian of a transformation applied to the response variable.
     **kwargs:
         Additional keyword arguments for moment matching. These include:
         - wrapper: PyMCWrapper, required if moment_match=True
@@ -164,12 +164,20 @@ def loo(
     loo_subsample : Leave-one-out cross-validation with subsampling
     loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
-    loo_approximate : Leave-one-out cross-validation for posterior approximations
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
+
+    if jacobian is not None and not pointwise:
+        raise ValueError(
+            "Jacobian adjustment requires pointwise LOO results. "
+            "Please set pointwise=True when using jacobian_adjustment."
+        )
 
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
     shape = log_likelihood.shape
@@ -253,7 +261,6 @@ def loo(
 
             warn_mg = True
     else:
-        # For SIS/TIS, warn if effective sample size is too low
         min_ess = np.min(diagnostic)
         if min_ess < n_samples * 0.1:
             warnings.warn(
@@ -327,13 +334,11 @@ def loo(
             result_data.append(good_k)
             result_index.append("good_k")
 
-        # Add subsample_size if needed
         result_data.append(n_data_points)
         result_index.append("subsample_size")
 
         result = ELPDData(data=result_data, index=result_index)
 
-        # We can't do moment matching without pointwise values
         if moment_match:
             raise ValueError(
                 "Moment matching requires pointwise LOO results. "
@@ -385,13 +390,38 @@ def loo(
         result_data.append(diagnostic)
         result_index.append("ess")
 
-    # Add subsample_size if needed
     result_data.append(n_data_points)
     result_index.append("subsample_size")
 
     result = ELPDData(data=result_data, index=result_index)
 
-    # Moment matching
+    if jacobian is not None:
+        jacobian_adj = np.asarray(jacobian)
+
+        if jacobian_adj.shape != result.loo_i.shape:
+            raise ValueError(
+                f"Jacobian adjustment shape {jacobian_adj.shape} does not match "
+                f"loo_i shape {result.loo_i.shape}"
+            )
+
+        result.loo_i.values = result.loo_i.values + jacobian_adj
+
+        loo_lppd = result.loo_i.values.sum()
+        loo_lppd_se = (n_data_points * np.var(result.loo_i.values)) ** 0.5
+
+        p_loo = lppd - loo_lppd / scale_value
+        p_loo_se = np.sqrt(np.sum(np.var(result.loo_i.values)))
+
+        looic = -2 * loo_lppd
+        looic_se = 2 * loo_lppd_se
+
+        result["elpd_loo"] = loo_lppd
+        result["se"] = loo_lppd_se
+        result["p_loo"] = p_loo
+        result["p_loo_se"] = p_loo_se
+        result["looic"] = looic
+        result["looic_se"] = looic_se
+
     if moment_match:
         wrapper = kwargs.get("wrapper", None)
         if wrapper is None:

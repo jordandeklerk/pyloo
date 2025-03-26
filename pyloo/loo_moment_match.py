@@ -49,13 +49,13 @@ def loo_moment_match(
         A loo object to be modified
     max_iters : int
         Maximum number of moment matching iterations
-    k_threshold : float, optional
+    k_threshold : float | None
         Threshold value for Pareto k values above which moment matching is used
     split : bool
         Whether to do the split transformation at the end of moment matching
     cov : bool
         Whether to match the covariance matrix of the samples
-    method : ISMethod
+    method : Literal['psis', 'sis', 'tis'] | ISMethod
         Importance sampling method to use
 
     Returns
@@ -146,11 +146,12 @@ def loo_moment_match(
 
     See Also
     --------
-    loo: Leave-one-out cross-validation
-    loo_subsample: Leave-one-out cross-validation with subsampling
-    loo_approximate: Leave-one-out cross-validation for posterior approximations
-    loo_kfold: K-fold cross-validation
-    waic: Compute WAIC
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
+    waic : Compute WAIC
     """
     converter = ParameterConverter(wrapper)
     loo_data = deepcopy(loo_data)
@@ -407,7 +408,7 @@ def update_quantities_i(
         MCMC effective sample size divided by total sample size
     converter : ParameterConverter
         Parameter converter instance for efficient format conversions.
-    method : ISMethod
+    method : Literal['psis', 'sis', 'tis'] | ISMethod
         Importance sampling method to use
 
     Returns

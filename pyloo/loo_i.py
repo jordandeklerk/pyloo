@@ -22,43 +22,35 @@ def loo_i(
     scale: str | None = None,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
 ) -> ELPDData:
-    """Compute leave-one-out cross-validation (LOO-CV) for a single observation using importance sampling.
-
-    This function computes the expected log pointwise predictive density (elpd) for a single observation
-    using importance sampling leave-one-out cross-validation. By default, uses Pareto-smoothed
-    importance sampling (PSIS), which is the recommended method.
+    """Compute leave-one-out cross-validation (LOO-CV) for a single observation
+    using importance sampling.
 
     Parameters
     ----------
     i : int
         The index of the observation to process. Must be a valid index for the data.
-    data: obj
+    data: InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Refer to documentation of :func:`arviz.convert_to_dataset` for details.
-    pointwise: bool, optional
+    pointwise: bool | None, optional
         If True the pointwise predictive accuracy will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
-    var_name : str, optional
+    var_name : str | None, optional
         The name of the variable in log_likelihood groups storing the pointwise log
         likelihood data to use for loo computation.
-    reff: float, optional
+    reff: float | None, optional
         Relative MCMC efficiency, ``ess / n`` i.e. number of effective samples divided by the number
         of actual samples. Computed from trace by default.
     scale: str
         Output scale for loo. Available options are:
-    method: {'psis', 'sis', 'tis'}, default 'psis'
+        - 'log': log-score
+        - 'negative_log': -1 * log-score
+        - 'deviance': -2 * log-score
+    method: Literal['psis', 'sis', 'tis'] | ISMethod, default 'psis'
         The importance sampling method to use:
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
-            Output scale for loo. Available options are:
-
-            - ``log`` : (default) log-score
-            - ``negative_log`` : -1 * log-score
-            - ``deviance`` : -2 * log-score
-
-            A higher log-score (or a lower deviance or negative log_score) indicates a model with
-            better predictive accuracy.
 
     Returns
     -------
