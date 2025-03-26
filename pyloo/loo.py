@@ -71,12 +71,8 @@ def loo(
     moment_match: bool, default False
         Whether to perform moment matching to improve the LOO estimates for observations with
         high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
-    jacobian_adjustment: array-like, optional
+    jacobian: array-like, optional
         Adjustment for the Jacobian of a transformation applied to the response variable.
-        This is necessary when comparing models with different transformations of the response.
-        The adjustment should be the log of the absolute Jacobian determinant.
-        For example, for a log transformation, the adjustment would be log(1/y) = -log(y).
-        The array should have the same shape as the pointwise log-likelihood values.
     **kwargs:
         Additional keyword arguments for moment matching. These include:
         - wrapper: PyMCWrapper, required if moment_match=True
