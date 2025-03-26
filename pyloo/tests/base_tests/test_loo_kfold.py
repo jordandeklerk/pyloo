@@ -10,7 +10,7 @@ from ...loo_kfold import (
     _kfold_split_grouped,
     _kfold_split_random,
     _kfold_split_stratified,
-    kfold,
+    loo_kfold,
 )
 from ...wrapper.pymc import PyMCWrapper
 
@@ -23,7 +23,7 @@ def test_kfold_basic(large_regression_model, scale):
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
-    result = kfold(wrapper, K=10, scale=scale, pointwise=True, draws=2000, tune=500)
+    result = loo_kfold(wrapper, K=10, scale=scale, pointwise=True, draws=2000, tune=500)
 
     assert result is not None
     assert "elpd_kfold" in result
@@ -45,7 +45,7 @@ def test_kfold_compare_to_loo(large_regression_model):
 
     loo_result = loo(wrapper.idata)
 
-    kfold_result = kfold(
+    kfold_result = loo_kfold(
         wrapper, K=10, draws=1000, tune=500, chains=4, progressbar=False
     )
 
@@ -84,7 +84,7 @@ def test_kfold_save_fits(large_regression_model):
     n_obs = len(wrapper.get_observed_data())
     k_folds = min(5, n_obs)
 
-    result = kfold(wrapper, K=k_folds, save_fits=True, draws=100, tune=100)
+    result = loo_kfold(wrapper, K=k_folds, save_fits=True, draws=100, tune=100)
 
     assert "fits" in result
     assert len(result["fits"]) <= k_folds
@@ -111,7 +111,7 @@ def test_kfold_custom_folds(large_regression_model):
     ), "Custom folds outside valid range"
     assert len(custom_folds) == n_obs, "Custom folds length doesn't match data"
 
-    result = kfold(wrapper, folds=custom_folds, draws=100, tune=100)
+    result = loo_kfold(wrapper, folds=custom_folds, draws=100, tune=100)
 
     assert result is not None
     assert "elpd_kfold" in result
@@ -230,7 +230,7 @@ def test_kfold_hierarchical_model(large_regression_model):
     n_obs = len(wrapper.get_observed_data())
     k_folds = min(2, n_obs)
 
-    result = kfold(wrapper, K=k_folds, pointwise=True, draws=100, tune=100)
+    result = loo_kfold(wrapper, K=k_folds, pointwise=True, draws=100, tune=100)
 
     assert result is not None
     assert "elpd_kfold" in result
@@ -247,7 +247,7 @@ def test_kfold_poisson_model(large_regression_model):
     n_obs = len(wrapper.get_observed_data())
     k_folds = min(2, n_obs)
 
-    result = kfold(wrapper, K=k_folds, pointwise=True, draws=100, tune=100)
+    result = loo_kfold(wrapper, K=k_folds, pointwise=True, draws=100, tune=100)
 
     assert result is not None
     assert "elpd_kfold" in result
@@ -267,7 +267,7 @@ def test_kfold_multi_observed_model(large_regression_model):
     n_obs = len(var_data)
     k_folds = min(2, n_obs)
 
-    result = kfold(wrapper, K=k_folds, var_name=var_name, draws=100, tune=100)
+    result = loo_kfold(wrapper, K=k_folds, var_name=var_name, draws=100, tune=100)
 
     assert result is not None
     assert "elpd_kfold" in result
@@ -292,7 +292,7 @@ def test_kfold_stratified_example(large_regression_model):
     assert len(folds) == n_obs
     assert np.all(folds >= 1) and np.all(folds <= k_folds)
 
-    result = kfold(wrapper, folds=folds, pointwise=True, draws=100, tune=100)
+    result = loo_kfold(wrapper, folds=folds, pointwise=True, draws=100, tune=100)
 
     assert result is not None
     assert "elpd_kfold" in result
@@ -324,7 +324,7 @@ def test_kfold_grouped_parameter(large_regression_model):
     k_folds = min(3, n_groups)
     random_seed = 42
 
-    result_grouped = kfold(
+    result_grouped = loo_kfold(
         wrapper,
         K=k_folds,
         groups=group_ids,
@@ -341,7 +341,7 @@ def test_kfold_grouped_parameter(large_regression_model):
     assert np.isfinite(result_grouped["se"])
 
     with pytest.raises(ValueError, match="Length of groups .* must match observations"):
-        kfold(
+        loo_kfold(
             wrapper,
             K=k_folds,
             groups=np.array([0, 1]),
@@ -353,7 +353,7 @@ def test_kfold_grouped_parameter(large_regression_model):
     strat_var = np.zeros(n_obs, dtype=int)
     strat_var[observed_data > np.median(observed_data)] = 1
 
-    result_both = kfold(
+    result_both = loo_kfold(
         wrapper,
         K=k_folds,
         groups=group_ids,
@@ -382,7 +382,9 @@ def test_kfold_large_model(large_regression_model):
 
     k_folds = 5
 
-    result_random = kfold(wrapper, K=k_folds, draws=200, tune=200, progressbar=False)
+    result_random = loo_kfold(
+        wrapper, K=k_folds, draws=200, tune=200, progressbar=False
+    )
 
     assert result_random is not None
     assert "elpd_kfold" in result_random
@@ -398,7 +400,7 @@ def test_kfold_large_model(large_regression_model):
     assert len(strat_folds) == n_obs
     assert np.all(strat_folds >= 1) and np.all(strat_folds <= k_folds)
 
-    result_strat = kfold(
+    result_strat = loo_kfold(
         wrapper, folds=strat_folds, draws=200, tune=200, progressbar=False
     )
 
@@ -408,7 +410,7 @@ def test_kfold_large_model(large_regression_model):
     assert np.isfinite(result_strat["elpd_kfold"])
     assert np.isfinite(result_strat["se"])
 
-    result_with_fits = kfold(
+    result_with_fits = loo_kfold(
         wrapper, K=3, save_fits=True, draws=100, tune=100, progressbar=False
     )
 
@@ -435,7 +437,7 @@ def test_kfold_stratify_parameter(large_regression_model):
     k_folds = 5
     random_seed = 42
 
-    result_stratify = kfold(
+    result_stratify = loo_kfold(
         wrapper,
         K=k_folds,
         stratify=strat_var,
@@ -454,7 +456,7 @@ def test_kfold_stratify_parameter(large_regression_model):
     custom_folds = np.ones(n_obs, dtype=int)
     custom_folds[n_obs // 2 :] = 2
 
-    result_both = kfold(
+    result_both = loo_kfold(
         wrapper,
         folds=custom_folds,
         stratify=strat_var,
@@ -472,7 +474,7 @@ def test_kfold_stratify_parameter(large_regression_model):
     with pytest.raises(
         ValueError, match="Length of stratify .* must match observations"
     ):
-        kfold(
+        loo_kfold(
             wrapper,
             K=k_folds,
             stratify=np.array([0, 1]),
@@ -492,7 +494,7 @@ def test_kfold_improved_validation(large_regression_model):
     assert len(folds) == n_obs
     assert np.max(folds) <= n_obs
 
-    result = kfold(
+    result = loo_kfold(
         wrapper,
         K=3,
         stratify=list(range(n_obs)),
@@ -504,7 +506,7 @@ def test_kfold_improved_validation(large_regression_model):
     assert "elpd_kfold" in result
 
     with pytest.raises(ValueError, match="Failed to create stratified folds"):
-        kfold(
+        loo_kfold(
             wrapper,
             K=2,
             stratify=np.array([np.nan] * n_obs),
