@@ -522,12 +522,10 @@ def test_loo_compare_with_jacobian_adjustments(centered_eight):
     original_loo = loo(original_model, pointwise=True)
 
     squared_jacobian = np.log(np.abs(2 * y))
-    squared_loo = loo(
-        squared_model, pointwise=True, jacobian_adjustment=squared_jacobian
-    )
+    squared_loo = loo(squared_model, pointwise=True, jacobian=squared_jacobian)
 
     log_jacobian = -np.log(positive_y)
-    log_loo = loo(log_model, pointwise=True, jacobian_adjustment=log_jacobian)
+    log_loo = loo(log_model, pointwise=True, jacobian=log_jacobian)
 
     loo_dict = {
         "original": original_loo,
