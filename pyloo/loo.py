@@ -25,6 +25,7 @@ def loo(
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
     moment_match: bool = False,
     jacobian: np.ndarray | None = None,
+    mixture: bool = False,
     **kwargs,
 ) -> ELPDData:
     """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
@@ -37,6 +38,10 @@ def loo(
     For observations with high Pareto k diagnostics, moment matching can be used to transform
     posterior draws to better approximate leave-one-out posteriors. This approach is computationally
     more efficient than exact refitting (``reloo``) while still providing improved estimates.
+
+    For high-dimensional models, mixture importance sampling (MixIS) can be used to improve
+    the accuracy of LOO-CV estimates by adjusting the posterior to better approximate the
+    leave-one-out posterior distribution.
 
     Parameters
     ----------
@@ -70,6 +75,10 @@ def loo(
         high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
     jacobian: array-like | None
         Adjustment for the Jacobian of a transformation applied to the response variable.
+    mixture: bool
+        Whether to use mixture importance sampling (MixIS) to improve LOO-CV estimates for
+        high-dimensional models. If True, adjusts the posterior by adding the log of the sum
+        of exponentials of the negative log-likelihoods.
     **kwargs:
         Additional keyword arguments for moment matching. These include:
         - wrapper: PyMCWrapper, required if moment_match=True
@@ -239,7 +248,39 @@ def loo(
     log_weights, diagnostic = compute_importance_weights(
         -log_likelihood, method=method, reff=reff
     )
-    log_weights += log_likelihood
+    if mixture:
+        wrapper = kwargs.get("wrapper", None)
+        if wrapper is None:
+            raise ValueError("PyMC model wrapper must be provided when mixture=True")
+
+        draws = kwargs.get("draws", 1000)
+        tune = kwargs.get("tune", 1000)
+        chains = kwargs.get("chains", 4)
+        target_accept = kwargs.get("target_accept", 0.8)
+        random_seed = kwargs.get("random_seed", None)
+        progressbar = kwargs.get("progressbar", True)
+        mixture_var_name = kwargs.get("mixture_var_name", var_name)
+
+        mixture_idata = wrapper.sample_mixture_posterior(
+            draws=draws,
+            tune=tune,
+            chains=chains,
+            target_accept=target_accept,
+            random_seed=random_seed,
+            progressbar=progressbar,
+            var_name=mixture_var_name,
+        )
+
+        inference_data = mixture_idata
+        log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
+        log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
+
+        log_weights, diagnostic = compute_importance_weights(
+            -log_likelihood, method=method, reff=reff
+        )
+        log_weights += log_likelihood
+    else:
+        log_weights += log_likelihood
 
     warn_mg = False
     good_k = min(1 - 1 / np.log10(n_samples), 0.7)
@@ -422,21 +463,23 @@ def loo(
         result["looic"] = looic
         result["looic_se"] = looic_se
 
-    if moment_match:
+    if moment_match or mixture:
         wrapper = kwargs.get("wrapper", None)
         if wrapper is None:
             raise ValueError(
-                "PyMC model wrapper must be provided when moment_match=True"
+                "PyMC model wrapper must be provided when moment_match=True or"
+                " mixture=True"
             )
 
-        mm_kwargs = {
-            "max_iters": kwargs.get("max_iters", 30),
-            "k_threshold": kwargs.get("k_threshold", None),
-            "split": kwargs.get("split", True),
-            "cov": kwargs.get("cov", True),
-            "method": method,
-        }
+        if moment_match:
+            mm_kwargs = {
+                "max_iters": kwargs.get("max_iters", 30),
+                "k_threshold": kwargs.get("k_threshold", None),
+                "split": kwargs.get("split", True),
+                "cov": kwargs.get("cov", True),
+                "method": method,
+            }
 
-        result = loo_moment_match(wrapper, result, **mm_kwargs)
+            result = loo_moment_match(wrapper, result, **mm_kwargs)
 
     return result
