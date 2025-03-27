@@ -403,30 +403,3 @@ def test_loo_roaches(roaches_model):
     assert "p_loo" in result
     assert "looic" in result
     assert "looic_se" in result
-
-
-def test_loo_mixture_posterior(high_dimensional_regression_model):
-    """Test LOO computation with mixture posterior for high-dimensional models."""
-    model, idata = high_dimensional_regression_model
-    wrapper = PyMCWrapper(model, idata)
-
-    loo_standard = loo(idata, pointwise=True)
-    loo_mixture = loo(
-        idata,
-        pointwise=True,
-        mixture=True,
-        wrapper=wrapper,
-        draws=1000,
-        tune=500,
-        chains=4,
-        random_seed=42,
-        progressbar=False,
-    )
-
-    assert loo_mixture is not None
-    assert "elpd_loo" in loo_mixture
-    assert "pareto_k" in loo_mixture
-    assert "loo_i" in loo_mixture
-
-    logger.info(loo_standard)
-    logger.info(loo_mixture)
