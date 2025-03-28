@@ -334,52 +334,21 @@ def loo(
     looic = -2 * loo_lppd
     looic_se = 2 * loo_lppd_se
 
-    result_data: list[Any] = []
-    result_index: list[str] = []
-
     if not pointwise:
-        if mixture:
-            result_data = [
-                loo_lppd,
-                loo_lppd_se,
-                n_samples,
-                n_data_points,
-                warn_mg,
-                scale,
-            ]
-            result_index = [
-                "elpd_loo",
-                "se",
-                "n_samples",
-                "n_data_points",
-                "warning",
-                "scale",
-            ]
-        else:
-            result_data = [
-                loo_lppd,
-                loo_lppd_se,
-                p_loo,
-                p_loo_se,
-                n_samples,
-                n_data_points,
-                warn_mg,
-                scale,
-                looic,
-                looic_se,
-            ]
-            result_index = [
-                "elpd_loo",
-                "se",
-                "p_loo",
-                "p_loo_se",
-                "n_samples",
-                "n_data_points",
-                "warning",
-                "scale",
-                "looic",
-                "looic_se",
-            ]
+        result_data, result_index = _get_result_data_and_index(
+            mixture=mixture,
+            loo_lppd=loo_lppd,
+            loo_lppd_se=loo_lppd_se,
+            p_loo=p_loo,
+            p_loo_se=p_loo_se,
+            n_samples=n_samples,
+            n_data_points=n_data_points,
+            warn_mg=warn_mg,
+            scale=scale,
+            looic=looic,
+            looic_se=looic_se,
+            pointwise=False,
+        )
 
         if method == ISMethod.PSIS:
             result_data.append(good_k)
@@ -405,52 +374,21 @@ def loo(
             stacklevel=2,
         )
 
-    if mixture:
-        result_data = [
-            loo_lppd,
-            loo_lppd_se,
-            n_samples,
-            n_data_points,
-            warn_mg,
-            loo_lppd_i.rename("loo_i"),
-            scale,
-        ]
-        result_index = [
-            "elpd_loo",
-            "se",
-            "n_samples",
-            "n_data_points",
-            "warning",
-            "loo_i",
-            "scale",
-        ]
-    else:
-        result_data = [
-            loo_lppd,
-            loo_lppd_se,
-            p_loo,
-            p_loo_se,
-            n_samples,
-            n_data_points,
-            warn_mg,
-            loo_lppd_i.rename("loo_i"),
-            scale,
-            looic,
-            looic_se,
-        ]
-        result_index = [
-            "elpd_loo",
-            "se",
-            "p_loo",
-            "p_loo_se",
-            "n_samples",
-            "n_data_points",
-            "warning",
-            "loo_i",
-            "scale",
-            "looic",
-            "looic_se",
-        ]
+    result_data, result_index = _get_result_data_and_index(
+        mixture=mixture,
+        loo_lppd=loo_lppd,
+        loo_lppd_se=loo_lppd_se,
+        p_loo=p_loo,
+        p_loo_se=p_loo_se,
+        n_samples=n_samples,
+        n_data_points=n_data_points,
+        warn_mg=warn_mg,
+        scale=scale,
+        looic=looic,
+        looic_se=looic_se,
+        loo_lppd_i=loo_lppd_i,
+        pointwise=True,
+    )
 
     if method == ISMethod.PSIS:
         result_data.append(diagnostic)
@@ -511,3 +449,116 @@ def loo(
         result = loo_moment_match(wrapper, result, **mm_kwargs)
 
     return result
+
+
+def _get_result_data_and_index(
+    mixture: bool,
+    loo_lppd: float,
+    loo_lppd_se: float,
+    p_loo: float | None = None,
+    p_loo_se: float | None = None,
+    n_samples: int | None = None,
+    n_data_points: int | None = None,
+    warn_mg: bool | None = None,
+    scale: str | None = None,
+    looic: float | None = None,
+    looic_se: float | None = None,
+    loo_lppd_i: xr.DataArray | None = None,
+    pointwise: bool = False,
+) -> tuple[list[Any], list[str]]:
+    """Helper function to create result data and index based on mixture flag."""
+    result_data: list[Any] = []
+    result_index: list[str] = []
+
+    if not pointwise:
+        if mixture:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                scale,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "scale",
+            ]
+        else:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                p_loo,
+                p_loo_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                scale,
+                looic,
+                looic_se,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "p_loo",
+                "p_loo_se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "scale",
+                "looic",
+                "looic_se",
+            ]
+    else:
+        if mixture:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                loo_lppd_i.rename("loo_i") if loo_lppd_i is not None else None,
+                scale,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "loo_i",
+                "scale",
+            ]
+        else:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                p_loo,
+                p_loo_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                loo_lppd_i.rename("loo_i") if loo_lppd_i is not None else None,
+                scale,
+                looic,
+                looic_se,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "p_loo",
+                "p_loo_se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "loo_i",
+                "scale",
+                "looic",
+                "looic_se",
+            ]
+
+    return result_data, result_index
