@@ -152,9 +152,6 @@ def loo_kfold(
         wrapper = PyMCWrapper(model, idata)
         kfold_result = pl.loo_kfold(wrapper, K=5)
 
-    The result contains various statistics about the model's predictive performance, including
-    the expected log pointwise predictive density (ELPD) and its standard error.
-
     For datasets with imbalanced features or outcomes, stratified K-fold cross-validation can provide
     more reliable performance estimates. You can use the stratify parameter to ensure each fold
     has a similar distribution of values
