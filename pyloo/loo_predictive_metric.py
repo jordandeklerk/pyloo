@@ -32,7 +32,7 @@ def loo_predictive_metric(
 ) -> MetricResult:
     """Estimate leave-one-out predictive performance metrics.
 
-    This function computes estimates of leave-one-out predictive metrics given a set of
+    Computes estimates of leave-one-out predictive metrics given a set of
     predictions and observations. Currently supported metrics are mean absolute error,
     mean squared error and root mean squared error for continuous predictions, and
     accuracy and balanced accuracy for binary classification. Predictions are passed

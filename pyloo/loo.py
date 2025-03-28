@@ -36,10 +36,6 @@ def loo(
     which is the recommended method. Also calculates LOO's standard error and the effective
     number of parameters.
 
-    For observations with high Pareto k diagnostics, moment matching can be used to transform
-    posterior draws to better approximate leave-one-out posteriors. This approach is computationally
-    more efficient than exact refitting (``reloo``) while still providing improved estimates.
-
     Parameters
     ----------
     data: InferenceData | Any

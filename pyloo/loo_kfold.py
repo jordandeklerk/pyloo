@@ -35,9 +35,9 @@ def loo_kfold(
 ) -> ELPDData:
     r"""Perform exact K-fold cross-validation for PyMC models.
 
-    This function first randomly partitions the data into ::math:`K` subsets
-    of equal size (or as close to equal as possible), or the user can specify the
-    ``folds`` argument. If ::math:`K` is equal to the total number of observations,
+    Randomly partitions the data into :math:`K` subsets of equal size
+    (or as close to equal as possible), or the user can specify the
+    ``folds`` argument. If :math:`K` is equal to the total number of observations,
     this is equivalent to leave-one-out cross-validation (LOO-CV).
 
     For each subset, it fits a model using the remaining data, and then computes
