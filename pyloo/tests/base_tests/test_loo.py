@@ -403,3 +403,30 @@ def test_loo_roaches(roaches_model):
     assert "p_loo" in result
     assert "looic" in result
     assert "looic_se" in result
+
+
+def test_loo_mixture(problematic_k_model):
+    """Test LOO computation with mixture posterior."""
+    _, idata = problematic_k_model
+
+    mix_result = loo(idata, pointwise=True, mixture=True)
+    reg_result = loo(idata, pointwise=True)
+
+    assert mix_result is not None
+    assert reg_result is not None
+
+    assert "elpd_loo" in mix_result
+    assert "se" in mix_result
+    assert "p_loo" in mix_result
+    assert "loo_i" in mix_result
+
+    assert mix_result["elpd_loo"] != reg_result["elpd_loo"]
+
+    assert np.isfinite(mix_result["elpd_loo"])
+    assert np.isfinite(reg_result["elpd_loo"])
+
+    assert np.all(np.isfinite(mix_result.loo_i.values))
+    assert np.all(np.isfinite(reg_result.loo_i.values))
+
+    logger.info(f"Mixture LOO: {mix_result['elpd_loo']}")
+    logger.info(f"Regular LOO: {reg_result['elpd_loo']}")
