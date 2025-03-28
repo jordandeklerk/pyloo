@@ -152,7 +152,6 @@ def loo(
 
         wrapper = pl.PyMCWrapper(model, idata)
 
-        # Calculate LOO with moment matching
         loo_results = pl.loo(
             idata,
             pointwise=True,
@@ -339,30 +338,48 @@ def loo(
     result_index: list[str] = []
 
     if not pointwise:
-        result_data = [
-            loo_lppd,
-            loo_lppd_se,
-            p_loo,
-            p_loo_se,
-            n_samples,
-            n_data_points,
-            warn_mg,
-            scale,
-            looic,
-            looic_se,
-        ]
-        result_index = [
-            "elpd_loo",
-            "se",
-            "p_loo",
-            "p_loo_se",
-            "n_samples",
-            "n_data_points",
-            "warning",
-            "scale",
-            "looic",
-            "looic_se",
-        ]
+        if mixture:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                scale,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "scale",
+            ]
+        else:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                p_loo,
+                p_loo_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                scale,
+                looic,
+                looic_se,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "p_loo",
+                "p_loo_se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "scale",
+                "looic",
+                "looic_se",
+            ]
 
         if method == ISMethod.PSIS:
             result_data.append(good_k)
@@ -388,32 +405,52 @@ def loo(
             stacklevel=2,
         )
 
-    result_data = [
-        loo_lppd,
-        loo_lppd_se,
-        p_loo,
-        p_loo_se,
-        n_samples,
-        n_data_points,
-        warn_mg,
-        loo_lppd_i.rename("loo_i"),
-        scale,
-        looic,
-        looic_se,
-    ]
-    result_index = [
-        "elpd_loo",
-        "se",
-        "p_loo",
-        "p_loo_se",
-        "n_samples",
-        "n_data_points",
-        "warning",
-        "loo_i",
-        "scale",
-        "looic",
-        "looic_se",
-    ]
+    if mixture:
+        result_data = [
+            loo_lppd,
+            loo_lppd_se,
+            n_samples,
+            n_data_points,
+            warn_mg,
+            loo_lppd_i.rename("loo_i"),
+            scale,
+        ]
+        result_index = [
+            "elpd_loo",
+            "se",
+            "n_samples",
+            "n_data_points",
+            "warning",
+            "loo_i",
+            "scale",
+        ]
+    else:
+        result_data = [
+            loo_lppd,
+            loo_lppd_se,
+            p_loo,
+            p_loo_se,
+            n_samples,
+            n_data_points,
+            warn_mg,
+            loo_lppd_i.rename("loo_i"),
+            scale,
+            looic,
+            looic_se,
+        ]
+        result_index = [
+            "elpd_loo",
+            "se",
+            "p_loo",
+            "p_loo_se",
+            "n_samples",
+            "n_data_points",
+            "warning",
+            "loo_i",
+            "scale",
+            "looic",
+            "looic_se",
+        ]
 
     if method == ISMethod.PSIS:
         result_data.append(diagnostic)

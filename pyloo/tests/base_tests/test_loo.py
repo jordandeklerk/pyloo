@@ -417,8 +417,13 @@ def test_loo_mixture(problematic_k_model):
 
     assert "elpd_loo" in mix_result
     assert "se" in mix_result
-    assert "p_loo" in mix_result
     assert "loo_i" in mix_result
+
+    assert "p_loo" not in mix_result
+    assert "looic" not in mix_result
+
+    assert "p_loo" in reg_result
+    assert "looic" in reg_result
 
     assert mix_result["elpd_loo"] != reg_result["elpd_loo"]
 
@@ -430,3 +435,6 @@ def test_loo_mixture(problematic_k_model):
 
     logger.info(f"Mixture LOO: {mix_result['elpd_loo']}")
     logger.info(f"Regular LOO: {reg_result['elpd_loo']}")
+
+    logger.info(mix_result)
+    logger.info(reg_result)
