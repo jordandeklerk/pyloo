@@ -131,14 +131,12 @@ def loo_group(
     n_data_points = np.prod(shape[:-1])
     scale = rcParams["stats.ic_scale"] if scale is None else scale.lower()
 
-    # Validate group_ids
     if len(group_ids) != n_data_points:
         raise ValueError(
             f"Length of group_ids ({len(group_ids)}) must match the number of "
             f"observations in log_likelihood ({n_data_points})."
         )
 
-    # Get unique groups
     unique_groups = np.unique(group_ids)
     n_groups = len(unique_groups)
 
@@ -234,7 +232,6 @@ def loo_group(
 
             warn_mg = True
     else:
-        # For SIS/TIS, warn if effective sample size is too low
         min_ess = np.min(diagnostics)
         if min_ess < n_samples * 0.1:
             warnings.warn(
