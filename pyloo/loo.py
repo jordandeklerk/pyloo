@@ -4,6 +4,7 @@ import warnings
 from typing import Any, Literal
 
 import numpy as np
+import xarray as xr
 from arviz.data import InferenceData
 from arviz.stats.diagnostics import ess
 
@@ -25,6 +26,7 @@ def loo(
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
     moment_match: bool = False,
     jacobian: np.ndarray | None = None,
+    mixture: bool = False,
     **kwargs,
 ) -> ELPDData:
     """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
@@ -70,6 +72,10 @@ def loo(
         high Pareto k values. If True, the `wrapper` parameter must be provided in kwargs.
     jacobian: array-like | None
         Adjustment for the Jacobian of a transformation applied to the response variable.
+    mixture: bool
+        Whether the log likelihood is from a mixture posterior. If True, the Mix-IS-LOO
+        ``elpd_loo`` is calculated using the numerically stable mixture importance sampling approach
+        outlined in Appendix A.2 of Silva and Zanella (2022).
     **kwargs:
         Additional keyword arguments for moment matching. These include:
         - wrapper: PyMCWrapper, required if moment_match=True
@@ -146,7 +152,6 @@ def loo(
 
         wrapper = pl.PyMCWrapper(model, idata)
 
-        # Calculate LOO with moment matching
         loo_results = pl.loo(
             idata,
             pointwise=True,
@@ -236,52 +241,80 @@ def loo(
             stacklevel=2,
         )
 
-    log_weights, diagnostic = compute_importance_weights(
-        -log_likelihood, method=method, reff=reff
-    )
-    log_weights += log_likelihood
-
-    warn_mg = False
-    good_k = min(1 - 1 / np.log10(n_samples), 0.7)
-
-    if method == ISMethod.PSIS:
-        if np.any(diagnostic > good_k):
-            n_high_k = np.sum(diagnostic > good_k)
-
-            warnings.warn(
-                "Estimated shape parameter of Pareto distribution is greater than"
-                f" {good_k:.2f} for {n_high_k} observations. This indicates that"
-                " importance sampling may be unreliable because the marginal posterior"
-                " and LOO posterior are very different. If you're using a PyMC model,"
-                " consider using reloo() to compute exact LOO for these problematic"
-                " observations, or moment matching to improve the estimates.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-            warn_mg = True
-    else:
-        min_ess = np.min(diagnostic)
-        if min_ess < n_samples * 0.1:
-            warnings.warn(
-                f"Low effective sample size detected (minimum ESS: {min_ess:.1f}). This"
-                " indicates that the importance sampling approximation may be"
-                " unreliable. Consider using PSIS which is more robust to such cases.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-            warn_mg = True
-
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
     xarray_kwargs = {"input_core_dims": [["__sample__"]]}
 
-    loo_lppd_i = scale_value * wrap_xarray_ufunc(
-        _logsumexp,
-        log_weights,
-        ufunc_kwargs=ufunc_kwargs,
-        **xarray_kwargs,
-    )
+    good_k = min(1 - 1 / np.log10(n_samples), 0.7)
+    warn_mg = False
+
+    if mixture:
+        l_common_mix = wrap_xarray_ufunc(
+            _logsumexp,
+            -log_likelihood,
+            ufunc_kwargs=ufunc_kwargs,
+            input_core_dims=[["__sample__"]],
+        )
+
+        neg_log_likelihood = -log_likelihood
+        log_weights = neg_log_likelihood.copy()
+
+        log_weights = neg_log_likelihood - l_common_mix.values[:, np.newaxis]
+        log_norm_const = _logsumexp(-l_common_mix.values)
+
+        log_obs_weights = np.array([_logsumexp(row.values) for row in log_weights])
+        elpd_mixis = log_norm_const - log_obs_weights
+
+        diagnostic = np.zeros(log_likelihood.shape[0])
+        log_weights = np.zeros_like(log_likelihood)
+
+        loo_lppd_i = scale_value * xr.DataArray(
+            elpd_mixis,
+            dims=log_likelihood.dims[0],
+            coords={log_likelihood.dims[0]: log_likelihood[log_likelihood.dims[0]]},
+        )
+    else:
+        log_weights, diagnostic = compute_importance_weights(
+            -log_likelihood, method=method, reff=reff
+        )
+        log_weights += log_likelihood
+
+        if method == ISMethod.PSIS:
+            if np.any(diagnostic > good_k):
+                n_high_k = np.sum(diagnostic > good_k)
+
+                warnings.warn(
+                    "Estimated shape parameter of Pareto distribution is greater than"
+                    f" {good_k:.2f} for {n_high_k} observations. This indicates that"
+                    " importance sampling may be unreliable because the marginal"
+                    " posterior and LOO posterior are very different. If you're using"
+                    " a PyMC model, consider using reloo() to compute exact LOO for"
+                    " these problematic observations, or moment matching to improve"
+                    " the estimates.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+                warn_mg = True
+        else:
+            min_ess = np.min(diagnostic)
+            if min_ess < n_samples * 0.1:
+                warnings.warn(
+                    f"Low effective sample size detected (minimum ESS: {min_ess:.1f})."
+                    " This indicates that the importance sampling approximation may be"
+                    " unreliable. Consider using PSIS which is more robust to such"
+                    " cases.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+                warn_mg = True
+
+        loo_lppd_i = scale_value * wrap_xarray_ufunc(
+            _logsumexp,
+            log_weights,
+            ufunc_kwargs=ufunc_kwargs,
+            **xarray_kwargs,
+        )
 
     loo_lppd = loo_lppd_i.values.sum()
     loo_lppd_se = (n_data_points * np.var(loo_lppd_i.values)) ** 0.5
@@ -301,34 +334,21 @@ def loo(
     looic = -2 * loo_lppd
     looic_se = 2 * loo_lppd_se
 
-    result_data: list[Any] = []
-    result_index: list[str] = []
-
     if not pointwise:
-        result_data = [
-            loo_lppd,
-            loo_lppd_se,
-            p_loo,
-            p_loo_se,
-            n_samples,
-            n_data_points,
-            warn_mg,
-            scale,
-            looic,
-            looic_se,
-        ]
-        result_index = [
-            "elpd_loo",
-            "se",
-            "p_loo",
-            "p_loo_se",
-            "n_samples",
-            "n_data_points",
-            "warning",
-            "scale",
-            "looic",
-            "looic_se",
-        ]
+        result_data, result_index = _get_result_data_and_index(
+            mixture=mixture,
+            loo_lppd=loo_lppd,
+            loo_lppd_se=loo_lppd_se,
+            p_loo=p_loo,
+            p_loo_se=p_loo_se,
+            n_samples=n_samples,
+            n_data_points=n_data_points,
+            warn_mg=warn_mg,
+            scale=scale,
+            looic=looic,
+            looic_se=looic_se,
+            pointwise=False,
+        )
 
         if method == ISMethod.PSIS:
             result_data.append(good_k)
@@ -354,32 +374,21 @@ def loo(
             stacklevel=2,
         )
 
-    result_data = [
-        loo_lppd,
-        loo_lppd_se,
-        p_loo,
-        p_loo_se,
-        n_samples,
-        n_data_points,
-        warn_mg,
-        loo_lppd_i.rename("loo_i"),
-        scale,
-        looic,
-        looic_se,
-    ]
-    result_index = [
-        "elpd_loo",
-        "se",
-        "p_loo",
-        "p_loo_se",
-        "n_samples",
-        "n_data_points",
-        "warning",
-        "loo_i",
-        "scale",
-        "looic",
-        "looic_se",
-    ]
+    result_data, result_index = _get_result_data_and_index(
+        mixture=mixture,
+        loo_lppd=loo_lppd,
+        loo_lppd_se=loo_lppd_se,
+        p_loo=p_loo,
+        p_loo_se=p_loo_se,
+        n_samples=n_samples,
+        n_data_points=n_data_points,
+        warn_mg=warn_mg,
+        scale=scale,
+        looic=looic,
+        looic_se=looic_se,
+        loo_lppd_i=loo_lppd_i,
+        pointwise=True,
+    )
 
     if method == ISMethod.PSIS:
         result_data.append(diagnostic)
@@ -440,3 +449,116 @@ def loo(
         result = loo_moment_match(wrapper, result, **mm_kwargs)
 
     return result
+
+
+def _get_result_data_and_index(
+    mixture: bool,
+    loo_lppd: float,
+    loo_lppd_se: float,
+    p_loo: float | None = None,
+    p_loo_se: float | None = None,
+    n_samples: int | None = None,
+    n_data_points: int | None = None,
+    warn_mg: bool | None = None,
+    scale: str | None = None,
+    looic: float | None = None,
+    looic_se: float | None = None,
+    loo_lppd_i: xr.DataArray | None = None,
+    pointwise: bool = False,
+) -> tuple[list[Any], list[str]]:
+    """Helper function to create result data and index based on mixture flag."""
+    result_data: list[Any] = []
+    result_index: list[str] = []
+
+    if not pointwise:
+        if mixture:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                scale,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "scale",
+            ]
+        else:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                p_loo,
+                p_loo_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                scale,
+                looic,
+                looic_se,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "p_loo",
+                "p_loo_se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "scale",
+                "looic",
+                "looic_se",
+            ]
+    else:
+        if mixture:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                loo_lppd_i.rename("loo_i") if loo_lppd_i is not None else None,
+                scale,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "loo_i",
+                "scale",
+            ]
+        else:
+            result_data = [
+                loo_lppd,
+                loo_lppd_se,
+                p_loo,
+                p_loo_se,
+                n_samples,
+                n_data_points,
+                warn_mg,
+                loo_lppd_i.rename("loo_i") if loo_lppd_i is not None else None,
+                scale,
+                looic,
+                looic_se,
+            ]
+            result_index = [
+                "elpd_loo",
+                "se",
+                "p_loo",
+                "p_loo_se",
+                "n_samples",
+                "n_data_points",
+                "warning",
+                "loo_i",
+                "scale",
+                "looic",
+                "looic_se",
+            ]
+
+    return result_data, result_index

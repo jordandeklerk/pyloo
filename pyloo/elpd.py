@@ -6,16 +6,7 @@ from copy import deepcopy as _deepcopy
 import numpy as np
 import pandas as pd
 
-# Format for LOGO (Leave-One-Group-Out) output
-LOGO_BASE_FMT = """
-Computed from {n_samples} posterior samples and {n_groups} groups log-likelihood matrix.
-
-         Estimate       SE
-elpd_logo   {elpd:<8.2f}    {se:<.2f}
-p_logo       {p_logo:<8.2f}    {p_logo_se:<.2f}
-logoic      {logoic:<8.2f}    {logoic_se:<.2f}"""
-
-# Format for standard LOO output
+# Standard LOO output
 STD_BASE_FMT = """
 Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
 
@@ -24,15 +15,20 @@ elpd_loo   {elpd:<8.2f}    {se:<.2f}
 p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
 looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
-# Custom format for LOO output without looic line
-CUSTOM_LOO_FMT = """
-Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
 
-         Estimate       SE
-elpd_loo   {elpd:<8.2f}    {se:<.2f}
-p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}"""
+# Subsampled LOO output
+SUBSAMPLE_BASE_FMT = """
+Computed from {n_samples} by {subsample_size} subsampled log-likelihood
+values from {n_data_points} total observations.
 
-# Custom format for LOO approximate posterior output
+         Estimate       SE  subsampling SE
+elpd_loo   {elpd_loo:<8.2f}    {elpd_loo_se:<.2f}         {elpd_loo_subsamp_se:<.2f}
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}         {p_loo_subsamp_se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}         {looic_subsamp_se:<.2f}
+{pareto_msg}"""
+
+
+# LOO approximate posterior output
 APPROX_POSTERIOR_FMT = """
 Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
 Posterior approximation correction used.
@@ -43,7 +39,8 @@ elpd_loo   {elpd:<8.2f}    {se:<.2f}
 p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
 looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
-# Format for k-fold cross-validation output
+
+# k-fold cross-validation output
 KFOLD_BASE_FMT = """
 Computed from {n_samples} posterior samples using {K}-fold cross-validation
 with {n_points} observations.{stratify_msg}
@@ -54,15 +51,15 @@ p_kfold       {p_kfold:<8.2f}    {p_kfold_se:<.2f}
 kfoldic      {kfoldic:<8.2f}    {kfoldic_se:<.2f}
 """
 
-SUBSAMPLE_BASE_FMT = """
-Computed from {n_samples} by {subsample_size} subsampled log-likelihood
-values from {n_data_points} total observations.
+# LOGO (Leave-One-Group-Out) output
+LOGO_BASE_FMT = """
+Computed from {n_samples} posterior samples and {n_groups} groups log-likelihood matrix.
 
-         Estimate       SE  subsampling SE
-elpd_loo   {elpd_loo:<8.2f}    {elpd_loo_se:<.2f}         {elpd_loo_subsamp_se:<.2f}
-p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}         {p_loo_subsamp_se:<.2f}
-looic      {looic:<8.2f}    {looic_se:<.2f}         {looic_subsamp_se:<.2f}
-{pareto_msg}"""
+         Estimate       SE
+elpd_logo   {elpd:<8.2f}    {se:<.2f}
+p_logo       {p_logo:<8.2f}    {p_logo_se:<.2f}
+logoic      {logoic:<8.2f}    {logoic_se:<.2f}"""
+
 
 POINTWISE_LOO_FMT = """
 ------
@@ -344,18 +341,30 @@ class ELPDData(pd.Series):
                     looic_se=looic_se,
                 )
             else:
-                looic = self["looic"]
-                looic_se = self["looic_se"]
-                base = STD_BASE_FMT.format(
-                    n_samples=self.n_samples,
-                    n_points=self.n_data_points,
-                    elpd=elpd_loo,
-                    se=se,
-                    p_loo=self["p_loo"],
-                    p_loo_se=self["p_loo_se"],
-                    looic=looic,
-                    looic_se=looic_se,
-                )
+                if "p_loo" not in self:
+                    base = """
+Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix with
+mixture posterior.
+
+         Estimate       SE
+elpd_loo   {elpd:<8.2f}    -""".format(
+                        n_samples=self.n_samples,
+                        n_points=self.n_data_points,
+                        elpd=elpd_loo,
+                    )
+                else:
+                    looic = self["looic"]
+                    looic_se = self["looic_se"]
+                    base = STD_BASE_FMT.format(
+                        n_samples=self.n_samples,
+                        n_points=self.n_data_points,
+                        elpd=elpd_loo,
+                        se=se,
+                        p_loo=self["p_loo"],
+                        p_loo_se=self["p_loo_se"],
+                        looic=looic,
+                        looic_se=looic_se,
+                    )
 
             if self.warning:
                 base += (

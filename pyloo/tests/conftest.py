@@ -847,3 +847,36 @@ def prepare_inference_data_for_crps(centered_eight):
     assert "obs2" in new_idata.posterior_predictive.data_vars
 
     return new_idata
+
+
+@pytest.fixture(scope="session")
+def high_dimensional_regression_model():
+    """Create a high-dimensional linear regression model with many predictors."""
+    rng = np.random.default_rng(42)
+    n_obs = 50
+    n_predictors = 60
+
+    X = rng.normal(0, 1, size=(n_obs, n_predictors))
+
+    true_alpha = 1.5
+    true_betas = rng.normal(0, 1, size=n_predictors)
+    true_sigma = 0.7
+
+    y = true_alpha + X @ true_betas + rng.normal(0, true_sigma, size=n_obs)
+
+    with pm.Model(
+        coords={"obs_id": range(n_obs), "predictor": range(n_predictors)}
+    ) as model:
+        alpha = pm.Normal("alpha", mu=0, sigma=5)
+        betas = pm.Normal("betas", mu=0, sigma=1, dims="predictor")
+        sigma = pm.HalfNormal("sigma", sigma=3)
+
+        mu = alpha + pm.math.dot(X, betas)
+
+        pm.Normal("y", mu=mu, sigma=sigma, observed=y, dims="obs_id")
+
+        idata = pm.sample(
+            draws=1000, tune=500, random_seed=42, idata_kwargs={"log_likelihood": True}
+        )
+
+    return model, idata
