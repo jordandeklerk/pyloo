@@ -89,8 +89,8 @@ def loo_score(
         If True, the pointwise values will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
     permutations : int, default 1
-        An integer specifying how many times the expected value of ::math:`|X - X'|`
-        (::math:`|x - x2|`) is computed. The row order of x2 is shuffled as elements x and x2 are typically
+        An integer specifying how many times the expected value of ::math:|X - X'|
+        (::math:|x - x2|) is computed. The row order of x2 is shuffled as elements x and x2 are typically
         drawn given the same values of parameters. Generating more permutations is
         expected to decrease the variance of the computed expected value.
     reff : float | None, optional
