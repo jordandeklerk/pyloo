@@ -132,11 +132,6 @@ def loo_moment_match_split(
         - lwfi: Updated log importance weights for full distribution
         - log_liki: Updated log likelihood values
         - r_eff_i: Updated relative effective sample size
-
-    References
-    ----------
-    Paananen, T., Piironen, J., Buerkner, P.-C., Vehtari, A. (2020). Implicitly Adaptive Importance
-    Sampling. arXiv preprint arXiv:1906.08850.
     """
     S = upars.shape[0]
     S_half = S // 2

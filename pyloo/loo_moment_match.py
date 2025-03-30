@@ -108,6 +108,153 @@ def loo_moment_match(
     scale: scale of the elpd
     looic: leave-one-out information criterion (looic = -2 * elpd_loo)
     looic_se: standard error of the looic
+
+    Notes
+    -----
+    Moment matching can fail to improve LOO estimates for several reasons such as very high-dimensional
+    parameter spaces, multi-modality, weight instability, and insufficient sample size.
+
+    Split moment matching can be used to improve the estimates by transforming only half of the draws
+    and using multiple importance sampling to combine them with untransformed draws. This strategy
+    provides more stability than transforming all draws, particularly in cases where the transformation
+    itself might be imperfect. However, split moment matching is not guaranteed to improve the estimates
+    either.
+
+    Examples
+    --------
+    When we have many Pareto k estimates above the threshold, we can use moment matching to improve the estimates
+    and avoid the computational cost of refitting the model :math:`k` times:
+
+    .. code-block:: python
+
+        import pyloo as pl
+        import arviz as az
+
+        data = az.load_arviz_data("centered_eight")
+
+        with pm.Model() as model:
+            mu = pm.Normal('mu', mu=0, sigma=10)
+            sigma = pm.HalfNormal('sigma', sigma=10)
+            likelihood = pm.Normal('y', mu=mu, sigma=sigma, observed=data.y)
+            idata = pm.sample(1000, tune=1000, idata_kwargs={"log_likelihood": True})
+
+        wrapper = pl.PyMCWrapper(model, idata)
+        loo_orig = pl.loo(wrapper, pointwise=True)
+
+        loo_new = pl.loo_moment_match(
+            wrapper,
+            loo_orig,
+            max_iters=30,
+            k_threshold=0.7,
+            split=True,
+            cov=True,
+        )
+
+    If you are using a custom model implementation, you need to implement functions for parameter transformation
+    and log probability calculations. For example, for a CmdStanPy model, you can do the following:
+
+    .. code-block:: python
+
+        import numpy as np
+        import pandas as pd
+        import xarray as xr
+        import pyloo as pl
+        import arviz as az
+
+        from cmdstanpy import CmdStanModel
+        from scipy.special import logsumexp
+
+        stan_code =
+        data {
+          int<lower=1> K;
+          int<lower=1> N;
+          matrix[N,K] x;
+          array[N] int y;
+          vector[N] offset;
+          real beta_prior_scale;
+          real alpha_prior_scale;
+        }
+        parameters {
+          vector[K] beta;
+          real intercept;
+        }
+        model {
+          y ~ poisson(exp(x * beta + intercept + offset));
+          beta ~ normal(0, beta_prior_scale);
+          intercept ~ normal(0, alpha_prior_scale);
+        }
+        generated quantities {
+          vector[N] log_lik;
+          for (n in 1:N)
+            log_lik[n] = poisson_lpmf(y[n] | exp(x[n] * beta + intercept + offset[n]));
+        }
+
+        model = CmdStanModel(stan_code=stan_code)
+        fit = model.sample(data=stan_data, chains=4, iter_sampling=1000)
+
+        # Define custom functions required for moment matching
+        def post_draws(model_obj, **kwargs):
+            fit = model_obj['fit']
+            draws_dict = {
+                'beta': fit.stan_variables()['beta'].reshape(fit.chains*fit.draws_per_chain, -1),
+                'intercept': fit.stan_variables()['intercept'].flatten()
+            }
+            return draws_dict
+
+        def log_lik_i(model_obj, i, **kwargs):
+            fit = model_obj['fit']
+            log_lik = fit.stan_variables()['log_lik']
+            return log_lik[:, :, i].reshape(fit.chains*fit.draws_per_chain)
+
+        def unconstrain_pars(model_obj, pars, **kwargs):
+            K = model_obj['data']['K']
+            n_samples = len(pars['intercept'])
+
+            upars = np.zeros((n_samples, K + 1))
+            upars[:, 0] = pars['intercept']  # intercept
+            upars[:, 1:] = pars['beta']      # beta values
+            return upars
+
+        def log_prob_upars(model_obj, upars, **kwargs):
+            # This function needs to compute the log posterior density
+            return log_prob
+
+        def log_lik_i_upars(model_obj, upars, i, **kwargs):
+            # This function needs to compute the log-likelihood for observation i
+            return log_lik
+
+        idata = az.from_cmdstanpy(fit)
+        loo_orig = pl.loo(idata, pointwise=True)
+
+        loo_mm = pl.loo_moment_match(
+            model_obj,
+            loo_orig,
+            post_draws=post_draws,
+            log_lik_i=log_lik_i,
+            unconstrain_pars=unconstrain_pars,
+            log_prob_upars_fn=log_prob_upars,
+            log_lik_i_upars_fn=log_lik_i_upars,
+            k_threshold=0.7,
+            split=True,
+            cov=True
+        )
+
+        print("Original ELPD LOO:", loo_orig.elpd_loo)
+        print("Improved ELPD LOO:", loo_mm.elpd_loo)
+
+    References
+    ----------
+    Paananen, T., Piironen, J., Buerkner, P.-C., Vehtari, A. (2020). Implicitly Adaptive Importance
+    Sampling. arXiv preprint arXiv:1906.08850.
+
+    See Also
+    --------
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
+    waic : Compute WAIC
     """
     log_level = logging.INFO if verbose else logging.WARNING
     _log.setLevel(log_level)
