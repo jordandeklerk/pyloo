@@ -40,10 +40,6 @@ def loo_moment_match_split(
     approximations of the leave-one-out posterior. When we combine these halves using multiple
     importance sampling, we get more reliable estimates while maintaining computational efficiency.
 
-    This function can be used in two ways:
-    1. With a PyMCWrapper instance (recommended if using PyMC)
-    2. With user-provided functions for custom model implementations
-
     The split moment matching approach works as follows:
 
     Let :math:`S` be the total number of posterior draws and :math:`S_{half} = S/2`. The approach applies
