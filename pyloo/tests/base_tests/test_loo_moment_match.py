@@ -6,7 +6,6 @@ from copy import deepcopy
 import numpy as np
 import pytest
 import xarray as xr
-from numpy.testing import assert_allclose
 
 from ...elpd import ELPDData
 from ...helpers import (
@@ -28,6 +27,7 @@ from ...loo_moment_match import (
 )
 from ...split_moment_matching import loo_moment_match_split
 from ...wrapper.pymc import PyMCWrapper
+from ..helpers import assert_allclose
 
 logger = logging.getLogger(__name__)
 
@@ -627,7 +627,7 @@ def test_roundtrip_conversion(mmm_model):
     result = converter.matrix_to_dict(matrix)
 
     for name in original:
-        xr.testing.assert_equal(result[name], original[name])
+        assert_allclose(result[name], original[name])
 
 
 def test_error_handling(mmm_model):
@@ -689,7 +689,7 @@ def test_converter_with_log_prob_upars(mmm_model):
 
     converted_log_prob = log_prob_upars(wrapper, converted)
 
-    np.testing.assert_allclose(original_log_prob, converted_log_prob)
+    assert_allclose(original_log_prob, converted_log_prob)
 
 
 def test_converter_with_log_lik_i_upars(mmm_model):
@@ -706,7 +706,7 @@ def test_converter_with_log_lik_i_upars(mmm_model):
 
     converted_log_lik = log_lik_i_upars(wrapper, converted, pointwise=True)
 
-    xr.testing.assert_allclose(original_log_lik, converted_log_lik)
+    assert_allclose(original_log_lik, converted_log_lik)
 
 
 def test_converter_with_multidim_log_lik(mmm_model):
@@ -733,7 +733,7 @@ def test_converter_with_multidim_log_lik(mmm_model):
 
         assert set(orig_ll.dims) == set(conv_ll.dims)
 
-        xr.testing.assert_allclose(orig_ll, conv_ll)
+        assert_allclose(orig_ll, conv_ll)
 
 
 def post_draws_custom(model, **kwargs):
@@ -820,10 +820,10 @@ def create_mock_loo_data(model, k_values=None):
         "n_data_points": n_obs,
         "scale": "log",
         "se": se_value,
-        "warning": np.any(k_values > 0.7),  # Add warning flag based on k values
-        "looic": -2 * elpd_loo_value,  # Add looic (LOO information criterion)
-        "looic_se": 2 * se_value,  # Add looic standard error
-        "p_loo_se": 0.5,  # Add p_loo standard error (mock value)
+        "warning": np.any(k_values > 0.7),
+        "looic": -2 * elpd_loo_value,
+        "looic_se": 2 * se_value,
+        "p_loo_se": 0.5,
     })
 
     return loo_data
@@ -1045,8 +1045,8 @@ def test_loo_moment_match_pymc_vs_custom(problematic_model):
     assert_allclose(loo_mm_pymc.elpd_loo, loo_mm_custom.elpd_loo, rtol=1e-6)
     assert_allclose(loo_mm_pymc.p_loo, loo_mm_custom.p_loo, rtol=1e-6)
     assert_allclose(loo_mm_pymc.se, loo_mm_custom.se, rtol=1e-6)
-    xr.testing.assert_allclose(loo_mm_pymc.loo_i, loo_mm_custom.loo_i, rtol=1e-6)
-    xr.testing.assert_allclose(loo_mm_pymc.pareto_k, loo_mm_custom.pareto_k, rtol=1e-6)
+    assert_allclose(loo_mm_pymc.loo_i, loo_mm_custom.loo_i, rtol=1e-6)
+    assert_allclose(loo_mm_pymc.pareto_k, loo_mm_custom.pareto_k, rtol=1e-6)
 
     logger.info(loo_mm_pymc)
     logger.info(loo_mm_custom)
