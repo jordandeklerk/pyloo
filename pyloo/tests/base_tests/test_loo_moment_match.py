@@ -8,21 +8,23 @@ import pytest
 import xarray as xr
 from numpy.testing import assert_allclose
 
+from ...elpd import ELPDData
 from ...helpers import (
     ParameterConverter,
     _initialize_array,
+    extract_log_likelihood_for_observation,
     log_lik_i_upars,
     log_prob_upars,
 )
 from ...loo import loo
 from ...loo_moment_match import (
     loo_moment_match,
-    loo_moment_match_split,
     shift,
     shift_and_cov,
     shift_and_scale,
     update_quantities_i,
 )
+from ...split_moment_matching import loo_moment_match_split
 from ...wrapper.pymc import PyMCWrapper
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,50 @@ def problematic_model(problematic_k_model):
     model, idata = problematic_k_model
     wrapper = PyMCWrapper(model, idata)
     return wrapper
+
+
+class CustomModel:
+    """A simple custom model for testing."""
+
+    def __init__(self, n_samples=1000, n_obs=20, seed=42):
+        """Initialize the custom model with simulated data."""
+        self.rng = np.random.RandomState(seed)
+        self.n_samples = n_samples
+        self.n_obs = n_obs
+
+        self.alpha = 0.5
+        self.beta = 1.2
+        self.sigma = 0.5
+
+        self.x = self.rng.normal(0, 1, n_obs)
+        self.y = self.alpha + self.beta * self.x + self.rng.normal(0, self.sigma, n_obs)
+
+        self.draws = {
+            "alpha": self.rng.normal(0.5, 0.1, n_samples),
+            "beta": self.rng.normal(1.2, 0.2, n_samples),
+            "sigma": np.abs(self.rng.normal(0.5, 0.1, n_samples)),
+        }
+
+        self._compute_log_likelihood()
+
+    def _compute_log_likelihood(self):
+        """Compute log-likelihood values for all observations and draws."""
+        n_samples = self.n_samples
+        n_obs = self.n_obs
+
+        self.log_likelihood = np.zeros((n_samples, n_obs))
+
+        for s in range(n_samples):
+            alpha = self.draws["alpha"][s]
+            beta = self.draws["beta"][s]
+            sigma = self.draws["sigma"][s]
+
+            for i in range(n_obs):
+                mean = alpha + beta * self.x[i]
+                self.log_likelihood[s, i] = (
+                    -0.5 * np.log(2 * np.pi * sigma**2)
+                    - 0.5 * ((self.y[i] - mean) / sigma) ** 2
+                )
 
 
 def test_loo_moment_match_basic(problematic_model):
@@ -639,3 +685,311 @@ def test_converter_with_multidim_log_lik(mmm_model):
         assert set(orig_ll.dims) == set(conv_ll.dims)
 
         xr.testing.assert_allclose(orig_ll, conv_ll)
+
+
+def post_draws_custom(model, **kwargs):
+    """Get posterior draws from custom model."""
+    draws = np.column_stack(
+        [model.draws["alpha"], model.draws["beta"], model.draws["sigma"]]
+    )
+    return draws
+
+
+def log_lik_i_custom(model, i, **kwargs):
+    """Get log-likelihood for observation i from custom model."""
+    return model.log_likelihood[:, i]
+
+
+def unconstrain_pars_custom(model, pars, **kwargs):
+    """Convert parameters to unconstrained space for custom model."""
+    upars = pars.copy()
+    upars[:, 2] = np.log(pars[:, 2])
+    return upars
+
+
+def log_prob_upars_custom(model, upars, **kwargs):
+    """Compute log probability for unconstrained parameters for custom model."""
+    log_prob = np.zeros(len(upars))
+    log_prob += -0.5 * upars[:, 0] ** 2 - 0.5 * np.log(2 * np.pi)
+    log_prob += -0.5 * upars[:, 1] ** 2 - 0.5 * np.log(2 * np.pi)
+    log_prob += -0.5 * upars[:, 2] ** 2 - 0.5 * np.log(2 * np.pi)
+    log_prob += upars[:, 2]
+
+    return log_prob
+
+
+def log_lik_i_upars_custom(model, upars, i, **kwargs):
+    """Compute log-likelihood for observation i with unconstrained parameters."""
+    n_samples = len(upars)
+    log_lik = np.zeros(n_samples)
+
+    for s in range(n_samples):
+        alpha = upars[s, 0]
+        beta = upars[s, 1]
+        sigma = np.exp(upars[s, 2])
+
+        mean = alpha + beta * model.x[i]
+        log_lik[s] = (
+            -0.5 * np.log(2 * np.pi * sigma**2)
+            - 0.5 * ((model.y[i] - mean) / sigma) ** 2
+        )
+
+    return log_lik
+
+
+def create_mock_loo_data(model, k_values=None):
+    """Create a mock LOO data object for testing."""
+    n_obs = model.n_obs
+
+    if k_values is None:
+        k_values = np.random.uniform(0.1, 0.5, n_obs)
+        k_values[0] = 0.8
+        k_values[1] = 0.9
+
+    elpd_values = -2.0 - k_values
+
+    loo_i = xr.DataArray(
+        elpd_values,
+        dims=["observation_id"],
+        coords={"observation_id": np.arange(n_obs)},
+    )
+
+    pareto_k = xr.DataArray(
+        k_values, dims=["observation_id"], coords={"observation_id": np.arange(n_obs)}
+    )
+
+    loo_data = ELPDData({
+        "elpd_loo": elpd_values.sum(),
+        "p_loo": 3.0,
+        "loo_i": loo_i,
+        "pareto_k": pareto_k,
+        "n_samples": model.n_samples,
+        "n_data_points": n_obs,
+        "scale": "log",
+        "se": np.sqrt(n_obs * np.var(elpd_values)),
+    })
+
+    return loo_data
+
+
+@pytest.fixture
+def custom_model():
+    """Create a custom model for testing."""
+    return CustomModel(n_samples=1000, n_obs=20, seed=42)
+
+
+def test_loo_moment_match_custom_implementation(custom_model):
+    """Test that loo_moment_match works with custom implementations."""
+    loo_data = create_mock_loo_data(custom_model)
+    original_k_values = loo_data.pareto_k.values.copy()
+
+    k_threshold = 0.7
+    high_k_indices = np.where(original_k_values > k_threshold)[0]
+    assert len(high_k_indices) > 0, "Test requires observations with high Pareto k"
+
+    loo_data_copy = deepcopy(loo_data)
+
+    loo_mm = loo_moment_match(
+        custom_model,
+        loo_data_copy,
+        post_draws=post_draws_custom,
+        log_lik_i=log_lik_i_custom,
+        unconstrain_pars=unconstrain_pars_custom,
+        log_prob_upars_fn=log_prob_upars_custom,
+        log_lik_i_upars_fn=log_lik_i_upars_custom,
+        max_iters=10,
+        k_threshold=k_threshold,
+        split=True,
+        cov=True,
+    )
+
+    improvements = []
+    for idx in high_k_indices:
+        orig_k = original_k_values[idx]
+        mm_k = loo_mm.pareto_k[idx].values
+        improvement = orig_k - mm_k
+        improvements.append(improvement)
+
+    assert np.any(np.array(improvements) > 0), "No Pareto k values improved"
+    assert loo_mm.elpd_loo >= loo_data.elpd_loo - 1e-10
+
+
+def test_loo_moment_match_custom_vs_split(custom_model):
+    """Test split moment matching with custom implementation."""
+    loo_data = create_mock_loo_data(custom_model)
+    original_elpd = loo_data.elpd_loo
+
+    loo_data_copy1 = deepcopy(loo_data)
+    loo_data_copy2 = deepcopy(loo_data)
+
+    loo_mm_split = loo_moment_match(
+        custom_model,
+        loo_data_copy1,
+        post_draws=post_draws_custom,
+        log_lik_i=log_lik_i_custom,
+        unconstrain_pars=unconstrain_pars_custom,
+        log_prob_upars_fn=log_prob_upars_custom,
+        log_lik_i_upars_fn=log_lik_i_upars_custom,
+        max_iters=10,
+        k_threshold=0.7,
+        split=True,
+        cov=True,
+    )
+
+    loo_mm_regular = loo_moment_match(
+        custom_model,
+        loo_data_copy2,
+        post_draws=post_draws_custom,
+        log_lik_i=log_lik_i_custom,
+        unconstrain_pars=unconstrain_pars_custom,
+        log_prob_upars_fn=log_prob_upars_custom,
+        log_lik_i_upars_fn=log_lik_i_upars_custom,
+        max_iters=10,
+        k_threshold=0.7,
+        split=False,
+        cov=True,
+    )
+
+    assert loo_mm_split.elpd_loo >= original_elpd - 1e-10
+    assert loo_mm_regular.elpd_loo >= original_elpd - 1e-10
+
+    if loo_mm_split.elpd_loo != loo_mm_regular.elpd_loo:
+        rel_diff = abs(loo_mm_split.elpd_loo - loo_mm_regular.elpd_loo) / abs(
+            loo_mm_regular.elpd_loo
+        )
+        assert rel_diff < 0.1
+
+
+def test_loo_moment_match_custom_missing_functions(custom_model):
+    """Test error handling when required functions are missing."""
+    loo_data = create_mock_loo_data(custom_model)
+
+    with pytest.raises(ValueError, match="must provide all the following functions"):
+        loo_moment_match(
+            custom_model,
+            loo_data,
+            max_iters=10,
+            k_threshold=0.7,
+        )
+
+    with pytest.raises(ValueError, match="must provide all the following functions"):
+        loo_moment_match(
+            custom_model,
+            loo_data,
+            post_draws=post_draws_custom,
+            log_lik_i=log_lik_i_custom,
+            max_iters=10,
+            k_threshold=0.7,
+        )
+
+
+def test_loo_moment_match_custom_different_methods(custom_model):
+    """Test moment matching with different importance sampling methods for custom model."""
+    loo_data = create_mock_loo_data(custom_model)
+    original_elpd = loo_data.elpd_loo
+
+    methods = ["psis", "sis", "tis"]
+    results = {}
+
+    for method in methods:
+        loo_data_copy = deepcopy(loo_data)
+
+        results[method] = loo_moment_match(
+            custom_model,
+            loo_data_copy,
+            post_draws=post_draws_custom,
+            log_lik_i=log_lik_i_custom,
+            unconstrain_pars=unconstrain_pars_custom,
+            log_prob_upars_fn=log_prob_upars_custom,
+            log_lik_i_upars_fn=log_lik_i_upars_custom,
+            max_iters=10,
+            k_threshold=0.7,
+            split=True,
+            cov=True,
+            method=method,
+        )
+
+        assert results[method].elpd_loo >= original_elpd - 1e-10
+
+    for m1 in methods:
+        for m2 in methods:
+            if m1 != m2 and results[m1].elpd_loo != results[m2].elpd_loo:
+                rel_diff = abs(results[m1].elpd_loo - results[m2].elpd_loo) / abs(
+                    results[m1].elpd_loo
+                )
+                assert rel_diff < 0.2, f"Methods {m1} and {m2} differ too much"
+
+
+def test_loo_moment_match_pymc_vs_custom(problematic_model):
+    """Test that PyMCWrapper and custom function implementations yield same results."""
+    wrapper = problematic_model
+    loo_orig = loo(wrapper.idata, pointwise=True)
+
+    loo_data_pymc = deepcopy(loo_orig)
+    loo_mm_pymc = loo_moment_match(
+        wrapper,
+        loo_data_pymc,
+        max_iters=10,
+        k_threshold=0.7,
+        split=True,
+        cov=True,
+    )
+
+    converter = ParameterConverter(wrapper)
+    unconstrained_draws_dict = wrapper.get_unconstrained_parameters()
+
+    def post_draws_from_wrapper(model, **kwargs):
+        """Get posterior draws from wrapper."""
+        posterior = model.idata.posterior
+        stacked_posterior = posterior.stack(__sample__=("chain", "draw"))
+        draw_list = [
+            stacked_posterior[var].values for var in model.get_parameter_names()
+        ]
+        return np.column_stack(draw_list)
+
+    def log_lik_i_from_wrapper(model, i, **kwargs):
+        """Get log-likelihood for observation i from wrapper."""
+        log_likelihood = model.idata.log_likelihood
+        var_name = list(log_likelihood.data_vars)[0]
+        stacked_log_lik = log_likelihood[var_name].stack(__sample__=("chain", "draw"))
+        obs_dim = [dim for dim in stacked_log_lik.dims if dim != "__sample__"][0]
+        return stacked_log_lik.isel({obs_dim: i}).values
+
+    def unconstrain_pars_from_wrapper(model, pars, **kwargs):
+        """Convert parameters to unconstrained space for wrapper."""
+        return converter.dict_to_matrix(unconstrained_draws_dict)
+
+    def log_prob_upars_from_wrapper(model, upars, **kwargs):
+        """Compute log probability for unconstrained parameters for wrapper."""
+        upars_dict = converter.matrix_to_dict(upars)
+        return log_prob_upars(model, upars_dict)
+
+    def log_lik_i_upars_from_wrapper(model, upars, i, **kwargs):
+        """Compute log-likelihood for observation i with unconstrained parameters for wrapper."""
+        upars_dict = converter.matrix_to_dict(upars)
+        log_lik_result = log_lik_i_upars(model, upars_dict, pointwise=True)
+        return extract_log_likelihood_for_observation(log_lik_result, i)
+
+    loo_data_custom = deepcopy(loo_orig)
+    loo_mm_custom = loo_moment_match(
+        wrapper,
+        loo_data_custom,
+        post_draws=post_draws_from_wrapper,
+        log_lik_i=log_lik_i_from_wrapper,
+        unconstrain_pars=unconstrain_pars_from_wrapper,
+        log_prob_upars_fn=log_prob_upars_from_wrapper,
+        log_lik_i_upars_fn=log_lik_i_upars_from_wrapper,
+        max_iters=10,
+        k_threshold=0.7,
+        split=True,
+        cov=True,
+    )
+
+    assert_allclose(loo_mm_pymc.elpd_loo, loo_mm_custom.elpd_loo, rtol=1e-6)
+    assert_allclose(loo_mm_pymc.p_loo, loo_mm_custom.p_loo, rtol=1e-6)
+    assert_allclose(loo_mm_pymc.se, loo_mm_custom.se, rtol=1e-6)
+    xr.testing.assert_allclose(loo_mm_pymc.loo_i, loo_mm_custom.loo_i, rtol=1e-6)
+    xr.testing.assert_allclose(loo_mm_pymc.pareto_k, loo_mm_custom.pareto_k, rtol=1e-6)
+
+    logger.info(loo_mm_pymc)
+    logger.info(loo_mm_custom)

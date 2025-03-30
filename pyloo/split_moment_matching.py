@@ -1,6 +1,6 @@
 """Split moment matching for efficient approximate leave-one-out cross-validation."""
 
-from typing import Literal
+from typing import Any, Callable, Literal
 
 import numpy as np
 
@@ -20,7 +20,7 @@ __all__ = ["loo_moment_match_split"]
 
 
 def loo_moment_match_split(
-    wrapper: PyMCWrapper,
+    model: PyMCWrapper | Any,
     upars: np.ndarray,
     cov: bool,
     total_shift: np.ndarray,
@@ -28,7 +28,10 @@ def loo_moment_match_split(
     total_mapping: np.ndarray,
     i: int,
     r_eff_i: float,
+    log_prob_upars_fn: Callable | None = None,
+    log_lik_i_upars_fn: Callable | None = None,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+    **kwargs,
 ) -> SplitMomentMatchResult:
     r"""Split moment matching for efficient approximate leave-one-out cross-validation.
 
@@ -36,6 +39,10 @@ def loo_moment_match_split(
     them while leaving the other half unchanged. This creates two different but complementary
     approximations of the leave-one-out posterior. When we combine these halves using multiple
     importance sampling, we get more reliable estimates while maintaining computational efficiency.
+
+    This function can be used in two ways:
+    1. With a PyMCWrapper instance (recommended if using PyMC)
+    2. With user-provided functions for custom model implementations
 
     The split moment matching approach works as follows:
 
@@ -89,8 +96,9 @@ def loo_moment_match_split(
 
     Parameters
     ----------
-    wrapper : PyMCWrapper
-        PyMC model wrapper instance
+    model : PyMCWrapper | Any
+        Either a PyMC model wrapper instance OR a custom model object that will be passed
+        to the user-provided functions
     upars : np.ndarray
         Matrix containing the model parameters in unconstrained space
     cov : bool
@@ -105,8 +113,16 @@ def loo_moment_match_split(
         Observation index
     r_eff_i : float
         MCMC relative effective sample size
-    method : ISMethod
+    log_prob_upars_fn : Callable | None, optional
+        Function to compute log probability for unconstrained parameters.
+        Required if not using PyMCWrapper.
+    log_lik_i_upars_fn : Callable | None, optional
+        Function to compute log likelihood for observation i with unconstrained parameters.
+        Required if not using PyMCWrapper.
+    method : Literal['psis', 'sis', 'tis'] | ISMethod
         Importance sampling method to use
+    **kwargs : Any
+        Additional keyword arguments passed to the custom functions
 
     Returns
     -------
@@ -153,33 +169,70 @@ def loo_moment_match_split(
     upars_trans_half_inv = upars.copy()
     upars_trans_half_inv[S_half:] = upars_trans_inv[S_half:]
 
-    converter = ParameterConverter(wrapper)
-    upars_trans_half_dict = converter.matrix_to_dict(upars_trans_half)
-    upars_trans_half_inv_dict = converter.matrix_to_dict(upars_trans_half_inv)
+    if isinstance(model, PyMCWrapper):
+        converter = ParameterConverter(model)
+        upars_trans_half_dict = converter.matrix_to_dict(upars_trans_half)
+        upars_trans_half_inv_dict = converter.matrix_to_dict(upars_trans_half_inv)
 
-    try:
-        log_prob_half_trans = log_prob_upars(wrapper, upars_trans_half_dict)
-        log_prob_half_trans_inv = log_prob_upars(wrapper, upars_trans_half_inv_dict)
+        try:
+            log_prob_half_trans = log_prob_upars(model, upars_trans_half_dict)
+            log_prob_half_trans_inv = log_prob_upars(model, upars_trans_half_inv_dict)
+        except Exception as e:
+            raise ValueError(
+                f"Error computing log probabilities for transformed parameters: {e}"
+            ) from e
 
-        # Jacobian adjustment
-        log_prob_half_trans_inv = (
-            log_prob_half_trans_inv
-            - np.sum(np.log(total_scaling))
-            - np.log(np.abs(np.linalg.det(total_mapping)))
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Error computing log probabilities for transformed parameters: {e}"
-        ) from e
+        try:
+            log_lik_result = log_lik_i_upars(
+                model, upars_trans_half_dict, pointwise=True
+            )
+            log_liki_half = extract_log_likelihood_for_observation(log_lik_result, i)
+        except Exception as e:
+            raise ValueError(
+                f"Error computing log likelihood for observation {i}: {e}"
+            ) from e
 
-    try:
-        log_lik_result = log_lik_i_upars(wrapper, upars_trans_half_dict, pointwise=True)
-        log_liki_half = extract_log_likelihood_for_observation(log_lik_result, i)
-    except Exception as e:
-        raise ValueError(
-            f"Error computing log likelihood for observation {i}: {e}"
-        ) from e
+    else:
+        if None in (log_prob_upars_fn, log_lik_i_upars_fn):
+            raise ValueError(
+                "When not using PyMCWrapper, you must provide the following functions: "
+                "log_prob_upars_fn and log_lik_i_upars_fn"
+            )
 
+        try:
+            # Compute log probabilities for transformed parameters
+            log_prob_half_trans = log_prob_upars_fn(
+                model, upars=upars_trans_half, **kwargs
+            )  # type: ignore
+            log_prob_half_trans_inv = log_prob_upars_fn(
+                model, upars=upars_trans_half_inv, **kwargs
+            )  # type: ignore
+        except Exception as e:
+            raise ValueError(
+                f"Error computing log probabilities for transformed parameters: {e}"
+            ) from e
+
+        try:
+            # Compute log likelihood for observation i with transformed parameters
+            log_liki_half = log_lik_i_upars_fn(
+                model, upars=upars_trans_half, i=i, **kwargs
+            )  # type: ignore
+
+            if hasattr(log_liki_half, "flatten"):
+                log_liki_half = log_liki_half.flatten()
+        except Exception as e:
+            raise ValueError(
+                f"Error computing log likelihood for observation {i}: {e}"
+            ) from e
+
+    # Jacobian adjustment
+    log_prob_half_trans_inv = (
+        log_prob_half_trans_inv
+        - np.sum(np.log(total_scaling))
+        - np.log(np.abs(np.linalg.det(total_mapping)))
+    )
+
+    # Multiple importance sampling calculation
     stable_S = log_prob_half_trans > log_prob_half_trans_inv
     lwi_half = -log_liki_half + log_prob_half_trans
 
@@ -208,7 +261,8 @@ def loo_moment_match_split(
     is_obj_f_half = compute_importance_weights(lr, method=method, reff=r_eff_i)
     lwfi_half, _ = is_obj_f_half
 
-    r_eff_i = compute_updated_r_eff(wrapper, i, log_liki_half, S_half, r_eff_i)
+    if isinstance(model, PyMCWrapper):
+        r_eff_i = compute_updated_r_eff(model, i, log_liki_half, S_half, r_eff_i)
 
     return {
         "lwi": lwi_half,
