@@ -18,6 +18,8 @@ from ...helpers import (
 )
 from ...loo import loo
 from ...loo_moment_match import (
+    _validate_custom_function,
+    _validate_output,
     loo_moment_match,
     shift,
     shift_and_cov,
@@ -28,6 +30,52 @@ from ...split_moment_matching import loo_moment_match_split
 from ...wrapper.pymc import PyMCWrapper
 
 logger = logging.getLogger(__name__)
+
+
+class MockCmdStanModel:
+    """A mock CmdStanPy model for testing CmdStanPy integration."""
+
+    def __init__(self, n_samples=1000, n_obs=20, n_predictors=3, seed=42):
+        """Initialize with simulated Poisson regression data."""
+        self.rng = np.random.RandomState(seed)
+        self.n_samples = n_samples
+        self.n_obs = n_obs
+        self.n_predictors = n_predictors
+
+        self.x = self.rng.normal(0, 1, (n_obs, n_predictors))
+        self.offset = np.zeros(n_obs)
+
+        self.beta = self.rng.normal(0, 0.5, n_predictors)
+        self.intercept = 0.5
+
+        linear_pred = self.x @ self.beta + self.intercept + self.offset
+        self.y = self.rng.poisson(np.exp(linear_pred))
+
+        self.draws = {
+            "beta": self.rng.normal(self.beta, 0.1, (n_samples, n_predictors)),
+            "intercept": self.rng.normal(self.intercept, 0.1, n_samples),
+        }
+
+        self.log_lik = np.zeros((n_samples, n_obs))
+        for s in range(n_samples):
+            beta_s = self.draws["beta"][s]
+            intercept_s = self.draws["intercept"][s]
+
+            for i in range(n_obs):
+                mu_i = np.exp(np.dot(self.x[i], beta_s) + intercept_s + self.offset[i])
+                self.log_lik[s, i] = (
+                    self.y[i] * np.log(mu_i)
+                    - mu_i
+                    - np.log(np.math.factorial(self.y[i]))
+                )
+
+    def stan_variables(self):
+        """Return a dictionary of Stan variables."""
+        return {
+            "beta": self.draws["beta"].reshape(1, self.n_samples, self.n_predictors),
+            "intercept": self.draws["intercept"].reshape(1, self.n_samples),
+            "log_lik": self.log_lik.reshape(1, self.n_samples, self.n_obs),
+        }
 
 
 @pytest.fixture
@@ -88,8 +136,6 @@ def test_loo_moment_match_basic(problematic_model):
     loo_orig = loo(problematic_model.idata, pointwise=True)
     original_k_values = loo_orig.pareto_k.values.copy()
 
-    logger.info(loo_orig)
-
     high_k_indices = np.where(original_k_values > 0.7)[0]
     assert len(high_k_indices) > 0, "Test requires observations with high Pareto k"
 
@@ -108,8 +154,10 @@ def test_loo_moment_match_basic(problematic_model):
         k_threshold=0.7,
         split=True,
         cov=True,
+        verbose=True,
     )
 
+    logger.info(loo_orig)
     logger.info(loo_mm)
 
     improvements = []
@@ -443,6 +491,7 @@ def test_loo_moment_match_roaches_model(roaches_model):
         k_threshold=k_threshold,
         split=True,
         cov=True,
+        verbose=True,
     )
 
     logger.info(loo_mm)
@@ -758,15 +807,23 @@ def create_mock_loo_data(model, k_values=None):
         k_values, dims=["observation_id"], coords={"observation_id": np.arange(n_obs)}
     )
 
+    elpd_loo_value = elpd_values.sum()
+    se_value = np.sqrt(n_obs * np.var(elpd_values))
+    p_loo_value = 3.0
+
     loo_data = ELPDData({
-        "elpd_loo": elpd_values.sum(),
-        "p_loo": 3.0,
+        "elpd_loo": elpd_loo_value,
+        "p_loo": p_loo_value,
         "loo_i": loo_i,
         "pareto_k": pareto_k,
         "n_samples": model.n_samples,
         "n_data_points": n_obs,
         "scale": "log",
-        "se": np.sqrt(n_obs * np.var(elpd_values)),
+        "se": se_value,
+        "warning": np.any(k_values > 0.7),  # Add warning flag based on k values
+        "looic": -2 * elpd_loo_value,  # Add looic (LOO information criterion)
+        "looic_se": 2 * se_value,  # Add looic standard error
+        "p_loo_se": 0.5,  # Add p_loo standard error (mock value)
     })
 
     return loo_data
@@ -993,3 +1050,180 @@ def test_loo_moment_match_pymc_vs_custom(problematic_model):
 
     logger.info(loo_mm_pymc)
     logger.info(loo_mm_custom)
+
+
+def test_loo_moment_match_cmdstan_example():
+    """Test the CmdStanPy example from the docstring."""
+    mock_cmdstan = MockCmdStanModel(n_samples=1000, n_obs=20, n_predictors=3)
+
+    model_obj = {
+        "fit": mock_cmdstan,
+        "data": {"K": mock_cmdstan.n_predictors, "N": mock_cmdstan.n_obs},
+    }
+
+    def post_draws_cmdstan(model_obj, **kwargs):
+        fit = model_obj["fit"]
+        draws_dict = {
+            "beta": fit.stan_variables()["beta"].reshape(fit.n_samples, -1),
+            "intercept": fit.stan_variables()["intercept"].flatten(),
+        }
+        beta_array = draws_dict["beta"]
+        intercept_array = draws_dict["intercept"].reshape(-1, 1)
+        return np.hstack([intercept_array, beta_array])
+
+    def log_lik_i_cmdstan(model_obj, i, **kwargs):
+        fit = model_obj["fit"]
+        log_lik = fit.stan_variables()["log_lik"]
+        return log_lik.reshape(-1, fit.n_obs)[:, i]
+
+    def unconstrain_pars_cmdstan(model_obj, pars, **kwargs):
+        # Parameters are already unconstrained
+        return pars
+
+    def log_prob_upars_cmdstan(model_obj, upars, **kwargs):
+        K = model_obj["data"]["K"]
+        n_samples = upars.shape[0]
+
+        log_prob = np.zeros(n_samples)
+        alpha_prior_scale = 10.0
+        log_prob += (
+            -0.5 * (upars[:, 0] / alpha_prior_scale) ** 2
+            - np.log(alpha_prior_scale)
+            - 0.5 * np.log(2 * np.pi)
+        )
+
+        beta_prior_scale = 10.0
+        for k in range(1, K + 1):
+            log_prob += (
+                -0.5 * (upars[:, k] / beta_prior_scale) ** 2
+                - np.log(beta_prior_scale)
+                - 0.5 * np.log(2 * np.pi)
+            )
+
+        return log_prob
+
+    def log_lik_i_upars_cmdstan(model_obj, upars, i, **kwargs):
+        fit = model_obj["fit"]
+        K = model_obj["data"]["K"]
+
+        n_samples = upars.shape[0]
+        log_lik = np.zeros(n_samples)
+
+        for s in range(n_samples):
+            intercept = upars[s, 0]
+            beta = upars[s, 1 : K + 1]
+
+            x_i = fit.x[i]
+            y_i = fit.y[i]
+            offset_i = fit.offset[i]
+
+            mu_i = np.exp(np.dot(x_i, beta) + intercept + offset_i)
+
+            log_lik[s] = y_i * np.log(mu_i) - mu_i - np.log(np.math.factorial(y_i))
+
+        return log_lik
+
+    k_values = np.random.uniform(0.1, 0.5, mock_cmdstan.n_obs)
+    k_values[0] = 0.8
+    k_values[1] = 0.9
+    loo_data = create_mock_loo_data(mock_cmdstan, k_values)
+
+    loo_data_copy = deepcopy(loo_data)
+
+    loo_mm = loo_moment_match(
+        model_obj,
+        loo_data_copy,
+        post_draws=post_draws_cmdstan,
+        log_lik_i=log_lik_i_cmdstan,
+        unconstrain_pars=unconstrain_pars_cmdstan,
+        log_prob_upars_fn=log_prob_upars_cmdstan,
+        log_lik_i_upars_fn=log_lik_i_upars_cmdstan,
+        max_iters=10,
+        k_threshold=0.7,
+        split=True,
+        cov=True,
+        verbose=True,
+    )
+
+    high_k_indices = np.where(k_values > 0.7)[0]
+    assert len(high_k_indices) > 0, "Test requires observations with high Pareto k"
+
+    improvements = []
+    for idx in high_k_indices:
+        orig_k = k_values[idx]
+        mm_k = loo_mm.pareto_k[idx].values
+        improvement = orig_k - mm_k
+        improvements.append(improvement)
+
+    assert np.any(np.array(improvements) > 0), "No Pareto k values improved"
+    assert loo_mm.elpd_loo >= loo_data.elpd_loo - 1e-10
+
+    logger.info(f"Original ELPD LOO: {loo_data.elpd_loo}")
+    logger.info(f"Improved ELPD LOO: {loo_mm.elpd_loo}")
+    logger.info(f"Original k values: {k_values}")
+    logger.info(f"Improved k values: {loo_mm.pareto_k.values}")
+
+    logger.info(loo_mm)
+
+
+def test_validate_custom_function():
+    """Test the _validate_custom_function utility."""
+
+    def good_func(model, i, extra=None):
+        return i
+
+    def missing_param_func(model):
+        return 0
+
+    def kwargs_func(model, **kwargs):
+        return kwargs.get("i", 0)
+
+    def extra_params_func(model, i, extra1=None, extra2=None):
+        return i
+
+    assert _validate_custom_function(good_func, ["model", "i"], "good_func") is True
+    assert _validate_custom_function(kwargs_func, ["model", "i"], "kwargs_func") is True
+    assert (
+        _validate_custom_function(
+            extra_params_func, ["model", "i"], "extra_params_func"
+        )
+        is True
+    )
+    with pytest.raises(ValueError, match="missing required parameters"):
+        _validate_custom_function(
+            missing_param_func, ["model", "i"], "missing_param_func"
+        )
+
+
+def test_validate_output():
+    """Test the _validate_output utility."""
+    good_array = np.array([1.0, 2.0, 3.0])
+    validated = _validate_output(good_array, "good_array", expected_ndim=1)
+    assert_allclose(validated, good_array)
+
+    bad_ndim_array = np.array([[1.0, 2.0], [3.0, 4.0]])
+    with pytest.raises(ValueError, match="dimensions for bad_ndim_array"):
+        _validate_output(bad_ndim_array, "bad_ndim_array", expected_ndim=1)
+
+    nan_array = np.array([1.0, np.nan, 3.0])
+    with pytest.raises(ValueError, match="NaN values detected"):
+        _validate_output(nan_array, "nan_array", expected_ndim=1)
+
+    with pytest.raises(ValueError, match="returned None for none_value"):
+        _validate_output(None, "none_value", expected_ndim=1, allow_none=False)
+
+    assert (
+        _validate_output(None, "none_value", expected_ndim=1, allow_none=True) is None
+    )
+
+    shape_array = np.array([[1.0, 2.0], [3.0, 4.0]])
+    validated = _validate_output(shape_array, "shape_array", expected_shape=(2, 2))
+    assert_allclose(validated, shape_array)
+
+    with pytest.raises(ValueError, match="Expected shape"):
+        _validate_output(shape_array, "shape_array", expected_shape=(3, 2))
+
+    list_input = [1.0, 2.0, 3.0]
+    validated = _validate_output(list_input, "list_input", expected_ndim=1)
+    assert isinstance(validated, np.ndarray)
+    assert_allclose(validated, np.array(list_input))

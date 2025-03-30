@@ -1,5 +1,6 @@
 """Moment matching for efficient approximate leave-one-out cross-validation (LOO)."""
 
+import inspect
 import logging
 import warnings
 from copy import deepcopy
@@ -22,7 +23,7 @@ from .helpers import (
     log_prob_upars,
 )
 from .split_moment_matching import loo_moment_match_split
-from .utils import _logsumexp, wrap_xarray_ufunc
+from .utils import _logsumexp
 from .wrapper.pymc import PyMCWrapper
 
 __all__ = ["loo_moment_match"]
@@ -43,6 +44,7 @@ def loo_moment_match(
     split: bool = True,
     cov: bool = True,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+    verbose: bool = False,
     **kwargs,
 ) -> ELPDData:
     r"""Moment matching algorithm for updating a loo object when Pareto k estimates are large.
@@ -50,7 +52,7 @@ def loo_moment_match(
     Parameters
     ----------
     model : PyMCWrapper | Any
-        Either a PyMC model wrapper instance OR a custom model object that will be passed
+        Either a PyMC model wrapper instance or a custom model object that will be passed
         to the user-provided functions
     loo_data : ELPDData
         A loo object to be modified
@@ -83,6 +85,8 @@ def loo_moment_match(
         Whether to match the covariance matrix of the samples
     method : Literal['psis', 'sis', 'tis'] | ISMethod
         Importance sampling method to use
+    verbose : bool
+        If True, enables detailed logging output for debugging
     **kwargs : Any
         Additional keyword arguments passed to the custom functions
 
@@ -104,149 +108,17 @@ def loo_moment_match(
     scale: scale of the elpd
     looic: leave-one-out information criterion (looic = -2 * elpd_loo)
     looic_se: standard error of the looic
-
-    Notes
-    -----
-    Moment matching can fail to improve LOO estimates for several reasons such as very high-dimensional
-    parameter spaces, multi-modality, weight instability, and insufficient sample size.
-
-    Split moment matching can be used to improve the estimates by transforming only half of the draws
-    and using multiple importance sampling to combine them with untransformed draws. This strategy
-    provides more stability than transforming all draws, particularly in cases where the transformation
-    itself might be imperfect. However, split moment matching is not guaranteed to improve the estimates
-    either.
-
-    Examples
-    --------
-    When we have many Pareto k estimates above the threshold, we can use moment matching to improve the estimates
-    and avoid the computational cost of refitting the model :math:`k` times:
-
-    .. code-block:: python
-
-        import pyloo as pl
-        import arviz as az
-
-        data = az.load_arviz_data("centered_eight")
-
-        with pm.Model() as model:
-            mu = pm.Normal('mu', mu=0, sigma=10)
-            sigma = pm.HalfNormal('sigma', sigma=10)
-            likelihood = pm.Normal('y', mu=mu, sigma=sigma, observed=data.y)
-            idata = pm.sample(1000, tune=1000, idata_kwargs={"log_likelihood": True})
-
-        wrapper = pl.PyMCWrapper(model, idata)
-        loo_orig = pl.loo(wrapper, pointwise=True)
-
-        loo_new = pl.loo_moment_match(
-            wrapper,
-            loo_orig,
-            max_iters=30,
-            k_threshold=0.7,
-            split=True,
-            cov=True,
-        )
-
-    If you are using a custom model implementation, you need to implement functions for parameter transformation
-    and log probability calculations. For example, for a CmdStanPy model, you can do the following:
-
-    .. code-block:: python
-
-        import numpy as np
-        import pandas as pd
-        import xarray as xr
-        import pyloo as pl
-        import arviz as az
-
-        from cmdstanpy import CmdStanModel
-        from scipy.special import logsumexp
-
-        stan_code =
-        data {
-          int<lower=1> K;
-          int<lower=1> N;
-          matrix[N,K] x;
-          array[N] int y;
-          vector[N] offset;
-          real beta_prior_scale;
-          real alpha_prior_scale;
-        }
-        parameters {
-          vector[K] beta;
-          real intercept;
-        }
-        model {
-          y ~ poisson(exp(x * beta + intercept + offset));
-          beta ~ normal(0, beta_prior_scale);
-          intercept ~ normal(0, alpha_prior_scale);
-        }
-        generated quantities {
-          vector[N] log_lik;
-          for (n in 1:N)
-            log_lik[n] = poisson_lpmf(y[n] | exp(x[n] * beta + intercept + offset[n]));
-        }
-
-        model = CmdStanModel(stan_code=stan_code)
-        fit = model.sample(data=stan_data, chains=4, iter_sampling=1000)
-
-        # Define custom functions required for moment matching
-        def post_draws(model_obj, **kwargs):
-            fit = model_obj['fit']
-            draws_dict = {
-                'beta': fit.stan_variables()['beta'].reshape(fit.chains*fit.draws_per_chain, -1),
-                'intercept': fit.stan_variables()['intercept'].flatten()
-            }
-            return draws_dict
-
-        def log_lik_i(model_obj, i, **kwargs):
-            fit = model_obj['fit']
-            log_lik = fit.stan_variables()['log_lik']
-            return log_lik[:, :, i].reshape(fit.chains*fit.draws_per_chain)
-
-        def unconstrain_pars(model_obj, pars, **kwargs):
-            K = model_obj['data']['K']
-            n_samples = len(pars['intercept'])
-
-            upars = np.zeros((n_samples, K + 1))
-            upars[:, 0] = pars['intercept']  # intercept
-            upars[:, 1:] = pars['beta']      # beta values
-            return upars
-
-        def log_prob_upars(model_obj, upars, **kwargs):
-            # This function needs to compute the log posterior density
-            return log_prob
-
-        def log_lik_i_upars(model_obj, upars, i, **kwargs):
-            # This function needs to compute the log-likelihood for observation i
-            return log_lik
-
-        idata = az.from_cmdstanpy(fit)
-        loo_orig = pl.loo(idata, pointwise=True)
-
-        loo_mm = pl.loo_moment_match(
-            model_obj,
-            loo_orig,
-            post_draws=post_draws,
-            log_lik_i=log_lik_i,
-            unconstrain_pars=unconstrain_pars,
-            log_prob_upars_fn=log_prob_upars,
-            log_lik_i_upars_fn=log_lik_i_upars,
-            k_threshold=0.7,
-            split=True,
-            cov=True
-        )
-
-        print("Original ELPD LOO:", loo_orig.elpd_loo)
-        print("Improved ELPD LOO:", loo_mm.elpd_loo)
-
-    See Also
-    --------
-    loo_subsample : Leave-one-out cross-validation with subsampling
-    loo_kfold : K-fold cross-validation
-    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
-    loo_score : Compute LOO score for continuous ranked probability score
-    loo_group : Leave-one-group-out cross-validation
-    waic : Compute WAIC
     """
+    log_level = logging.INFO if verbose else logging.WARNING
+    _log.setLevel(log_level)
+
+    if verbose:
+        _log.info("Starting loo_moment_match with the following parameters:")
+        _log.info(f"  max_iters: {max_iters}")
+        _log.info(f"  split: {split}")
+        _log.info(f"  cov: {cov}")
+        _log.info(f"  method: {method}")
+
     loo_data = deepcopy(loo_data)
 
     if hasattr(loo_data, "loo_i") and not hasattr(loo_data, "p_loo_i"):
@@ -257,6 +129,9 @@ def loo_moment_match(
         )
 
     if isinstance(model, PyMCWrapper):
+        if verbose:
+            _log.info("Using PyMCWrapper model")
+
         converter = ParameterConverter(model)
         unconstrained = model.get_unconstrained_parameters()
         upars = converter.dict_to_matrix(unconstrained)
@@ -264,31 +139,79 @@ def loo_moment_match(
 
         if k_threshold is None:
             k_threshold = min(1 - 1 / np.log10(S), 0.7)
+            if verbose:
+                _log.info(f"Using automatically calculated k_threshold: {k_threshold}")
 
         orig_log_prob = log_prob_upars(model, unconstrained)
+
     else:
-        if None in (
-            post_draws,
-            log_lik_i,
-            unconstrain_pars,
-            log_prob_upars_fn,
-            log_lik_i_upars_fn,
-        ):
+        if verbose:
+            _log.info("Using custom model object")
+
+        required_funcs = {
+            "post_draws": post_draws,
+            "log_lik_i": log_lik_i,
+            "unconstrain_pars": unconstrain_pars,
+            "log_prob_upars_fn": log_prob_upars_fn,
+            "log_lik_i_upars_fn": log_lik_i_upars_fn,
+        }
+
+        missing_funcs = [name for name, func in required_funcs.items() if func is None]
+        if missing_funcs:
             raise ValueError(
                 "When not using PyMCWrapper, you must provide all the following"
-                " functions: post_draws, log_lik_i, unconstrain_pars,"
-                " log_prob_upars_fn, and log_lik_i_upars_fn"
+                f" functions: {', '.join(required_funcs.keys())}. Missing:"
+                f" {', '.join(missing_funcs)}"
             )
 
-        pars = post_draws(model, **kwargs)  # type: ignore
-        upars = unconstrain_pars(model, pars=pars, **kwargs)  # type: ignore
+        _validate_custom_function(post_draws, ["model"], "post_draws")
+        _validate_custom_function(log_lik_i, ["model", "i"], "log_lik_i")
+        _validate_custom_function(
+            unconstrain_pars, ["model", "pars"], "unconstrain_pars"
+        )
+        _validate_custom_function(
+            log_prob_upars_fn, ["model", "upars"], "log_prob_upars_fn"
+        )
+        _validate_custom_function(
+            log_lik_i_upars_fn, ["model", "upars", "i"], "log_lik_i_upars_fn"
+        )
+
+        try:
+            pars = post_draws(model, **kwargs)  # type: ignore
+            upars = unconstrain_pars(model, pars=pars, **kwargs)  # type: ignore
+            upars = _validate_output(upars, "upars", expected_ndim=2)
+            if verbose:
+                _log.info(
+                    f"Obtained unconstrained parameters with shape: {upars.shape}"
+                )
+
+        except Exception as e:
+            raise ValueError(
+                f"Error getting unconstrained parameters: {e}. Make sure your "
+                "post_draws and unconstrain_pars functions are implemented correctly."
+            ) from e
 
         S = upars.shape[0]
 
         if k_threshold is None:
             k_threshold = min(1 - 1 / np.log10(S), 0.7)
 
-        orig_log_prob = log_prob_upars_fn(model, upars=upars, **kwargs)  # type: ignore
+        try:
+            orig_log_prob = log_prob_upars_fn(model, upars=upars, **kwargs)  # type: ignore
+            orig_log_prob = _validate_output(
+                orig_log_prob, "orig_log_prob", expected_ndim=1
+            )
+            if verbose:
+                _log.info(
+                    "Obtained original log probabilities with shape:"
+                    f" {orig_log_prob.shape}"
+                )
+
+        except Exception as e:
+            raise ValueError(
+                f"Error computing log probabilities: {e}. Make sure your "
+                "log_prob_upars_fn function is implemented correctly."
+            ) from e
 
     if hasattr(loo_data, "pareto_k"):
         ks = loo_data.pareto_k.values
@@ -303,6 +226,11 @@ def loo_moment_match(
     kfs = np.zeros_like(ks)
 
     for i in bad_obs:
+        if verbose:
+            _log.info(f"\n{'=' * 50}")
+            _log.info(f"Processing observation {i} with Pareto k = {ks[i]:.4f}")
+            _log.info(f"{'=' * 50}")
+
         uparsi = upars.copy()
         ki = ks[i]
         kfi = 0
@@ -311,9 +239,16 @@ def loo_moment_match(
             try:
                 log_lik_result = log_lik_i_upars(model, unconstrained, pointwise=True)
                 log_liki = extract_log_likelihood_for_observation(log_lik_result, i)
+                if verbose:
+                    _log.info(
+                        f"Extracted log likelihood for observation {i} with shape:"
+                        f" {log_liki.shape}"
+                    )
+
             except Exception as e:
                 raise ValueError(
-                    f"Error computing log likelihood for observation {i}: {e}"
+                    f"Error computing log likelihood for observation {i}: {e}. "
+                    "Check that your model's log likelihood is correctly configured."
                 ) from e
 
             posterior = model.idata.posterior
@@ -325,15 +260,30 @@ def loo_moment_match(
                 if isinstance(ess_i, xr.DataArray):
                     ess_i = ess_i.values
                 r_eff_i = float(ess_i / len(log_liki))
+
         else:
             try:
                 log_liki = log_lik_i(model, i, **kwargs)  # type: ignore
+                if verbose:
+                    _log.info(
+                        f"Original log_liki type and shape: {type(log_liki)},"
+                        f" {np.asarray(log_liki).shape}"
+                    )
 
-                if len(log_liki.shape) > 1:
-                    log_liki = log_liki.flatten()
+                log_liki = _validate_output(
+                    log_liki, f"log_lik for observation {i}", expected_ndim=1
+                )
+                if verbose:
+                    _log.info(
+                        f"Validated log likelihood for observation {i} with shape:"
+                        f" {log_liki.shape}"
+                    )
+
             except Exception as e:
                 raise ValueError(
-                    f"Error computing log likelihood for observation {i}: {e}"
+                    f"Error computing log likelihood for observation {i}: {e}. "
+                    "Make sure your log_lik_i function returns the log likelihood "
+                    "for the specified observation as a 1D array."
                 ) from e
 
             log_liki_matrix = np.array(log_liki)
@@ -358,9 +308,11 @@ def loo_moment_match(
         total_mapping = np.eye(upars.shape[1])
 
         iterind = 1
-        _log.info(f"Processing observation {i} with Pareto k = {ks[i]:.4f}")
 
         while iterind <= max_iters and ki > k_threshold:
+            if verbose:
+                _log.info(f"\nIteration {iterind}/{max_iters} for observation {i}")
+
             if iterind == max_iters:
                 warnings.warn(
                     "Maximum number of moment matching iterations reached. "
@@ -371,6 +323,9 @@ def loo_moment_match(
             improved = False
 
             # Match means
+            if verbose:
+                _log.info("Applying mean shift transformation...")
+
             trans = shift(uparsi, lwi)
             try:
                 quantities_i = update_quantities_i(
@@ -383,10 +338,17 @@ def loo_moment_match(
                     None if isinstance(model, PyMCWrapper) else log_prob_upars_fn,
                     None if isinstance(model, PyMCWrapper) else log_lik_i_upars_fn,
                     method,
+                    verbose=verbose,
                     **kwargs,
                 )
             except Exception as e:
-                _log.warning(f"Error computing quantities for observation {i}: {e}")
+                if verbose:
+                    _log.error(f"Error computing quantities for mean shift: {e}")
+                warnings.warn(
+                    f"Error during mean shift for observation {i}: {e}. "
+                    "Skipping this transformation.",
+                    stacklevel=2,
+                )
                 break
 
             if quantities_i["ki"] < ki:
@@ -402,8 +364,17 @@ def loo_moment_match(
                 log_liki = quantities_i["log_liki"]
                 iterind += 1
                 improved = True
+            else:
+                if verbose:
+                    _log.info(
+                        f"Mean shift did not improve Pareto k: {ki:.4f} vs"
+                        f" {quantities_i['ki']:.4f}"
+                    )
 
             # Match means and marginal variances
+            if verbose:
+                _log.info("Applying mean and scale transformation...")
+
             trans = shift_and_scale(uparsi, lwi)
             try:
                 quantities_i_scale = update_quantities_i(
@@ -416,11 +387,16 @@ def loo_moment_match(
                     None if isinstance(model, PyMCWrapper) else log_prob_upars_fn,
                     None if isinstance(model, PyMCWrapper) else log_lik_i_upars_fn,
                     method,
+                    verbose=verbose,
                     **kwargs,
                 )
             except Exception as e:
-                _log.warning(
-                    f"Error computing scale quantities for observation {i}: {e}"
+                if verbose:
+                    _log.error(f"Error computing quantities for scale shift: {e}")
+                warnings.warn(
+                    f"Error during scale shift for observation {i}: {e}. "
+                    "Skipping this transformation.",
+                    stacklevel=2,
                 )
                 if improved:
                     continue
@@ -441,9 +417,18 @@ def loo_moment_match(
                 log_liki = quantities_i_scale["log_liki"]
                 iterind += 1
                 improved = True
+            else:
+                if verbose:
+                    _log.info(
+                        f"Mean and scale shift did not improve Pareto k: {ki:.4f} vs"
+                        f" {quantities_i_scale['ki']:.4f}"
+                    )
 
             # Match means and covariances
             if cov:
+                if verbose:
+                    _log.info("Applying covariance transformation...")
+
                 trans = shift_and_cov(uparsi, lwi)
                 try:
                     quantities_i_cov = update_quantities_i(
@@ -456,12 +441,18 @@ def loo_moment_match(
                         None if isinstance(model, PyMCWrapper) else log_prob_upars_fn,
                         None if isinstance(model, PyMCWrapper) else log_lik_i_upars_fn,
                         method,
+                        verbose=verbose,
                         **kwargs,
                     )
                 except Exception as e:
-                    _log.warning(
-                        "Error computing covariance quantities for observation"
-                        f" {i}: {e}"
+                    if verbose:
+                        _log.error(
+                            f"Error computing quantities for covariance shift: {e}"
+                        )
+                    warnings.warn(
+                        f"Error during covariance shift for observation {i}: {e}. "
+                        "Skipping this transformation.",
+                        stacklevel=2,
                     )
                     if improved:
                         continue
@@ -482,19 +473,25 @@ def loo_moment_match(
                     log_liki = quantities_i_cov["log_liki"]
                     iterind += 1
                     improved = True
+                else:
+                    if verbose:
+                        _log.info(
+                            f"Covariance shift did not improve Pareto k: {ki:.4f} vs"
+                            f" {quantities_i_cov['ki']:.4f}"
+                        )
 
             # Only break if no transformation improved k
             if not improved:
                 _log.info(
                     f"Observation {i}: No further improvement after"
-                    f" {iterind} iterations"
+                    f" {iterind - 1} iterations. Final Pareto k = {ki:.4f}"
                 )
                 break
 
         if max_iters == 1:
             warnings.warn(
-                "Maximum number of moment matching iterations reached. "
-                "Increasing max_iters may improve accuracy.",
+                "Maximum number of moment matching iterations reached with max_iters=1."
+                " Increasing max_iters may improve accuracy.",
                 stacklevel=2,
             )
 
@@ -502,39 +499,56 @@ def loo_moment_match(
         if split and iterind > 1:
             _log.info(f"Performing split transformation for observation {i}")
 
-            if isinstance(model, PyMCWrapper):
-                split_result = loo_moment_match_split(
-                    model,
-                    upars,
-                    cov,
-                    total_shift,
-                    total_scaling,
-                    total_mapping,
-                    i,
-                    r_eff_i,
-                    method=method,
-                )
-            else:
-                split_result = loo_moment_match_split(
-                    model,
-                    upars,
-                    cov,
-                    total_shift,
-                    total_scaling,
-                    total_mapping,
-                    i,
-                    r_eff_i,
-                    log_prob_upars_fn=log_prob_upars_fn,
-                    log_lik_i_upars_fn=log_lik_i_upars_fn,
-                    method=method,
-                    **kwargs,
-                )
+            try:
+                if isinstance(model, PyMCWrapper):
+                    split_result = loo_moment_match_split(
+                        model,
+                        upars,
+                        cov,
+                        total_shift,
+                        total_scaling,
+                        total_mapping,
+                        i,
+                        r_eff_i,
+                        method=method,
+                        verbose=verbose,
+                    )
+                else:
+                    split_result = loo_moment_match_split(
+                        model,
+                        upars,
+                        cov,
+                        total_shift,
+                        total_scaling,
+                        total_mapping,
+                        i,
+                        r_eff_i,
+                        log_prob_upars_fn=log_prob_upars_fn,
+                        log_lik_i_upars_fn=log_lik_i_upars_fn,
+                        method=method,
+                        verbose=verbose,
+                        **kwargs,
+                    )
 
-            log_liki = split_result["log_liki"]
-            lwi = split_result["lwi"]
-            r_eff_i = split_result["r_eff_i"]
+                log_liki = split_result["log_liki"]
+                lwi = split_result["lwi"]
+                r_eff_i = split_result["r_eff_i"]
+
+                if verbose:
+                    _log.info(f"Split transformation completed for observation {i}")
+
+            except Exception as e:
+                if verbose:
+                    _log.error(f"Error during split transformation: {e}")
+                warnings.warn(
+                    f"Split transformation failed for observation {i}: {e}. "
+                    "Using the last successful transformation instead.",
+                    stacklevel=2,
+                )
 
         new_elpd_i = _logsumexp(log_liki + lwi)
+        if verbose:
+            _log.info(f"New ELPD for observation {i}: {new_elpd_i:.4f}")
 
         update_loo_data_i(
             loo_data,
@@ -545,9 +559,10 @@ def loo_moment_match(
             kfs,
             model if isinstance(model, PyMCWrapper) else None,
             log_liki if not isinstance(model, PyMCWrapper) else None,
+            verbose=verbose,
         )
 
-    summary(loo_data, ks, k_threshold)
+    summary(loo_data, ks, k_threshold, verbose=verbose)
 
     if np.any(ks > k_threshold):
         warnings.warn(
@@ -576,6 +591,7 @@ def update_quantities_i(
     log_prob_upars_fn: Callable | None = None,
     log_lik_i_upars_fn: Callable | None = None,
     method: Literal["psis", "sis", "tis"] | ISMethod = "psis",
+    verbose: bool = False,
     **kwargs,
 ) -> UpdateQuantitiesResult:
     """Update the importance weights, Pareto diagnostic and log-likelihood for observation i.
@@ -600,6 +616,8 @@ def update_quantities_i(
         Function to compute log likelihood for observation i with unconstrained parameters. Required if model is not PyMCWrapper.
     method : Literal['psis', 'sis', 'tis'] | ISMethod
         Importance sampling method to use
+    verbose : bool
+        If True, enables detailed logging output for debugging
     **kwargs : Any
         Additional keyword arguments passed to custom functions
 
@@ -619,13 +637,25 @@ def update_quantities_i(
 
         upars_dict = converter.matrix_to_dict(upars)
         log_prob_new = log_prob_upars(model, upars_dict)
+        log_prob_new = _validate_output(log_prob_new, "log_prob_new", expected_ndim=1)
 
         try:
             log_lik_result = log_lik_i_upars(model, upars_dict, pointwise=True)
             log_liki_new = extract_log_likelihood_for_observation(log_lik_result, i)
+            log_liki_new = _validate_output(
+                log_liki_new, f"log_liki_new for obs {i}", expected_ndim=1
+            )
+
+            if verbose:
+                _log.info(
+                    f"New log likelihood for observation {i} computed with shape:"
+                    f" {log_liki_new.shape}"
+                )
+
         except Exception as e:
             raise ValueError(
-                f"Error computing log likelihood for observation {i}: {e}"
+                f"Error computing log likelihood for observation {i}: {e}. "
+                "Check that your model's log likelihood is correctly specified."
             ) from e
 
     else:
@@ -635,30 +665,67 @@ def update_quantities_i(
                 " using PyMCWrapper"
             )
 
-        log_prob_new = log_prob_upars_fn(model, upars=upars, **kwargs)  # type: ignore
+        try:
+            log_prob_new = log_prob_upars_fn(model, upars=upars, **kwargs)  # type: ignore
+            log_prob_new = _validate_output(
+                log_prob_new, "log_prob_new", expected_ndim=1
+            )
+
+            if verbose:
+                _log.info(
+                    f"New log probability computed with shape: {log_prob_new.shape}"
+                )
+
+        except Exception as e:
+            raise ValueError(
+                f"Error computing log probability: {e}. Make sure your"
+                " log_prob_upars_fn function returns a 1D array of log probabilities."
+            ) from e
 
         try:
             log_liki_new = log_lik_i_upars_fn(model, upars=upars, i=i, **kwargs)  # type: ignore
+            log_liki_new = _validate_output(
+                log_liki_new, f"log_liki_new for obs {i}", expected_ndim=1
+            )
 
-            if hasattr(log_liki_new, "flatten"):
-                log_liki_new = log_liki_new.flatten()
+            if verbose:
+                _log.info(
+                    f"New log likelihood for observation {i} computed with shape:"
+                    f" {log_liki_new.shape}"
+                )
+
         except Exception as e:
             raise ValueError(
-                f"Error computing log likelihood for observation {i}: {e}"
+                f"Error computing log likelihood for observation {i}: {e}. Make sure"
+                " your log_lik_i_upars_fn function returns a 1D array of log"
+                " likelihoods."
             ) from e
 
     log_liki_new = np.array(log_liki_new, dtype=np.float64)
     log_prob_new = np.array(log_prob_new, dtype=np.float64)
     orig_log_prob = np.array(orig_log_prob, dtype=np.float64)
 
+    # Calculate importance ratios
     lr = -log_liki_new + log_prob_new - orig_log_prob
     lr[np.isnan(lr)] = -np.inf
 
+    if verbose:
+        _log.info(
+            f"Computing importance weights with method: {method}, reff: {r_eff_i:.4f}"
+        )
+
     lwi_new, ki_new = compute_importance_weights(lr, method=method, reff=r_eff_i)
 
+    if verbose:
+        _log.info(f"New Pareto k: {ki_new:.4f}")
+
+    # Calculate full importance ratios
     full_lr = log_prob_new - orig_log_prob
     full_lr[np.isnan(full_lr)] = -np.inf
     lwfi_new, kfi_new = compute_importance_weights(full_lr, method=method, reff=r_eff_i)
+
+    if verbose:
+        _log.info(f"New full Pareto k: {kfi_new:.4f}")
 
     return {
         "lwi": lwi_new,
@@ -757,7 +824,12 @@ def shift_and_cov(upars: np.ndarray, lwi: np.ndarray) -> ShiftAndCovResult:
         chol1 = np.linalg.cholesky(wcovv)
         chol2 = np.linalg.cholesky(covv)
         mapping = chol1.T @ np.linalg.inv(chol2.T)
-    except np.linalg.LinAlgError:
+    except np.linalg.LinAlgError as e:
+        warnings.warn(
+            f"Cholesky decomposition failed during covariance matching: {e}. "
+            "Using identity mapping instead.",
+            stacklevel=2,
+        )
         mapping = np.eye(len(mean_original))
 
     upars_new = upars - mean_original[None, :]
@@ -776,6 +848,7 @@ def update_loo_data_i(
     kfs: np.ndarray,
     wrapper: PyMCWrapper | None = None,
     log_liki: np.ndarray | None = None,
+    verbose: bool = False,
 ) -> None:
     """Update LOO data for a specific observation with new ELPD and k values.
 
@@ -797,6 +870,8 @@ def update_loo_data_i(
         PyMC model wrapper instance, if using PyMCWrapper
     log_liki : np.ndarray | None, optional
         Log likelihood values for observation i, if using custom functions
+    verbose : bool
+        If True, enables detailed logging output for debugging
     """
     # Calculate lpd_i for observation i
     if wrapper is not None:
@@ -814,7 +889,8 @@ def update_loo_data_i(
                 ]
                 if not obs_dims:
                     raise ValueError(
-                        "Could not identify observation dimension in log_likelihood"
+                        "Could not identify observation dimension in log_likelihood. "
+                        "Please check your model's log_likelihood structure."
                     )
                 obs_dim = obs_dims[0]
         else:
@@ -823,7 +899,8 @@ def update_loo_data_i(
             ]
             if not obs_dims:
                 raise ValueError(
-                    "Could not identify observation dimension in log_likelihood"
+                    "Could not identify observation dimension in log_likelihood. "
+                    "Please check your model's log_likelihood structure."
                 )
             obs_dim = obs_dims[0]
 
@@ -831,7 +908,12 @@ def update_loo_data_i(
         n_samples = log_lik_i.shape[-1]
         lpd_i = _logsumexp(log_lik_i.values) - np.log(n_samples)
     else:
-        lpd_i = _logsumexp(log_liki) - np.log(len(log_liki))  # type: ignore
+        if log_liki is None:
+            raise ValueError(
+                "log_liki must be provided when not using PyMCWrapper. "
+                "This is an internal error and should not happen."
+            )
+        lpd_i = _logsumexp(log_liki) - np.log(len(log_liki))
 
     p_loo_i = lpd_i - new_elpd_i
 
@@ -851,7 +933,8 @@ def update_loo_data_i(
             f"Observation {i}: ELPD changed from {old_elpd_i:.4f} to"
             f" {new_elpd_i:.4f} (diff: {new_elpd_i - old_elpd_i:.4f})"
         )
-        _log.info(f"Observation {i}: p_loo changed to {p_loo_i:.4f}")
+        if verbose:
+            _log.info(f"Observation {i}: p_loo changed to {p_loo_i:.4f}")
     else:
         # Single observation case
         old_elpd_total = loo_data["elpd_loo"]
@@ -880,74 +963,12 @@ def update_loo_data_i(
     kfs[i] = kfi
 
 
-def update_stats(
+def summary(
     loo_data: ELPDData,
-    wrapper: PyMCWrapper | None = None,
-    old_elpd_total: float | None = None,
-    new_elpd_total: float | None = None,
-    scale: str | None = None,
+    original_ks: np.ndarray,
+    k_threshold: float,
+    verbose: bool = False,
 ) -> None:
-    """Update derived statistics like p_loo and looic in the LOO data.
-
-    Parameters
-    ----------
-    loo_data : ELPDData
-        The LOO data object to update
-    wrapper : PyMCWrapper | None, optional
-        PyMC model wrapper instance. Required if using PyMCWrapper.
-    old_elpd_total : float | None, optional
-        Original total ELPD value. Required if not using PyMCWrapper.
-    new_elpd_total : float | None, optional
-        New total ELPD value. Required if not using PyMCWrapper.
-    scale : str | None, optional
-        Output scale for LOO. If None, uses the scale from loo_data.
-    """
-    scale = loo_data.get("scale", "log") if scale is None else scale
-    if scale == "deviance":
-        scale_value = -2
-    elif scale == "log":
-        scale_value = 1
-    elif scale == "negative_log":
-        scale_value = -1
-    else:
-        scale_value = 1
-
-    if wrapper is not None and hasattr(wrapper.idata, "log_likelihood"):
-        log_likelihood = wrapper.idata.log_likelihood
-        var_name = list(log_likelihood.data_vars)[0]
-        log_likelihood = log_likelihood[var_name].stack(__sample__=("chain", "draw"))
-        n_samples = log_likelihood.shape[-1]
-
-        ufunc_kwargs = {"n_dims": 1, "ravel": False}
-        kwargs = {"input_core_dims": [["__sample__"]]}
-
-        lppd = np.sum(
-            wrap_xarray_ufunc(
-                _logsumexp,
-                log_likelihood,
-                func_kwargs={"b_inv": n_samples},
-                ufunc_kwargs=ufunc_kwargs,
-                **kwargs,
-            ).values
-        )
-
-        loo_data["p_loo"] = lppd - loo_data["elpd_loo"] / scale_value
-
-    elif (
-        "p_loo" in loo_data
-        and old_elpd_total is not None
-        and new_elpd_total is not None
-    ):
-        old_p_loo = loo_data["p_loo"]
-        loo_data["p_loo"] = old_p_loo + (old_elpd_total - new_elpd_total) / scale_value
-
-    if "looic" in loo_data:
-        loo_data["looic"] = -2 * loo_data["elpd_loo"]
-        if "se" in loo_data:
-            loo_data["looic_se"] = 2 * loo_data["se"]
-
-
-def summary(loo_data: ELPDData, original_ks: np.ndarray, k_threshold: float) -> None:
     """Log a summary of improvements in Pareto k values.
 
     Parameters
@@ -958,6 +979,8 @@ def summary(loo_data: ELPDData, original_ks: np.ndarray, k_threshold: float) -> 
         Original Pareto k values
     k_threshold : float
         Threshold for Pareto k values
+    verbose : bool
+        If True, enables detailed logging output for debugging
     """
     if hasattr(loo_data, "pareto_k"):
         improved_indices = np.where(loo_data.pareto_k.values < original_ks)[0]
@@ -972,6 +995,14 @@ def summary(loo_data: ELPDData, original_ks: np.ndarray, k_threshold: float) -> 
                 f"Improved Pareto k for {n_improved} observations. Average improvement:"
                 f" {avg_improvement:.4f}"
             )
+
+            if verbose:
+                for idx in improved_indices:
+                    _log.info(
+                        f"  Observation {idx}: {original_ks[idx]:.4f} ->"
+                        f" {loo_data.pareto_k.values[idx]:.4f} (improvement:"
+                        f" {original_ks[idx] - loo_data.pareto_k.values[idx]:.4f})"
+                    )
         else:
             _log.info("No improvements in Pareto k values")
 
@@ -982,3 +1013,69 @@ def summary(loo_data: ELPDData, original_ks: np.ndarray, k_threshold: float) -> 
                 f"{len(high_k_indices)} observations still have Pareto k >"
                 f" {k_threshold}"
             )
+
+            if verbose:
+                for idx in high_k_indices:
+                    _log.info(
+                        f"  Observation {idx}: Pareto k ="
+                        f" {loo_data.pareto_k.values[idx]:.4f}"
+                    )
+
+
+def _validate_custom_function(func, expected_args, name):
+    """Validate that a custom function has the expected signature."""
+    sig = inspect.signature(func)
+    # Check if the function accepts **kwargs which would cover all expected args
+    has_kwargs = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
+
+    if not has_kwargs:
+        missing = [arg for arg in expected_args if arg not in sig.parameters]
+        if missing:
+            raise ValueError(
+                f"Custom function '{name}' is missing required parameters: {missing}. "
+                f"Expected signature should include: {expected_args}"
+            )
+    return True
+
+
+def _validate_output(
+    array, name, expected_ndim=None, expected_shape=None, allow_none=False
+):
+    """Validate array outputs from custom functions."""
+    if array is None:
+        if allow_none:
+            return None
+        raise ValueError(
+            f"Function returned None for {name}. Please check your custom function"
+            " implementation."
+        )
+
+    try:
+        array = np.asarray(array, dtype=np.float64)
+    except Exception as e:
+        raise ValueError(
+            f"Could not convert {name} to numpy array: {e}. "
+            "Please ensure your function returns numeric data."
+        ) from e
+
+    if np.any(np.isnan(array)):
+        raise ValueError(
+            f"NaN values detected in {name}. Please check your function for division by"
+            " zero, log of negative values, or other numerical issues."
+        )
+
+    if expected_ndim is not None and array.ndim != expected_ndim:
+        raise ValueError(
+            f"Expected {expected_ndim} dimensions for {name}, got {array.ndim}. "
+            "Please reshape your output accordingly."
+        )
+
+    if expected_shape is not None and array.shape != expected_shape:
+        raise ValueError(
+            f"Expected shape {expected_shape} for {name}, got {array.shape}. "
+            "Please check your function output dimensions."
+        )
+
+    return array
