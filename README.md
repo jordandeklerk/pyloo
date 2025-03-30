@@ -134,7 +134,6 @@ pip install -e .
 > ⚠️ **Note**: Documentation coming soon.
 
 * [Documentation]() (API reference, examples)
-* [R package documentation]() (Additional methodology details)
 * [Open an issue]() (Bug reports, feature requests)
 
 ## Citation
