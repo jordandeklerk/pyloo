@@ -96,14 +96,13 @@ def loo(
 
     Notes
     -----
-    For problematic observations, it is recommended to first use moment matching through the `loo`,
-    or directly through the `loo_moment_match` function. Moment matching through the `loo` function
-    can be achieved by either passing a model wrapper for PyMC models and specifying the
-    `moment_match` parameter to `True`, or by passing additional keyword arguments to the
-    `loo_moment_match` function via the `**kwargs` parameter for custom models. When using a custom
-    model, you can pass the model object via the `model_obj` keyword argument and the required
-    functions via the other keyword arguments such as `post_draws`, `log_lik_i`, `unconstrain_pars`,
-    `log_prob_upars_fn`, and `log_lik_i_upars_fn`.
+    For problematic observations, it is recommended to first use moment matching through `loo`,
+    or directly through `loo_moment_match`. Moment matching through `loo` can be achieved by
+    either passing a model wrapper for PyMC models and specifying the `moment_match` parameter
+    to `True`, or by passing additional keyword arguments via the `**kwargs` parameter.
+    When using a custom model, you can pass the model object via the `model_obj` keyword argument
+    and the required functions via the other keyword arguments such as `post_draws`, `log_lik_i`,
+    `unconstrain_pars`, `log_prob_upars_fn`, and `log_lik_i_upars_fn`.
 
     Moment matching can fail to improve LOO estimates for several reasons. If moment matching does
     not improve the LOO estimates and there are a moderate number of problematic observations,
