@@ -287,10 +287,7 @@ def loo(
                     "Estimated shape parameter of Pareto distribution is greater than"
                     f" {good_k:.2f} for {n_high_k} observations. This indicates that"
                     " importance sampling may be unreliable because the marginal"
-                    " posterior and LOO posterior are very different. If you're using"
-                    " a PyMC model, consider using reloo() to compute exact LOO for"
-                    " these problematic observations, or moment matching to improve"
-                    " the estimates.",
+                    " posterior and LOO posterior are very different.",
                     UserWarning,
                     stacklevel=2,
                 )
