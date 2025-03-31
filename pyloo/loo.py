@@ -1,4 +1,4 @@
-"""Leave-one-out cross-validation (LOO-CV) using importance sampling methods based on ArviZ."""
+"""Leave-one-out cross-validation (LOO-CV) using importance sampling methods."""
 
 import warnings
 from typing import Any, Literal
