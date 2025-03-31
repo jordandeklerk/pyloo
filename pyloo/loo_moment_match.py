@@ -22,7 +22,7 @@ from .helpers import (
     log_lik_i_upars,
     log_prob_upars,
 )
-from .split_moment_matching import loo_moment_match_split
+from .split_moment_match import loo_moment_match_split
 from .utils import _logsumexp
 from .wrapper.pymc import PyMCWrapper
 
@@ -78,7 +78,7 @@ def loo_moment_match(
         Maximum number of moment matching iterations
     k_threshold : float | None, optional
         Threshold value for Pareto k values above which moment matching is used.
-        If None, uses min(1 - 1/log10(n_samples), 0.7)
+        If None, uses :math:`\min(1 - 1/\log_{10}(n_{\text{samples}}), 0.7)`
     split : bool
         Whether to do the split transformation at the end of moment matching
     cov : bool

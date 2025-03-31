@@ -92,7 +92,7 @@ def loo(
         - For PSIS: Pareto shape parameter (pareto_k)
         - For SIS/TIS: Effective sample size (ess)
     scale: scale of the elpd
-    good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
+    good_k: For PSIS method and sample size :math:`S`, threshold computed as :math:`\min(1 - 1/\log_{10}(S), 0.7)`
 
     Notes
     -----

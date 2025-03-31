@@ -25,7 +25,7 @@ from ...loo_moment_match import (
     shift_and_scale,
     update_quantities_i,
 )
-from ...split_moment_matching import loo_moment_match_split
+from ...split_moment_match import loo_moment_match_split
 from ...wrapper.pymc import PyMCWrapper
 from ..helpers import assert_allclose
 
