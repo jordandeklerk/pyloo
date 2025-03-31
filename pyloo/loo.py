@@ -73,37 +73,7 @@ def loo(
         ``elpd_loo`` is calculated using the numerically stable mixture importance sampling approach
         outlined in Appendix A.2 of Silva and Zanella (2022).
     **kwargs:
-        Additional keyword arguments for moment matching and other functionality.
-
-        Common moment matching parameters:
-            - max_iters: int
-                Maximum number of moment matching iterations. Default is 30.
-            - k_threshold: float
-                Threshold for Pareto k. Default is :math:\min(1 - 1/ \log10(S), 0.7).
-            - split: bool
-                Whether to use split transformation. Default is True.
-            - cov: bool
-                Whether to match covariance matrix. Default is True.
-            - verbose: bool
-                Enable detailed logging. Default is False.
-
-        When using PyMC models:
-            - wrapper: PyMCWrapper
-                PyMC model wrapper instance. Required when moment_match=True.
-
-        When using custom models:
-            - model_obj: Any
-                Custom model object. Required when moment_match=True without a wrapper.
-            - post_draws: Callable
-                Function to extract posterior draws from the model.
-            - log_lik_i: Callable
-                Function to compute log-likelihood for observation i.
-            - unconstrain_pars: Callable
-                Function to convert parameters to unconstrained space.
-            - log_prob_upars_fn: Callable
-                Function to compute log probability of unconstrained parameters.
-            - log_lik_i_upars_fn: Callable
-                Function to compute log-likelihood for observation i using unconstrained parameters.
+        Additional keyword arguments for moment matching.
 
     Returns
     -------
@@ -123,6 +93,15 @@ def loo(
         - For SIS/TIS: Effective sample size (ess)
     scale: scale of the elpd
     good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
+
+    Notes
+    -----
+    Moment matching through the `loo` function can be achieved by passing a model wrapper for
+    PyMC models and specifying the `moment_match` parameter to `True`. Alternatively, you can pass
+    additional keyword arguments to the `loo_moment_match` function via the `**kwargs` parameter.
+    When using a custom model, you can pass the model object via the `model_obj` keyword argument
+    and the required functions via the other keyword arguments such as `post_draws`, `log_lik_i`,
+    `unconstrain_pars`, `log_prob_upars_fn`, and `log_lik_i_upars_fn`.
 
     Examples
     --------
