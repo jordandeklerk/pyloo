@@ -107,8 +107,8 @@ def loo(
 
     Moment matching can fail to improve LOO estimates for several reasons. If moment matching does
     not improve the LOO estimates and there are a moderate number of problematic observations,
-    we suggest using the `reloo` function to compute exact LOO if the model is a PyMC model, or
-    using k-fold cross-validation for a more robust estimate of the LOO.
+    we suggest using the `reloo` function to compute exact LOO-CV if the model is a PyMC model, or
+    using k-fold cross-validation for a more robust estimate.
 
     Examples
     --------
