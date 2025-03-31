@@ -136,7 +136,8 @@ def loo(
         if hasattr(data_loo, "pareto_k"):
             print(data_loo.pareto_k)
 
-    Calculate LOO with moment matching to improve estimates for observations with high Pareto k values:
+    Calculate LOO with moment matching for a PyMC model to potentially improve estimates for
+    observations with high Pareto k values:
 
     .. code-block:: python
 
