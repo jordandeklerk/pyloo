@@ -1,4 +1,4 @@
-"""Leave-one-out cross-validation (LOO-CV) using importance sampling methods based on ArviZ."""
+"""Leave-one-out cross-validation (LOO-CV) using importance sampling methods."""
 
 import warnings
 from typing import Any, Literal
@@ -29,7 +29,7 @@ def loo(
     mixture: bool = False,
     **kwargs,
 ) -> ELPDData:
-    """Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
+    r"""Compute leave-one-out cross-validation (LOO-CV) using various importance sampling methods.
 
     Estimates the expected log pointwise predictive density (elpd) using importance sampling
     leave-one-out cross-validation. By default, uses Pareto-smoothed importance sampling (PSIS),
@@ -73,18 +73,7 @@ def loo(
         ``elpd_loo`` is calculated using the numerically stable mixture importance sampling approach
         outlined in Appendix A.2 of Silva and Zanella (2022).
     **kwargs:
-        Additional keyword arguments for moment matching. These include:
-        - wrapper: PyMCWrapper, required if moment_match=True
-            PyMC model wrapper instance
-        - max_iters: int, default 30
-            Maximum number of moment matching iterations
-        - k_threshold: float, optional
-            Threshold value for Pareto k values above which moment matching is used.
-            If None, uses min(1 - 1/log10(n_samples), 0.7)
-        - split: bool, default True
-            Whether to do the split transformation at the end of moment matching
-        - cov: bool, default True
-            Whether to match the covariance matrix of the samples
+        Additional keyword arguments for moment matching.
 
     Returns
     -------
@@ -104,6 +93,22 @@ def loo(
         - For SIS/TIS: Effective sample size (ess)
     scale: scale of the elpd
     good_k: For PSIS method and sample size S, threshold computed as min(1 - 1/log10(S), 0.7)
+
+    Notes
+    -----
+    For problematic observations, it is recommended to first use moment matching through the `loo`,
+    or directly through the `loo_moment_match` function. Moment matching through the `loo` function
+    can be achieved by either passing a model wrapper for PyMC models and specifying the
+    `moment_match` parameter to `True`, or by passing additional keyword arguments to the
+    `loo_moment_match` function via the `**kwargs` parameter for custom models. When using a custom
+    model, you can pass the model object via the `model_obj` keyword argument and the required
+    functions via the other keyword arguments such as `post_draws`, `log_lik_i`, `unconstrain_pars`,
+    `log_prob_upars_fn`, and `log_lik_i_upars_fn`.
+
+    Moment matching can fail to improve LOO estimates for several reasons. If moment matching does
+    not improve the LOO estimates and there are a moderate number of problematic observations,
+    we suggest using the `reloo` function to compute exact LOO-CV if the model is a PyMC model, or
+    using k-fold cross-validation for a more robust estimate.
 
     Examples
     --------
@@ -244,6 +249,14 @@ def loo(
     warn_mg = False
 
     if mixture:
+        warnings.warn(
+            "Mix-IS-LOO requires a model that is sampled from a mixture of"
+            " leave-one-out posteriors. Ensure the inference data passed to the `loo`"
+            " function comes from a model that is sampled from such a distribution.",
+            UserWarning,
+            stacklevel=2,
+        )
+
         l_common_mix = wrap_xarray_ufunc(
             _logsumexp,
             -log_likelihood,
@@ -282,10 +295,7 @@ def loo(
                     "Estimated shape parameter of Pareto distribution is greater than"
                     f" {good_k:.2f} for {n_high_k} observations. This indicates that"
                     " importance sampling may be unreliable because the marginal"
-                    " posterior and LOO posterior are very different. If you're using"
-                    " a PyMC model, consider using reloo() to compute exact LOO for"
-                    " these problematic observations, or moment matching to improve"
-                    " the estimates.",
+                    " posterior and LOO posterior are very different.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -428,11 +438,10 @@ def loo(
         result["looic_se"] = looic_se
 
     if moment_match:
+        from .wrapper.pymc import PyMCWrapper
+
         wrapper = kwargs.get("wrapper", None)
-        if wrapper is None:
-            raise ValueError(
-                "PyMC model wrapper must be provided when moment_match=True"
-            )
+        model_obj = wrapper
 
         mm_kwargs = {
             "max_iters": kwargs.get("max_iters", 30),
@@ -440,9 +449,65 @@ def loo(
             "split": kwargs.get("split", True),
             "cov": kwargs.get("cov", True),
             "method": method,
+            "verbose": kwargs.get("verbose", False),
         }
 
-        result = loo_moment_match(wrapper, result, **mm_kwargs)
+        if wrapper is None:
+            # If no wrapper, expect the custom model object via `model_obj` kwarg
+            # and extract required custom functions from kwargs
+            model_obj = kwargs.get("model_obj", None)
+            if model_obj is None:
+                raise ValueError(
+                    "When moment_match=True and no `wrapper` is provided, the custom "
+                    "model object must be passed via the `model_obj` keyword argument."
+                )
+
+            custom_funcs = {
+                "post_draws": kwargs.get("post_draws", None),
+                "log_lik_i": kwargs.get("log_lik_i", None),
+                "unconstrain_pars": kwargs.get("unconstrain_pars", None),
+                "log_prob_upars_fn": kwargs.get("log_prob_upars_fn", None),
+                "log_lik_i_upars_fn": kwargs.get("log_lik_i_upars_fn", None),
+            }
+            mm_kwargs.update(custom_funcs)
+
+            missing_funcs = [
+                name for name, func in custom_funcs.items() if func is None
+            ]
+            if missing_funcs:
+                raise ValueError(
+                    "When moment_match=True and no `wrapper` is provided, the"
+                    " following functions must be passed via kwargs:"
+                    f" {', '.join(missing_funcs)}"
+                )
+        elif not isinstance(wrapper, PyMCWrapper):
+            raise TypeError(
+                "The `wrapper` argument must be an instance of PyMCWrapper when"
+                " provided."
+            )
+
+        handled_kwargs = set(mm_kwargs.keys())
+        handled_kwargs.update({
+            "wrapper",
+            "pointwise",
+            "var_name",
+            "reff",
+            "scale",
+            "method",
+            "moment_match",
+            "jacobian",
+            "mixture",
+            "model_obj",
+            "post_draws",
+            "log_lik_i",
+            "unconstrain_pars",
+            "log_prob_upars_fn",
+            "log_lik_i_upars_fn",
+        })
+        additional_kwargs = {k: v for k, v in kwargs.items() if k not in handled_kwargs}
+        mm_kwargs.update(additional_kwargs)
+
+        result = loo_moment_match(model_obj, result, **mm_kwargs)
 
     return result
 
