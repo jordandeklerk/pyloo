@@ -438,3 +438,88 @@ def test_loo_mixture(problematic_k_model):
 
     logger.info(mix_result)
     logger.info(reg_result)
+
+
+def test_loo_moment_matching_custom_funcs():
+    """Test moment matching with custom functions passed via kwargs."""
+    mock_model = {"data": {"N": 8, "K": 2}, "fit_params": {"S": 400}}
+
+    n_chains = 4
+    n_draws = 100
+    n_obs = 8
+    n_params = 2  # K + intercept
+    S = n_chains * n_draws
+
+    log_like = np.random.randn(n_chains, n_draws, n_obs) * 0.5
+    log_like[:, :, 0] = np.random.randn(n_chains, n_draws) * 5
+    idata = az.from_dict(
+        posterior={"beta": np.random.randn(n_chains, n_draws, n_params - 1)},
+        log_likelihood={"obs": log_like},
+        observed_data={"obs": np.random.randn(n_obs)},
+    )
+
+    def mock_post_draws(model, **kwargs):
+        K = model["data"]["K"]
+        return {
+            "beta": np.random.randn(S, K),
+            "intercept": np.random.randn(S),
+        }
+
+    def mock_log_lik_i(model, i, **kwargs):
+        S_fit = model["fit_params"]["S"]
+        return np.random.randn(S_fit) * (5 if i == 0 else 0.5)
+
+    def mock_unconstrain_pars(model, pars, **kwargs):
+        S_fit = model["fit_params"]["S"]
+        K = model["data"]["K"]
+        upars = np.zeros((S_fit, K + 1))
+        upars[:, 0] = pars["intercept"]
+        upars[:, 1:] = pars["beta"]
+        return upars
+
+    def mock_log_prob_upars_fn(model, upars, **kwargs):
+        S_fit = model["fit_params"]["S"]
+        return np.random.randn(S_fit) - 0.5 * np.sum(upars**2, axis=1)
+
+    def mock_log_lik_i_upars_fn(model, upars, i, **kwargs):
+        S_fit = model["fit_params"]["S"]
+        base_lik = -0.5 * np.sum((upars - i) ** 2, axis=1)
+        noise = np.random.randn(S_fit) * (5 if i == 0 else 0.5)
+        return base_lik + noise
+
+    loo_mm_custom = loo(
+        idata,
+        pointwise=True,
+        moment_match=True,
+        model_obj=mock_model,
+        post_draws=mock_post_draws,
+        log_lik_i=mock_log_lik_i,
+        unconstrain_pars=mock_unconstrain_pars,
+        log_prob_upars_fn=mock_log_prob_upars_fn,
+        log_lik_i_upars_fn=mock_log_lik_i_upars_fn,
+        verbose=True,
+    )
+
+    assert loo_mm_custom is not None
+    assert "elpd_loo" in loo_mm_custom
+    assert "pareto_k" in loo_mm_custom
+    assert "loo_i" in loo_mm_custom
+    assert np.all(np.isfinite(loo_mm_custom.pareto_k))
+
+    loo_orig = loo(idata, pointwise=True)
+    assert loo_mm_custom.pareto_k[0] <= loo_orig.pareto_k[0] + 1e-6
+
+    with pytest.raises(
+        ValueError, match="following functions must be passed via kwargs"
+    ):
+        loo(
+            idata,
+            pointwise=True,
+            moment_match=True,
+            model_obj=mock_model,
+            post_draws=mock_post_draws,
+            log_lik_i=mock_log_lik_i,
+            unconstrain_pars=mock_unconstrain_pars,
+            log_prob_upars_fn=mock_log_prob_upars_fn,
+            # log_lik_i_upars_fn is missing
+        )
