@@ -249,6 +249,14 @@ def loo(
     warn_mg = False
 
     if mixture:
+        warnings.warn(
+            "Mix-IS-LOO requires a model that is sampled from a mixture of"
+            " leave-one-out posteriors. Ensure the inference data passed to the `loo`"
+            " function comes from a model that is sampled from such a distribution.",
+            UserWarning,
+            stacklevel=2,
+        )
+
         l_common_mix = wrap_xarray_ufunc(
             _logsumexp,
             -log_likelihood,
