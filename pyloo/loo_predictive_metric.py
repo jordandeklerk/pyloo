@@ -36,8 +36,8 @@ def loo_predictive_metric(
     predictions and observations. Currently supported metrics are mean absolute error,
     mean squared error and root mean squared error for continuous predictions, and
     accuracy and balanced accuracy for binary classification. Predictions are passed
-    to the e_loo function, so this function assumes that the PSIS approximation is
-    working well.
+    to the `e_loo` function, so this function assumes that the PSIS approximation
+    is working well.
 
     Parameters
     ----------
