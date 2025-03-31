@@ -465,6 +465,7 @@ def test_loo_moment_match_with_custom_threshold(problematic_model):
             k_threshold=threshold,
             split=False,
             cov=True,
+            verbose=True,
         )
 
     n_improved_05 = np.sum(results[0.5].pareto_k < loo_orig.pareto_k)

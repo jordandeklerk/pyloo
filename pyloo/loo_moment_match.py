@@ -1075,6 +1075,7 @@ def update_loo_data_i(
 
         n_data_points = loo_data.n_data_points
         loo_data["se"] = (n_data_points * np.var(loo_data.loo_i.values)) ** 0.5
+        loo_data["p_loo_se"] = (n_data_points * np.var(loo_data.p_loo_i.values)) ** 0.5
 
         _log.info(
             f"Observation {i}: ELPD changed from {old_elpd_i:.4f} to"
