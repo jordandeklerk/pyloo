@@ -120,7 +120,7 @@ def loo_subsample(
         only if pointwise=True
     diagnostic: array of diagnostic values, only if pointwise=True
     scale: scale of the elpd
-    good_k: threshold computed as min(1 - 1/log10(S), 0.7)
+    good_k: threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`
 
     The returned object has a custom print method that overrides pd.Series method.
 
