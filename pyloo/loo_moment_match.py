@@ -756,11 +756,14 @@ def update_quantities_i(
     r_eff_i : float
         MCMC effective sample size divided by total sample size
     converter : ParameterConverter | None, optional
-        Parameter converter instance for efficient format conversions. Required if model is PyMCWrapper.
+        Parameter converter instance for efficient format conversions.
+        Required if model is PyMCWrapper.
     log_prob_upars_fn : Callable | None, optional
-        Function to compute log probability for unconstrained parameters. Required if model is not PyMCWrapper.
+        Function to compute log probability for unconstrained parameters.
+        Required if model is not PyMCWrapper.
     log_lik_i_upars_fn : Callable | None, optional
-        Function to compute log likelihood for observation i with unconstrained parameters. Required if model is not PyMCWrapper.
+        Function to compute log likelihood for observation i with unconstrained parameters.
+        Required if model is not PyMCWrapper.
     method : Literal['psis', 'sis', 'tis'] | ISMethod
         Importance sampling method to use
     verbose : bool
