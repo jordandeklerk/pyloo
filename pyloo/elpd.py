@@ -61,14 +61,35 @@ p_logo       {p_logo:<8.2f}    {p_logo_se:<.2f}
 logoic      {logoic:<8.2f}    {logoic_se:<.2f}"""
 
 
-POINTWISE_LOO_FMT = """
+# LFO (Leave-Future-Out) output
+LFO_BASE_FMT = """
+Computed using Leave-Future-Out cross-validation (LFO-CV).
+{n_samples} posterior samples, M={M} steps ahead, L={L} initial obs.
+
+         Estimate       SE
+elpd_lfo   {elpd:<8.2f}    {se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}"""
+
+
+# Pointwise LFO/LOO/LOGO output
+POINTWISE_CV_FMT = """
 ------
 
 Pareto k diagnostic values:
                          Count   Pct.
 (-Inf, {2:.2f}]   (good)      {3:d}   {6:.1f}%
-   ({2:.2f}, 1]   (bad)         {4:d}    {7:.1f}%
-   (1, Inf)   (very bad)    {5:d}    {8:.1f}%"""
+ ({2:.2f}, {k_threshold:.2f}] (ok)        {4:d}    {7:.1f}%
+({k_threshold:.2f}, Inf)   (bad)       {5:d}    {8:.1f}%"""
+
+
+POINTWISE_LOO_FMT = """
+------
+
+         Estimate       SE
+elpd_logo   {elpd:<8.2f}    {se:<.2f}
+p_logo       {p_logo:<8.2f}    {p_logo_se:<.2f}
+logoic      {logoic:<8.2f}    {logoic_se:<.2f}"""
+
 
 SCALE_DICT = {
     "log": "Using log score",
@@ -102,8 +123,8 @@ class ELPDData(pd.Series):
         """
         kind = self.index[0].split("_")[1]
 
-        if kind not in ("loo", "waic", "kfold", "logo"):
-            raise ValueError("Invalid ELPDData object")
+        if kind not in ("loo", "waic", "kfold", "logo", "lfo"):
+            raise ValueError(f"Invalid ELPDData object kind: {kind}")
 
         is_subsampled = "subsampling_SE" in self
 
@@ -196,6 +217,39 @@ class ELPDData(pd.Series):
                         percentages[1],
                         percentages[2],
                     )
+
+            return base
+
+        elif kind == "lfo":
+            elpd_lfo = self["elpd_lfo"]
+            se = self["se"]
+            looic = self["looic"]
+            looic_se = self["looic_se"]
+            M = self["M"]
+            L = self["L"]
+            refit_indices = self.get("refit_indices", [])
+            n_refits = len(refit_indices)
+            refit_indices_str = ", ".join(map(str, refit_indices))
+
+            base = LFO_BASE_FMT.format(
+                n_samples=self.n_samples,
+                M=M,
+                L=L,
+                n_refits=n_refits,
+                refit_indices_str=refit_indices_str,
+                elpd=elpd_lfo,
+                se=se,
+                looic=looic,
+                looic_se=looic_se,
+            )
+
+            k_threshold = self.get("k_threshold", 0.7)
+            base += (
+                "\n\nPareto k diagnostic: All importance sampling weights used"
+                f" correspond to Pareto k estimates <= {k_threshold:.2f}.\n(Values >"
+                f" {k_threshold:.2f} automatically trigger a model refit instead of"
+                " using IS).\nSee help('pareto-k-diagnostic') for details."
+            )
 
             return base
 

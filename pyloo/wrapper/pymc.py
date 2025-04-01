@@ -599,6 +599,223 @@ class PyMCWrapper:
         except Exception as e:
             raise PyMCWrapperError(f"Sampling failed: {str(e)}")
 
+    def compute_conditional_loglik(
+        self,
+        idata: InferenceData,
+        index: int,
+        var_name: str | None = None,
+    ) -> np.ndarray:
+        r"""Compute :math:`\log p(y_i | y_{1:i-1}, \theta_s)` for a given observation index :math:`i`.
+
+        This method calculates the log-likelihood of a single observation :math:`y_i`
+        using the posterior draws :math:`\theta_s` provided in :attr:`idata`. It assumes the
+        underlying PyMC model (:attr:`self.model`) is structured such that the likelihood
+        implicitly conditions on previous observations when only :math:`y_i` is provided
+        as the observed data.
+
+        Parameters
+        ----------
+        idata : InferenceData
+            ArviZ InferenceData object containing the posterior samples :math:`\theta_s`
+            to use for the computation. This typically comes from a model fit
+            up to time :math:`i-1` or earlier (e.g., the last refit point in LFO-CV).
+        index : int
+            The index :math:`i` of the observation :math:`y_i` for which to compute the
+            conditional log-likelihood.
+        var_name : str | None
+            Name of the observed variable. If None, uses the first observed variable.
+
+        Returns
+        -------
+        np.ndarray
+            A 1D numpy array containing the log-likelihood values
+            :math:`\log p(y_i | y_{1:i-1}, \theta_s)` for each posterior sample :math:`s`.
+            Shape: (n_chains * n_draws,).
+
+        Raises
+        ------
+        PyMCWrapperError
+            If the variable is not found, observed data is missing, or computation fails.
+        IndexError
+            If `index` is out of bounds.
+        """
+        if var_name is None:
+            var_name = self.get_observed_name()
+
+        if self.get_variable(var_name) is None:
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in model. Available variables: "
+                f"{list(self.model.named_vars.keys())}"
+            )
+
+        if var_name not in self.observed_data:
+            raise PyMCWrapperError(
+                f"No original observed data found for variable '{var_name}'. "
+                f"Available observed variables: {list(self.observed_data.keys())}"
+            )
+
+        original_data = self.observed_data[var_name]
+        if index < 0 or index >= original_data.shape[0]:
+            raise IndexError(
+                f"Index {index} is out of bounds for variable '{var_name}' with shape"
+                f" {original_data.shape}"
+            )
+
+        # Select only the single observation at the specified index
+        # We assume the model structure handles the conditioning on past values
+        single_obs_data = original_data[index : index + 1]
+
+        original_model_data = {}
+        if var_name in self.model.observed_RVs:
+            original_model_data[var_name] = self.model.observed_RVs[var_name].get_value(
+                borrow=True
+            )
+
+        try:
+            self.set_data({var_name: single_obs_data}, coords=self.model.coords)
+
+            log_lik_result = pm.compute_log_likelihood(
+                idata,
+                var_names=[var_name],
+                model=self.model,
+                extend_inferencedata=False,
+            )
+
+            if var_name not in log_lik_result:
+                raise PyMCWrapperError(
+                    f"Failed to compute log likelihood for variable {var_name}. "
+                    "Check model specification and data consistency."
+                )
+
+            log_lik_i = log_lik_result[var_name]
+            log_lik_values = log_lik_i.values.flatten()
+
+            return log_lik_values
+
+        except Exception as e:
+            raise PyMCWrapperError(
+                f"Failed to compute conditional log likelihood for index {index}:"
+                f" {str(e)}"
+            ) from e
+        finally:
+            self.set_data({var_name: original_data}, coords=self.model.coords)
+
+    def compute_m_step_loglik(
+        self,
+        idata: InferenceData,
+        indices_future: slice | np.ndarray,
+        var_name: str | None = None,
+    ) -> np.ndarray:
+        r"""Compute :math:`\log p(y_{i+1:i+M} | y_{1:i}, \theta_s)` for future observations.
+
+        Calculates the log-likelihood of M future observations :math:`y_{i+1:i+M}`
+        using posterior draws :math:`\theta_s` from :attr:`idata`. Assumes the model implicitly
+        conditions on data up to :math:`y_i` (where :math:`i` is :attr:`conditioning_index`) when
+        only :math:`y_{i+1:i+M}` are set as observed.
+
+        Parameters
+        ----------
+        idata : InferenceData
+            ArviZ InferenceData object with posterior samples :math:`\theta_s` from a model
+            fit up to the time point preceding :attr:`indices_future`.
+        indices_future : slice | np.ndarray
+            Indices representing the future observations :math:`i+1` to :math:`i+M`.
+        var_name : str | None
+            Name of the observed variable. If None, uses the first observed variable.
+
+        Returns
+        -------
+        np.ndarray
+            A 2D numpy array containing the log-likelihood values for each future step
+            and each posterior sample. Shape: (n_chains * n_draws, M).
+
+        Raises
+        ------
+        PyMCWrapperError
+            If variable not found, data missing, or computation fails.
+        IndexError
+            If `indices_future` are out of bounds.
+        """
+        if var_name is None:
+            var_name = self.get_observed_name()
+
+        if self.get_variable(var_name) is None:
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in model. Available variables: "
+                f"{list(self.model.named_vars.keys())}"
+            )
+
+        if var_name not in self.observed_data:
+            raise PyMCWrapperError(
+                f"No original observed data found for variable '{var_name}'. "
+                f"Available observed variables: {list(self.observed_data.keys())}"
+            )
+
+        original_data = self.observed_data[var_name]
+        n_obs_total = original_data.shape[0]
+
+        # Validate future indices
+        if isinstance(indices_future, slice):
+            start, stop, step = indices_future.indices(n_obs_total)
+            if start < 0 or stop > n_obs_total or start >= stop:
+                raise IndexError(
+                    f"Future indices slice {indices_future} is out of bounds for data"
+                    f" length {n_obs_total}"
+                )
+            num_future_obs = len(range(start, stop, step or 1))
+        else:
+            indices_future = np.asarray(indices_future)
+            if np.any(indices_future < 0) or np.any(indices_future >= n_obs_total):
+                raise IndexError(
+                    "Future indices array contains out-of-bounds values for data"
+                    f" length {n_obs_total}"
+                )
+            num_future_obs = len(indices_future)
+
+        if num_future_obs == 0:
+            return np.empty((0, 0))
+
+        future_obs_data, _ = self.select_observations(indices_future, var_name=var_name)
+
+        original_model_data = {}
+        if var_name in self.model.observed_RVs:
+            original_model_data[var_name] = self.model.observed_RVs[var_name].get_value(
+                borrow=True
+            )
+
+        try:
+            self.set_data({var_name: future_obs_data}, coords=self.model.coords)
+
+            log_lik_result = pm.compute_log_likelihood(
+                idata,
+                var_names=[var_name],
+                model=self.model,
+                extend_inferencedata=False,
+            )
+
+            if var_name not in log_lik_result:
+                raise PyMCWrapperError(
+                    f"Failed to compute log likelihood for variable {var_name}. "
+                    "Check model specification and data consistency."
+                )
+
+            log_lik_m = log_lik_result[var_name]
+
+            n_chains, n_draws = log_lik_m.chain.size, log_lik_m.draw.size
+            log_lik_values = log_lik_m.values.reshape(
+                n_chains * n_draws, num_future_obs
+            )
+
+            return log_lik_values
+
+        except Exception as e:
+            raise PyMCWrapperError(
+                f"Failed to compute M-step log likelihood for indices {indices_future}:"
+                f" {str(e)}"
+            ) from e
+        finally:
+            self.set_data({var_name: original_data}, coords=self.model.coords)
+
     def get_unconstrained_parameters(self) -> dict[str, xr.DataArray]:
         r"""Convert posterior samples from the constrained to the unconstrained space.
 
@@ -850,10 +1067,6 @@ class PyMCWrapper:
         draws: dict[str, np.ndarray] | None = None,
     ) -> xr.DataArray:
         """Compute the log likelihood for a set of posterior draws.
-
-        This method calculates the pointwise log likelihood for an observed variable
-        in the model. It can either use the current parameter values in the model or
-        a specific set of parameter draws.
 
         Parameters
         ----------

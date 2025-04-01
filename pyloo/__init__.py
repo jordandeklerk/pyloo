@@ -15,6 +15,7 @@ from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
 from .loo import loo
 from .loo_approximate_posterior import loo_approximate_posterior
+from .loo_future import loo_future
 from .loo_group import loo_group
 from .loo_kfold import (
     _kfold_split_grouped,
@@ -44,6 +45,7 @@ __all__ = [
     "loo",
     "loo_approximate_posterior",
     "loo_group",
+    "loo_future",
     "loo_moment_match",
     "loo_moment_match_split",
     "loo_predictive_metric",
