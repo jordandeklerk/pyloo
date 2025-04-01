@@ -453,8 +453,6 @@ def loo(
         }
 
         if wrapper is None:
-            # If no wrapper, expect the custom model object via `model_obj` kwarg
-            # and extract required custom functions from kwargs
             model_obj = kwargs.get("model_obj", None)
             if model_obj is None:
                 raise ValueError(
