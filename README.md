@@ -26,17 +26,21 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 ### Core
 
-- **LOO-CV**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
-- **WAIC**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
+- **LOO-CV**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales (`loo`).
+- **WAIC**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats (`waic`).
+- **LOO Scoring Rules**: Compute Leave-One-Out Continuously Ranked Probability Score (LOO-CRPS) and Scaled CRPS (LOO-SCRPS) for evaluating predictive distributions (`loo_score`).
+- **LOO Predictive Metrics**: Estimate common predictive performance metrics (MAE, MSE, RMSE, Accuracy, Balanced Accuracy) using LOO-CV estimates (`loo_predictive_metric`).
+- **Leave-One-Group-Out CV (LOGO-CV)**: Perform cross-validation by leaving out entire groups of observations (`loo_group`).
 - **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy.
-- **Model Comparison**: Compare models based on their expected log pointwise predictive density (ELPD).
+- **Model Comparison**: Compare models based on their expected log pointwise predictive density (ELPD) (`loo_compare`).
 
 ### Advanced
 - **Universal PyMC Wrapper**: Standardized interface to model components that manages parameter transformations, data manipulation, posterior sampling, and pointwise log-likelihood computations.
-- **Reloo**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
-- **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
-- **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
-- **Posterior Approximations**: Compute LOO-CV for posterior approximations supporting Laplace, ADVI and Full-Rank ADVI variational approximations.
+- **Reloo**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates (`reloo`).
+- **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics (`loo_kfold`).
+- **Leave-Future-Out CV (LFO-CV)**: Approximate Leave-Future-Out cross-validation for time series models, assessing M-step-ahead predictive performance. Currently requires a PyMC model (`loo_future`).
+- **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics (`loo_moment_match`).
+- **Posterior Approximations**: Compute LOO-CV for posterior approximations supporting Laplace, ADVI and Full-Rank ADVI variational approximations (`loo_approximate_posterior`).
 
 ## Quickstart
 
