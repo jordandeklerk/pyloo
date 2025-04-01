@@ -64,9 +64,11 @@ def loo_future(
     The algorithm works as follows:
 
     1. Refit the model using the first :math:`L` observations, compute exact M-step-ahead
-       prediction for :math:`p(y_{L+1:L+M} \,|\, y_{1:L})`, and set :math:`i^* = L` as current refit point.
+       prediction for :math:`p(y_{L+1:L+M} \,|\, y_{1:L})`, and set :math:`i^* = L` as
+       current refit point.
 
-    2. For each :math:`i > i^*`, approximate :math:`p(y_{i+1:i+M} \,|\, y_{1:i})` via importance sampling
+    2. For each :math:`i > i^*`, approximate :math:`p(y_{i+1:i+M} \,|\, y_{1:i})`
+       using importance sampling
 
        .. math::
            p(y_{i+1:i+M} \,|\, y_{1:i}) \approx \frac{\sum_{s=1}^S w_i^{(s)} p(y_{i+1:i+M} \,|\,
@@ -147,8 +149,8 @@ def loo_future(
             only if pointwise=True and method='psis'
     k_threshold: threshold for Pareto k values that trigger refitting,
             only if pointwise=True and method='psis'
-    good_k: For PSIS method and sample size :math:`S`, threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`,
-            only if pointwise=True and method='psis'
+    good_k: For PSIS method and sample size :math:`S`, threshold computed
+    as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`, only if pointwise=True and method='psis'
 
     Notes
     -----
