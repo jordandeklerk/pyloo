@@ -1,4 +1,4 @@
-"""Leave-Future-Out cross-validation (LFO-CV) using importance sampling."""
+"""Leave-Future-Out cross-validation (LFO-CV) using importance sampling for PyMC models."""
 
 import copy
 import logging
