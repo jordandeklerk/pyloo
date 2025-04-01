@@ -33,9 +33,61 @@ def loo_future(
 ) -> ELPDData:
     r"""Compute Leave-Future-Out cross-validation (LFO-CV).
 
-    Estimates the expected log pointwise predictive density (elpd) for M-step-ahead
-    predictions using LFO-CV. By default, uses Pareto-smoothed importance sampling (PSIS)
-    approximation.
+    For a time series of observations :math:`y = (y_1, y_2, \ldots, y_N)`, we often want to
+    predict a sequence of :math:`M` future observations - referred to as :math:`M`-step-ahead
+    prediction (:math:`M`-SAP). With Leave-Future-Out cross-validation (LFO-CV), we assess
+    the predictive performance by computing the predictive densities
+
+    .. math::
+        p(y_{i+1:i+M} \,|\, y_{1:i}) = p(y_{i+1}, \ldots, y_{i+M} \,|\, y_{1},...,y_{i})
+
+    for each :math:`i \in \{L, \ldots, N-M\}`, where :math:`L` is the minimum number of
+    observations required before making predictions.
+
+    These predictive densities can be computed using the posterior distribution
+    :math:`p(\theta \,|\, y_{1:i})`
+
+    .. math::
+        p(y_{i+1:i+M} \,|\, y_{1:i}) = \int p(y_{i+1:i+M} \,|\, y_{1:i}, \theta) \,
+        p(\theta\,|\,y_{1:i}) \,d\theta.
+
+    With :math:`S` posterior draws :math:`(\theta_{1:i}^{(1)}, \ldots, \theta_{1:i}^{(S)})`
+    from :math:`p(\theta\,|\,y_{1:i})`, we can estimate this as
+
+    .. math::
+        p(y_{i+1:i+M} \,|\, y_{1:i}) \approx \frac{1}{S}\sum_{s=1}^S p(y_{i+1:i+M} \,|\,
+        y_{1:i}, \theta_{1:i}^{(s)}).
+
+    Exact LFO-CV requires refitting the model for each time point :math:`i`, which is
+    computationally expensive. The PSIS-LFO-CV algorithm reduces this computational burden.
+
+    The algorithm works as follows:
+
+    1. Refit the model using the first :math:`L` observations, compute exact M-step-ahead
+       prediction for :math:`p(y_{L+1:L+M} \,|\, y_{1:L})`, and set :math:`i^* = L` as current refit point.
+
+    2. For each :math:`i > i^*`, approximate :math:`p(y_{i+1:i+M} \,|\, y_{1:i})` via importance sampling
+
+       .. math::
+           p(y_{i+1:i+M} \,|\, y_{1:i}) \approx \frac{\sum_{s=1}^S w_i^{(s)} p(y_{i+1:i+M} \,|\,
+           y_{1:i}, \theta^{(s)})}{\sum_{s=1}^S w_i^{(s)}},
+
+       where :math:`\theta^{(s)} = \theta^{(s)}_{1:i^*}` are draws from the posterior based on
+       the first :math:`i^*` observations, and :math:`w_i^{(s)}` are importance weights.
+
+    3. Compute raw importance ratios:
+
+       .. math::
+           r_i^{(s)} \propto \prod_{j \in (i^* + 1):i} p(y_j \,|\, y_{1:(j-1)}, \theta^{(s)})
+
+       and stabilize them using PSIS.
+
+    4. Check if Pareto k diagnostic exceeds threshold :math:`\tau` (default 0.7). If so:
+       - Refit the model using observations up to :math:`i`
+       - Update :math:`i^* = i`
+       - Restart the process from step 2
+
+    5. Continue until reaching observation :math:`i = N - M`.
 
     Parameters
     ----------
@@ -43,7 +95,7 @@ def loo_future(
         A PyMCWrapper instance containing the fitted model and inference data.
         The model should be suitable for time series data.
     M : int
-        The number of future steps to predict ahead (M-step-ahead prediction). Must be >= 1.
+        The number of future steps to predict ahead (:math:`M`-step-ahead prediction). Must be >= 1.
     L : int
         The minimum number of observations required before making predictions. Must be >= 0.
     k_threshold : float, optional
@@ -73,24 +125,36 @@ def loo_future(
 
     Returns
     -------
-    ELPDData object
-        An object containing the ELPD estimate, standard error, Pareto k diagnostics,
-        and potentially pointwise values. The indices for pointwise values correspond
-        to the starting time point `i` of the M-step-ahead prediction.
+    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
+    elpd_lfo: approximated expected log pointwise predictive density for LFO-CV
+    se: standard error of the elpd_lfo
+    p_lfo: effective number of parameters for LFO-CV
+    p_lfo_se: standard error of p_lfo
+    n_samples: number of posterior samples
+    n_pred_points: number of prediction points (N - M - L)
+    n_points_eff: number of prediction points with valid ELPD values
+    scale: scale of the elpd
+    looic: LFO information criterion (-2 * elpd_lfo)
+    looic_se: standard error of looic
+    M: number of future steps predicted ahead
+    L: minimum number of observations required before making predictions
+    refit_indices: list of indices where model was refitted
+    warning: bool
+        True if using PSIS and any Pareto k values remained above threshold after refitting
+    lfo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+            only if pointwise=True
+    pareto_k: :class:`~xarray.DataArray` with the Pareto shape parameters,
+            only if pointwise=True and method='psis'
+    k_threshold: threshold for Pareto k values that trigger refitting,
+            only if pointwise=True and method='psis'
+    good_k: For PSIS method and sample size :math:`S`, threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`,
+            only if pointwise=True and method='psis'
 
     Notes
     -----
-    This function implements the PSIS-LFO-CV algorithm described in Bürkner, Gabry, & Vehtari (2020).
-    It iteratively computes or approximates M-step-ahead predictions, refitting the model
-    only when the PSIS approximation becomes unstable (indicated by high Pareto k values).
-
     The quality of the approximation depends on the similarity between the posterior distributions
     at different time points. If the time series exhibits strong non-stationarity, more frequent
     refits might be necessary.
-
-    The `PyMCWrapper` must be properly configured for the time series model, ensuring that
-    `log_likelihood_i` or similar methods can compute the required conditional likelihoods.
-    This might require custom wrapper implementations or modifications for specific model types.
 
     References
     ----------
@@ -138,6 +202,7 @@ def loo_future(
 
     pointwise = rcParams["stats.ic_pointwise"] if pointwise is None else pointwise
     scale = rcParams["stats.ic_scale"] if scale is None else scale.lower()
+
     if scale == "deviance":
         scale_value = -2
     elif scale == "log":
