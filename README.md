@@ -24,23 +24,24 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 ## Features
 
-### Core
+PyLOO offers a comprehensive suite of tools for Bayesian model evaluation and comparison:
 
-- **LOO-CV**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales (`loo`).
-- **WAIC**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats (`waic`).
-- **LOO Scoring Rules**: Compute Leave-One-Out Continuously Ranked Probability Score (LOO-CRPS) and Scaled CRPS (LOO-SCRPS) for evaluating predictive distributions (`loo_score`).
-- **LOO Predictive Metrics**: Estimate common predictive performance metrics (MAE, MSE, RMSE, Accuracy, Balanced Accuracy) using LOO-CV estimates (`loo_predictive_metric`).
-- **Leave-One-Group-Out CV (LOGO-CV)**: Perform cross-validation by leaving out entire groups of observations (`loo_group`).
-- **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy.
-- **Model Comparison**: Compare models based on their expected log pointwise predictive density (ELPD) (`loo_compare`).
+### Core Functionality
 
-### Advanced
-- **Universal PyMC Wrapper**: Standardized interface to model components that manages parameter transformations, data manipulation, posterior sampling, and pointwise log-likelihood computations.
-- **Reloo**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates (`reloo`).
-- **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics (`loo_kfold`).
-- **Leave-Future-Out CV (LFO-CV)**: Approximate Leave-Future-Out cross-validation for time series models, assessing M-step-ahead predictive performance. Currently requires a PyMC model (`loo_future`).
-- **Moment Matching**: Transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics (`loo_moment_match`).
-- **Posterior Approximations**: Compute LOO-CV for posterior approximations supporting Laplace, ADVI and Full-Rank ADVI variational approximations (`loo_approximate_posterior`).
+*   **Approximate Leave-One-Out Cross-Validation (LOO-CV)**: Efficiently compute LOO-CV using Pareto Smoothed Importance Sampling (PSIS) and other methods, complete with diagnostics (`loo`).
+*   **Widely Applicable Information Criterion (WAIC)**: Calculate WAIC as an alternative model assessment metric (`waic`).
+*   **Model Comparison**: Compare models based on ELPD using various methods like stacking (`loo_compare`).
+*   **LOO-Based Metrics**: Estimate predictive performance (e.g., MAE, MSE, CRPS) using LOO estimates (`loo_predictive_metric`, `loo_score`).
+*   **Grouped & Subsampled CV**: Perform Leave-One-Group-Out CV (`loo_group`) and efficient subsampling for large datasets (`loo_subsample`).
+
+### Advanced & PyMC Integration
+
+*   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow.
+*   **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (`reloo`).
+*   **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (`loo_kfold`).
+*   **Time Series CV (LFO-CV)**: Approximate Leave-Future-Out CV for evaluating time series model forecasts (`loo_future`).
+*   **Moment Matching**: Improve LOO-CV reliability for challenging observations (`loo_moment_match`).
+*   **Variational Inference Support**: Compute LOO-CV for models fitted with Laplace or ADVI approximations (`loo_approximate_posterior`).
 
 ## Quickstart
 
