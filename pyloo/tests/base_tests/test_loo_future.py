@@ -148,7 +148,7 @@ def test_error_handling(time_series_model):
         loo_future(wrapper, M=M, L=L, scale="invalid_scale")
 
     with pytest.raises(ValueError, match="Not enough data points"):
-        loo_future(wrapper, M=91, L=10)
+        loo_future(wrapper, M=100, L=100)
 
 
 def test_with_custom_sampling_args(time_series_model):

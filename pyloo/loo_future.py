@@ -104,8 +104,19 @@ def loo_future(
     if L < 0:
         raise ValueError("L (minimum observations) must be >= 0.")
 
+    valid_methods = {"psis", "sis", "tis"}
+    if isinstance(method, str) and method.lower() not in valid_methods:
+        raise ValueError(
+            f"Invalid method '{method}'. Must be one of: {', '.join(valid_methods)}."
+        )
+    elif not isinstance(method, (str, ISMethod)):
+        raise TypeError(
+            f"Method must be a string {valid_methods} or an ISMethod instance."
+        )
+
     var_name = wrapper.get_observed_name()
     obs_shape = wrapper.get_shape(var_name)
+
     if obs_shape is None or len(obs_shape) == 0:
         raise ValueError("Could not determine shape of observed data.")
     N = obs_shape[0]
@@ -117,6 +128,7 @@ def loo_future(
 
     required_methods = ["compute_conditional_loglik", "compute_m_step_loglik"]
     missing = wrapper.check_implemented_methods(required_methods)
+
     if missing:
         raise NotImplementedError(
             "The provided PyMCWrapper is missing required methods for LFO-CV:"
@@ -347,6 +359,23 @@ def loo_future(
         "warning",
     ]
 
+    result_data.append(False)
+
+    is_psis_method = False
+    if isinstance(method, ISMethod):
+        is_psis_method = method == ISMethod.PSIS
+    elif isinstance(method, str):
+        try:
+            is_psis_method = ISMethod(method.lower()) == ISMethod.PSIS
+        except ValueError:
+            warnings.warn(
+                f"Unknown method '{method}', defaulting to PSIS behavior for"
+                " reporting.",
+                UserWarning,
+                stacklevel=2,
+            )
+            is_psis_method = method.lower() == "psis"
+
     if pointwise:
         pointwise_coords = np.arange(L, N - M)
         lfo_i = xr.DataArray(
@@ -358,7 +387,7 @@ def loo_future(
         result_data.append(lfo_i)
         result_index.append("lfo_i")
 
-        if method == ISMethod.PSIS:
+        if is_psis_method:
             pareto_k_da = xr.DataArray(
                 pareto_ks,
                 coords={f"{var_name}_dim_0": pointwise_coords},
@@ -375,12 +404,9 @@ def loo_future(
             result_data.append(good_k)
             result_index.append("good_k")
 
-    result_data.append(False)
     result = ELPDData(data=result_data, index=result_index)
 
-    if method == ISMethod.PSIS and np.any(
-        pareto_ks[~np.isnan(pareto_ks)] > k_threshold
-    ):
+    if is_psis_method and np.any(pareto_ks[~np.isnan(pareto_ks)] > k_threshold):
         result["warning"] = True
         warnings.warn(
             f"Some Pareto k values remained above the threshold {k_threshold:.2f} after"
