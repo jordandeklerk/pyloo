@@ -375,15 +375,13 @@ def loo_future(
             result_data.append(good_k)
             result_index.append("good_k")
 
-    result_data.append(
-        False
-    )  # Append default warning value *after* potential pointwise additions
+    result_data.append(False)
     result = ELPDData(data=result_data, index=result_index)
 
     if method == ISMethod.PSIS and np.any(
         pareto_ks[~np.isnan(pareto_ks)] > k_threshold
     ):
-        result["warning"] = True  # Set warning value in the series directly
+        result["warning"] = True
         warnings.warn(
             f"Some Pareto k values remained above the threshold {k_threshold:.2f} after"
             " refitting. This might indicate instability or model misspecification.",
