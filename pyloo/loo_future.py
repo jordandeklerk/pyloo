@@ -170,14 +170,19 @@ def loo_future(
     if L < 0:
         raise ValueError("L (minimum observations) must be >= 0.")
 
-    valid_methods = {"psis", "sis", "tis"}
-    if isinstance(method, str) and method.lower() not in valid_methods:
-        raise ValueError(
-            f"Invalid method '{method}'. Must be one of: {', '.join(valid_methods)}."
-        )
-    elif not isinstance(method, (str, ISMethod)):
-        raise TypeError(
-            f"Method must be a string {valid_methods} or an ISMethod instance."
+    try:
+        method = method if isinstance(method, ISMethod) else ISMethod(method.lower())
+    except ValueError:
+        valid_methods = ", ".join(m.value for m in ISMethod)
+        raise ValueError(f"Invalid method '{method}'. Must be one of: {valid_methods}")
+
+    if method != ISMethod.PSIS:
+        method_name = method.value.upper()
+        warnings.warn(
+            f"Using {method_name} for LFO-CV computation. Note that PSIS is the"
+            " recommended method as it is typically more efficient and reliable.",
+            UserWarning,
+            stacklevel=2,
         )
 
     var_name = wrapper.get_observed_name()
@@ -222,6 +227,8 @@ def loo_future(
     log_cumulative_ratios = None
     n_samples = 0
 
+    good_k = 0.7
+
     _log.info(f"Initial refit using first {L} observations.")
     indices_past = slice(0, L)
     data_past, _ = wrapper.select_observations(indices_past, var_name=var_name)
@@ -232,7 +239,7 @@ def loo_future(
     try:
         idata_refit = temp_wrapper.sample_posterior(**kwargs)
         n_samples = (
-            idata_refit.posterior.dims["draw"] * idata_refit.posterior.dims["chain"]
+            idata_refit.posterior.sizes["draw"] * idata_refit.posterior.sizes["chain"]
         )
         log_cumulative_ratios = np.zeros(n_samples)
     except Exception as e:
@@ -267,12 +274,36 @@ def loo_future(
                     ess_ratios = ess(log_cumulative_ratios, method="mean")
                     current_reff = ess_ratios / n_samples if n_samples > 0 else 1.0
 
-                psis_obj = compute_importance_weights(
+                log_weights, diagnostic = compute_importance_weights(
                     log_cumulative_ratios, method=method, reff=current_reff
                 )
-                lw, k = psis_obj
-                pareto_ks[pred_idx] = k
-                _log.debug(f"  Pareto k = {k:.4f}")
+                lw = log_weights
+
+                if method == ISMethod.PSIS:
+                    k = diagnostic
+                    pareto_ks[pred_idx] = k
+                    _log.debug(f"  Pareto k = {k:.4f}")
+
+                    if k > k_threshold:
+                        _log.warning(
+                            f"  High Pareto k value: {k:.4f} > {k_threshold:.2f}"
+                        )
+                else:
+                    ess_value = diagnostic
+                    _log.debug(
+                        f"  ESS = {ess_value:.1f} ({ess_value / n_samples:.2%} of total"
+                        " samples)"
+                    )
+
+                    if ess_value < n_samples * 0.1:
+                        _log.warning(
+                            "  Low ESS:"
+                            f" {ess_value:.1f} ({ess_value / n_samples:.2%} of total"
+                            " samples). This indicates that importance sampling may be"
+                            " unreliable."
+                        )
+                    k = k_threshold + 1 if ess_value < n_samples * 0.1 else 0.0
+                    pareto_ks[pred_idx] = np.nan
 
             except Exception as e:
                 warnings.warn(
@@ -297,8 +328,8 @@ def loo_future(
                 try:
                     idata_refit = temp_wrapper.sample_posterior(**kwargs)
                     n_samples = (
-                        idata_refit.posterior.dims["draw"]
-                        * idata_refit.posterior.dims["chain"]
+                        idata_refit.posterior.sizes["draw"]
+                        * idata_refit.posterior.sizes["chain"]
                     )
                     log_cumulative_ratios = np.zeros(n_samples)
                     i_refit = i + 1
@@ -427,21 +458,7 @@ def loo_future(
     ]
 
     result_data.append(False)
-
-    is_psis_method = False
-    if isinstance(method, ISMethod):
-        is_psis_method = method == ISMethod.PSIS
-    elif isinstance(method, str):
-        try:
-            is_psis_method = ISMethod(method.lower()) == ISMethod.PSIS
-        except ValueError:
-            warnings.warn(
-                f"Unknown method '{method}', defaulting to PSIS behavior for"
-                " reporting.",
-                UserWarning,
-                stacklevel=2,
-            )
-            is_psis_method = method.lower() == "psis"
+    is_psis_method = method == ISMethod.PSIS
 
     if pointwise:
         pointwise_coords = np.arange(L, N - M)
@@ -475,9 +492,12 @@ def loo_future(
 
     if is_psis_method and np.any(pareto_ks[~np.isnan(pareto_ks)] > k_threshold):
         result["warning"] = True
+        n_high_k = np.sum(pareto_ks[~np.isnan(pareto_ks)] > k_threshold)
         warnings.warn(
-            f"Some Pareto k values remained above the threshold {k_threshold:.2f} after"
-            " refitting. This might indicate instability or model misspecification.",
+            "Estimated shape parameter of Pareto distribution is greater than"
+            f" {k_threshold:.2f} for {n_high_k} observations after refitting."
+            " This indicates that importance sampling may be unreliable because the"
+            " marginal posterior and LFO posterior are very different.",
             UserWarning,
             stacklevel=2,
         )

@@ -237,66 +237,6 @@ def hierarchical_model():
 
 
 @pytest.fixture(scope="session")
-def time_series_model():
-    """Create an AR(2) time series model and fit it for testing loo_future."""
-    RANDOM_SEED = 42
-    rng = np.random.default_rng(RANDOM_SEED)
-
-    T = 150
-
-    true_rho = np.array([0.7, -0.3])
-    true_sigma = 2.0
-    true_center = -1.0
-
-    y = np.zeros(T)
-    y[0] = rng.normal(loc=true_center, scale=true_sigma)
-    y[1] = (
-        true_center
-        + true_rho[0] * (y[0] - true_center)
-        + rng.normal(loc=0, scale=true_sigma)
-    )
-
-    for t in range(2, T):
-        y[t] = (
-            true_center
-            + true_rho[0] * (y[t - 1] - true_center)
-            + true_rho[1] * (y[t - 2] - true_center)
-            + rng.normal(loc=0, scale=true_sigma)
-        )
-
-    y = y[-5000:]
-    T_final = len(y)
-
-    coords = {"obs_id": range(T_final)}
-
-    with pm.Model(coords=coords) as ar2_model:
-        rho = pm.Normal("rho", mu=0.0, sigma=1.0, shape=2)
-        tau = pm.Exponential("tau", lam=0.5)
-
-        init_dist = pm.Normal.dist(mu=0, sigma=10)
-
-        pm.AR(
-            "y",
-            rho=rho,
-            tau=tau,
-            constant=True,
-            init_dist=init_dist,
-            observed=y,
-            dims="obs_id",
-        )
-
-        idata = pm.sample(
-            1000,
-            tune=2000,
-            random_seed=RANDOM_SEED,
-            idata_kwargs={"log_likelihood": True},
-            progressbar=False,
-        )
-
-    return ar2_model, idata
-
-
-@pytest.fixture(scope="session")
 def hierarchical_model_no_coords():
     """Create a hierarchical model without explicit coordinates."""
     rng = np.random.default_rng(42)
@@ -940,3 +880,63 @@ def high_dimensional_regression_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def time_series_model():
+    """Create an AR(2) time series model and fit it for testing loo_future."""
+    RANDOM_SEED = 42
+    rng = np.random.default_rng(RANDOM_SEED)
+
+    T = 150
+
+    true_rho = np.array([0.7, -0.3])
+    true_sigma = 2.0
+    true_center = -1.0
+
+    y = np.zeros(T)
+    y[0] = rng.normal(loc=true_center, scale=true_sigma)
+    y[1] = (
+        true_center
+        + true_rho[0] * (y[0] - true_center)
+        + rng.normal(loc=0, scale=true_sigma)
+    )
+
+    for t in range(2, T):
+        y[t] = (
+            true_center
+            + true_rho[0] * (y[t - 1] - true_center)
+            + true_rho[1] * (y[t - 2] - true_center)
+            + rng.normal(loc=0, scale=true_sigma)
+        )
+
+    y = y[-5000:]
+    T_final = len(y)
+
+    coords = {"obs_id": range(T_final)}
+
+    with pm.Model(coords=coords) as ar2_model:
+        rho = pm.Normal("rho", mu=0.0, sigma=1.0, shape=2)
+        tau = pm.Exponential("tau", lam=0.5)
+
+        init_dist = pm.Normal.dist(mu=0, sigma=10)
+
+        pm.AR(
+            "y",
+            rho=rho,
+            tau=tau,
+            constant=True,
+            init_dist=init_dist,
+            observed=y,
+            dims="obs_id",
+        )
+
+        idata = pm.sample(
+            1000,
+            tune=2000,
+            random_seed=RANDOM_SEED,
+            idata_kwargs={"log_likelihood": True},
+            progressbar=False,
+        )
+
+    return ar2_model, idata

@@ -17,7 +17,7 @@ def test_basic_functionality(time_series_model):
     model, idata = time_series_model
     wrapper = PyMCWrapper(model, idata)
 
-    L = 30
+    L = 130
     M = 1
 
     loo_future_result = loo_future(wrapper, M=M, L=L)
@@ -36,7 +36,7 @@ def test_m_step_ahead_prediction(time_series_model):
     model, idata = time_series_model
     wrapper = PyMCWrapper(model, idata)
 
-    L = 30
+    L = 130
     M = 4
 
     result = loo_future(wrapper, M=M, L=L)
@@ -45,6 +45,8 @@ def test_m_step_ahead_prediction(time_series_model):
     assert "elpd_lfo" in result
     assert "M" in result
     assert result["M"] == M
+
+    logger.info(result)
 
 
 def test_pointwise_output(time_series_model):
