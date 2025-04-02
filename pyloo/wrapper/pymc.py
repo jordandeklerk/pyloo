@@ -604,14 +604,8 @@ class PyMCWrapper:
         idata: InferenceData,
         index: int,
         var_name: str | None = None,
-    ) -> np.ndarray:
+    ) -> xr.DataArray:
         r"""Compute :math:`\log p(y_i | y_{1:i-1}, \theta_s)` for a given observation index :math:`i`.
-
-        This method calculates the log-likelihood of a single observation :math:`y_i`
-        using the posterior draws :math:`\theta_s` provided in :attr:`idata`. It assumes the
-        underlying PyMC model (:attr:`self.model`) is structured such that the likelihood
-        implicitly conditions on previous observations when only :math:`y_i` is provided
-        as the observed data.
 
         Parameters
         ----------
@@ -627,17 +621,10 @@ class PyMCWrapper:
 
         Returns
         -------
-        np.ndarray
-            A 1D numpy array containing the log-likelihood values
+        xr.DataArray
+            An xarray DataArray containing the log-likelihood values
             :math:`\log p(y_i | y_{1:i-1}, \theta_s)` for each posterior sample :math:`s`.
-            Shape: (n_chains * n_draws,).
-
-        Raises
-        ------
-        PyMCWrapperError
-            If the variable is not found, observed data is missing, or computation fails.
-        IndexError
-            If `index` is out of bounds.
+            The DataArray has a dimension '__sample__' that combines chain and draw dimensions.
         """
         if var_name is None:
             var_name = self.get_observed_name()
@@ -661,8 +648,6 @@ class PyMCWrapper:
                 f" {original_data.shape}"
             )
 
-        # Select only the single observation at the specified index
-        # We assume the model structure handles the conditioning on past values
         single_obs_data = original_data[index : index + 1]
 
         original_model_data = {}
@@ -688,9 +673,20 @@ class PyMCWrapper:
                 )
 
             log_lik_i = log_lik_result[var_name]
-            log_lik_values = log_lik_i.values.flatten()
 
-            return log_lik_values
+            if "chain" in log_lik_i.dims and "draw" in log_lik_i.dims:
+                log_lik_i = log_lik_i.stack(__sample__=("chain", "draw"))
+
+            result = xr.DataArray(
+                log_lik_i.values,
+                dims=["__sample__"],
+                coords={"__sample__": np.arange(log_lik_i.size)},
+                name=f"log_likelihood_{var_name}_idx_{index}",
+            )
+
+            result.attrs["observation_index"] = index
+
+            return result
 
         except Exception as e:
             raise PyMCWrapperError(
@@ -705,13 +701,8 @@ class PyMCWrapper:
         idata: InferenceData,
         indices_future: slice | np.ndarray,
         var_name: str | None = None,
-    ) -> np.ndarray:
+    ) -> xr.DataArray:
         r"""Compute :math:`\log p(y_{i+1:i+M} | y_{1:i}, \theta_s)` for future observations.
-
-        Calculates the log-likelihood of M future observations :math:`y_{i+1:i+M}`
-        using posterior draws :math:`\theta_s` from :attr:`idata`. Assumes the model implicitly
-        conditions on data up to :math:`y_i` (where :math:`i` is :attr:`conditioning_index`) when
-        only :math:`y_{i+1:i+M}` are set as observed.
 
         Parameters
         ----------
@@ -725,16 +716,11 @@ class PyMCWrapper:
 
         Returns
         -------
-        np.ndarray
-            A 2D numpy array containing the log-likelihood values for each future step
-            and each posterior sample. Shape: (n_chains * n_draws, M).
-
-        Raises
-        ------
-        PyMCWrapperError
-            If variable not found, data missing, or computation fails.
-        IndexError
-            If `indices_future` are out of bounds.
+        xr.DataArray
+            An xarray DataArray containing the log-likelihood values for each future step
+            and each posterior sample. The DataArray has dimensions '__sample__' and 'step',
+            where '__sample__' combines chain and draw dimensions, and 'step' represents
+            the future time steps.
         """
         if var_name is None:
             var_name = self.get_observed_name()
@@ -754,7 +740,6 @@ class PyMCWrapper:
         original_data = self.observed_data[var_name]
         n_obs_total = original_data.shape[0]
 
-        # Validate future indices
         if isinstance(indices_future, slice):
             start, stop, step = indices_future.indices(n_obs_total)
             if start < 0 or stop > n_obs_total or start >= stop:
@@ -763,6 +748,7 @@ class PyMCWrapper:
                     f" length {n_obs_total}"
                 )
             num_future_obs = len(range(start, stop, step or 1))
+            future_indices = np.arange(start, stop, step or 1)
         else:
             indices_future = np.asarray(indices_future)
             if np.any(indices_future < 0) or np.any(indices_future >= n_obs_total):
@@ -771,9 +757,15 @@ class PyMCWrapper:
                     f" length {n_obs_total}"
                 )
             num_future_obs = len(indices_future)
+            future_indices = indices_future
 
         if num_future_obs == 0:
-            return np.empty((0, 0))
+            return xr.DataArray(
+                np.empty((0, 0)),
+                dims=["__sample__", "step"],
+                coords={"__sample__": [], "step": []},
+                name=f"log_likelihood_{var_name}_future",
+            )
 
         future_obs_data, _ = self.select_observations(indices_future, var_name=var_name)
 
@@ -801,12 +793,34 @@ class PyMCWrapper:
 
             log_lik_m = log_lik_result[var_name]
 
-            n_chains, n_draws = log_lik_m.chain.size, log_lik_m.draw.size
-            log_lik_values = log_lik_m.values.reshape(
-                n_chains * n_draws, num_future_obs
-            )
+            if "chain" in log_lik_m.dims and "draw" in log_lik_m.dims:
+                log_lik_m = log_lik_m.stack(__sample__=("chain", "draw"))
 
-            return log_lik_values
+            n_samples = log_lik_m.sizes["__sample__"]
+
+            if num_future_obs > 1:
+                values = log_lik_m.values.reshape(n_samples, num_future_obs)
+                result = xr.DataArray(
+                    values,
+                    dims=["__sample__", "step"],
+                    coords={"__sample__": np.arange(n_samples), "step": future_indices},
+                    name=f"log_likelihood_{var_name}_future",
+                )
+            else:
+                values = log_lik_m.values.reshape(n_samples)
+                result = xr.DataArray(
+                    values,
+                    dims=["__sample__"],
+                    coords={"__sample__": np.arange(n_samples)},
+                    name=f"log_likelihood_{var_name}_future",
+                )
+
+            if isinstance(indices_future, slice):
+                result.attrs["future_indices_slice"] = str(indices_future)
+            else:
+                result.attrs["future_indices"] = indices_future.tolist()
+
+            return result
 
         except Exception as e:
             raise PyMCWrapperError(

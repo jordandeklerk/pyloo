@@ -3,7 +3,7 @@
 import copy
 import logging
 import warnings
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -12,7 +12,7 @@ from arviz.stats.diagnostics import ess
 from .base import ISMethod, compute_importance_weights
 from .elpd import ELPDData
 from .rcparams import rcParams
-from .utils import _logsumexp
+from .utils import _logsumexp, wrap_xarray_ufunc
 from .wrapper.pymc import PyMCWrapper
 
 __all__ = ["loo_future"]
@@ -226,9 +226,9 @@ def loo_future(
     idata_refit = None
     log_cumulative_ratios = None
     n_samples = 0
-
     good_k = 0.7
 
+    # Initial model fit
     _log.info(f"Initial refit using first {L} observations.")
     indices_past = slice(0, L)
     data_past, _ = wrapper.select_observations(indices_past, var_name=var_name)
@@ -248,11 +248,14 @@ def loo_future(
     i_refit = L
     refit_indices.append(L)
 
+    # Main LFO-CV loop
     for i in range(L, N - M):
         _log.info(f"Processing prediction step starting at i = {i}")
         pred_idx = i - L
         k = 0.0
+        lw = None
 
+        # Calculate importance weights for steps after initial fit
         if i > i_refit:
             _log.debug(
                 f"  Calculating IS weights for step i={i} based on refit at {i_refit}"
@@ -261,6 +264,7 @@ def loo_future(
             try:
                 log_lik_step_i = wrapper.compute_conditional_loglik(idata_refit, idx_is)
                 log_lik_step_i = np.asarray(log_lik_step_i).flatten()
+
                 if log_lik_step_i.shape[0] != n_samples:
                     raise ValueError(
                         f"Expected {n_samples} loglik values, got"
@@ -314,10 +318,14 @@ def loo_future(
                 )
                 k = k_threshold + 1
 
+        # Determine if we need to refit the model
         needs_refit = (i == L) or (i > i_refit and k > k_threshold)
 
+        # Compute prediction based on whether we need to refit
         if needs_refit:
             _log.info(f"  Refitting model at i = {i} (k={k:.4f} > {k_threshold})")
+
+            # Refit model if not initial fit
             if i > L:
                 indices_past = slice(0, i + 1)
                 data_past, _ = wrapper.select_observations(
@@ -325,6 +333,7 @@ def loo_future(
                 )
                 temp_wrapper = copy.deepcopy(wrapper)
                 temp_wrapper.set_data({var_name: data_past})
+
                 try:
                     idata_refit = temp_wrapper.sample_posterior(**kwargs)
                     n_samples = (
@@ -337,24 +346,44 @@ def loo_future(
                 except Exception as e:
                     raise RuntimeError(f"Model refit failed at i={i}: {e}") from e
 
+            # Compute exact M-step-ahead prediction
             _log.debug("  Computing exact M-step-ahead prediction.")
             indices_future = slice(i + 1, i + M + 1)
+
             try:
                 loglik_m_step_matrix = wrapper.compute_m_step_loglik(
                     idata_refit, indices_future
                 )
-                loglik_m_step_matrix = np.asarray(loglik_m_step_matrix)
-                if (
-                    loglik_m_step_matrix.shape[0] != n_samples
-                    or loglik_m_step_matrix.shape[1] != M
-                ):
-                    raise ValueError(
-                        f"Expected ({n_samples}, {M}) loglik matrix, got"
-                        f" {loglik_m_step_matrix.shape}"
-                    )
 
-                loglik_m_step = np.sum(loglik_m_step_matrix, axis=1)
-                elpd_i = _logsumexp(loglik_m_step, b_inv=n_samples)
+                if isinstance(loglik_m_step_matrix, xr.DataArray):
+                    if "step" in loglik_m_step_matrix.dims:
+                        loglik_m_step = loglik_m_step_matrix.sum(dim="step")
+                    else:
+                        loglik_m_step = loglik_m_step_matrix
+
+                    ufunc_kwargs = {"n_dims": 1, "ravel": False}
+                    xarray_kwargs = {"input_core_dims": [["__sample__"]]}
+
+                    elpd_i = wrap_xarray_ufunc(
+                        _logsumexp,
+                        loglik_m_step,
+                        func_kwargs={"b_inv": n_samples},
+                        ufunc_kwargs=ufunc_kwargs,
+                        **xarray_kwargs,
+                    ).values.item()
+                else:
+                    loglik_m_step_matrix = np.asarray(loglik_m_step_matrix)
+                    if (
+                        loglik_m_step_matrix.shape[0] != n_samples
+                        or loglik_m_step_matrix.shape[1] != M
+                    ):
+                        raise ValueError(
+                            f"Expected ({n_samples}, {M}) loglik matrix, got"
+                            f" {loglik_m_step_matrix.shape}"
+                        )
+
+                    loglik_m_step = np.sum(loglik_m_step_matrix, axis=1)
+                    elpd_i = _logsumexp(loglik_m_step, b_inv=n_samples)
             except Exception as e:
                 warnings.warn(
                     f"Could not compute exact M-step prediction at i={i}: {e}. Storing"
@@ -365,31 +394,61 @@ def loo_future(
                 elpd_i = np.nan
 
         else:
+            # Compute approximate M-step-ahead prediction
             _log.debug(f"  Computing approximate M-step-ahead prediction (k={k:.4f}).")
             indices_future = slice(i + 1, i + M + 1)
+
             try:
                 loglik_m_step_matrix = wrapper.compute_m_step_loglik(
                     idata_refit, indices_future
                 )
-                loglik_m_step_matrix = np.asarray(loglik_m_step_matrix)
-                if (
-                    loglik_m_step_matrix.shape[0] != n_samples
-                    or loglik_m_step_matrix.shape[1] != M
-                ):
-                    raise ValueError(
-                        f"Expected ({n_samples}, {M}) loglik matrix, got"
-                        f" {loglik_m_step_matrix.shape}"
-                    )
 
-                loglik_m_step = np.sum(loglik_m_step_matrix, axis=1)
-                lw = np.asarray(lw).flatten()
-                if lw.shape[0] != n_samples:
-                    raise ValueError(
-                        f"Shape mismatch: lw {lw.shape}, loglik_m_step"
-                        f" {loglik_m_step.shape}"
-                    )
+                if isinstance(loglik_m_step_matrix, xr.DataArray):
+                    if "step" in loglik_m_step_matrix.dims:
+                        loglik_m_step = loglik_m_step_matrix.sum(dim="step")
+                    else:
+                        loglik_m_step = loglik_m_step_matrix
 
-                elpd_i = _logsumexp(lw + loglik_m_step)
+                    if not isinstance(lw, xr.DataArray):
+                        lw = xr.DataArray(
+                            np.asarray(lw).flatten(),
+                            dims=["__sample__"],
+                            coords={"__sample__": np.arange(len(lw))},  # type: ignore
+                            name="log_weights",
+                        )
+
+                    combined_log_weights = lw + loglik_m_step
+
+                    ufunc_kwargs = {"n_dims": 1, "ravel": False}
+                    xarray_kwargs = {"input_core_dims": [["__sample__"]]}
+
+                    elpd_i = wrap_xarray_ufunc(
+                        _logsumexp,
+                        combined_log_weights,
+                        ufunc_kwargs=ufunc_kwargs,
+                        **xarray_kwargs,
+                    ).values.item()
+                else:
+                    loglik_m_step_matrix = np.asarray(loglik_m_step_matrix)
+                    if (
+                        loglik_m_step_matrix.shape[0] != n_samples
+                        or loglik_m_step_matrix.shape[1] != M
+                    ):
+                        raise ValueError(
+                            f"Expected ({n_samples}, {M}) loglik matrix, got"
+                            f" {loglik_m_step_matrix.shape}"
+                        )
+
+                    loglik_m_step = np.sum(loglik_m_step_matrix, axis=1)
+                    lw = np.asarray(lw).flatten()
+
+                    if lw.shape[0] != n_samples:
+                        raise ValueError(
+                            f"Shape mismatch: lw {lw.shape}, loglik_m_step"
+                            f" {loglik_m_step.shape}"
+                        )
+
+                    elpd_i = _logsumexp(lw + loglik_m_step)
             except Exception as e:
                 warnings.warn(
                     f"Could not compute approximate M-step prediction at i={i}: {e}."
@@ -425,39 +484,7 @@ def loo_future(
     looic = elpd_lfo * (-2 / scale_value) if scale_value != 0 else np.nan
     looic_se = elpd_se * abs(-2 / scale_value) if scale_value != 0 else np.nan
 
-    result_data = [
-        elpd_lfo,
-        elpd_se,
-        p_lfo,
-        p_lfo_se,
-        n_samples,
-        n_pred_points,
-        n_points_eff,
-        scale,
-        looic,
-        looic_se,
-        M,
-        L,
-        refit_indices,
-    ]
-    result_index = [
-        "elpd_lfo",
-        "se",
-        "p_lfo",
-        "p_lfo_se",
-        "n_samples",
-        "n_pred_points",
-        "n_points_eff",
-        "scale",
-        "looic",
-        "looic_se",
-        "M",
-        "L",
-        "refit_indices",
-        "warning",
-    ]
-
-    result_data.append(False)
+    warning_flag = False
     is_psis_method = method == ISMethod.PSIS
 
     if pointwise:
@@ -468,8 +495,6 @@ def loo_future(
             dims=[f"{var_name}_dim_0"],
             name="lfo_i",
         )
-        result_data.append(lfo_i)
-        result_index.append("lfo_i")
 
         if is_psis_method:
             pareto_k_da = xr.DataArray(
@@ -478,15 +503,34 @@ def loo_future(
                 dims=[f"{var_name}_dim_0"],
                 name="pareto_k",
             )
-            result_data.append(pareto_k_da)
-            result_index.append("pareto_k")
-
-            result_data.append(k_threshold)
-            result_index.append("k_threshold")
-
             good_k = min(1 - 1 / np.log10(n_samples), 0.7) if n_samples > 0 else 0.7
-            result_data.append(good_k)
-            result_index.append("good_k")
+        else:
+            pareto_k_da = None
+    else:
+        lfo_i = None
+        pareto_k_da = None
+
+    result_data, result_index = _get_result_data_and_index(
+        elpd_lfo=elpd_lfo,
+        elpd_se=elpd_se,
+        p_lfo=p_lfo,
+        p_lfo_se=p_lfo_se,
+        n_samples=n_samples,
+        n_pred_points=n_pred_points,
+        n_points_eff=n_points_eff,
+        scale=scale,
+        looic=looic,
+        looic_se=looic_se,
+        M=M,
+        L=L,
+        refit_indices=refit_indices,
+        warning=warning_flag,
+        lfo_i=lfo_i,
+        pareto_k=pareto_k_da,
+        k_threshold=k_threshold if is_psis_method and pointwise else None,
+        good_k=good_k if is_psis_method and pointwise else None,
+        pointwise=pointwise,
+    )
 
     result = ELPDData(data=result_data, index=result_index)
 
@@ -504,3 +548,79 @@ def loo_future(
 
     _log.info(f"LFO-CV finished. Refitted {len(refit_indices)} times.")
     return result
+
+
+def _get_result_data_and_index(
+    elpd_lfo: float,
+    elpd_se: float,
+    p_lfo: float,
+    p_lfo_se: float,
+    n_samples: int,
+    n_pred_points: int,
+    n_points_eff: int,
+    scale: str,
+    looic: float,
+    looic_se: float,
+    M: int,
+    L: int,
+    refit_indices: list[int],
+    warning: bool,
+    lfo_i: xr.DataArray | None = None,
+    pareto_k: xr.DataArray | None = None,
+    k_threshold: float | None = None,
+    good_k: float | None = None,
+    pointwise: bool = False,
+) -> tuple[list[Any], list[str]]:
+    """Create result data and index for LFO-CV output."""
+    result_data = [
+        elpd_lfo,
+        elpd_se,
+        p_lfo,
+        p_lfo_se,
+        n_samples,
+        n_pred_points,
+        n_points_eff,
+        scale,
+        looic,
+        looic_se,
+        M,
+        L,
+        refit_indices,
+        warning,
+    ]
+
+    result_index = [
+        "elpd_lfo",
+        "se",
+        "p_lfo",
+        "p_lfo_se",
+        "n_samples",
+        "n_pred_points",
+        "n_points_eff",
+        "scale",
+        "looic",
+        "looic_se",
+        "M",
+        "L",
+        "refit_indices",
+        "warning",
+    ]
+
+    if pointwise:
+        if lfo_i is not None:
+            result_data.append(lfo_i)
+            result_index.append("lfo_i")
+
+        if pareto_k is not None:
+            result_data.append(pareto_k)
+            result_index.append("pareto_k")
+
+        if k_threshold is not None:
+            result_data.append(k_threshold)
+            result_index.append("k_threshold")
+
+        if good_k is not None:
+            result_data.append(good_k)
+            result_index.append("good_k")
+
+    return result_data, result_index
