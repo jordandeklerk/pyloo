@@ -209,132 +209,17 @@ def test_lake_huron_example():
 
     logger = logging.getLogger(__name__)
     file_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
         "data",
         "lake_huron.csv",
     )
 
-    try:
-        df = pd.read_csv(file_path)
-        water_level = df["water_level"].values
-        years = (
-            df["year"].values
-            if "year" in df.columns
-            else np.arange(1875, 1875 + len(water_level))
-        )
-    except (FileNotFoundError, KeyError):
-        logger.warning(
-            f"Could not load Lake Huron data from {file_path}. Creating dataset"
-            " manually."
-        )
-        water_level = np.array([
-            580.38,
-            581.86,
-            580.97,
-            580.80,
-            579.79,
-            580.39,
-            580.42,
-            580.82,
-            581.40,
-            581.32,
-            581.44,
-            581.68,
-            581.17,
-            580.53,
-            580.01,
-            579.91,
-            579.14,
-            579.16,
-            579.55,
-            579.67,
-            578.44,
-            578.24,
-            579.06,
-            579.53,
-            579.05,
-            579.10,
-            579.85,
-            579.99,
-            579.35,
-            578.72,
-            578.86,
-            578.96,
-            579.10,
-            578.42,
-            577.79,
-            576.83,
-            576.75,
-            576.76,
-            576.30,
-            576.00,
-            576.51,
-            576.52,
-            576.06,
-            575.96,
-            575.95,
-            575.96,
-            576.04,
-            575.14,
-            574.32,
-            573.93,
-            573.89,
-            573.32,
-            572.71,
-            572.02,
-            571.74,
-            571.24,
-            571.03,
-            570.55,
-            570.74,
-            570.32,
-            570.12,
-            569.50,
-            569.63,
-            569.01,
-            569.41,
-            569.06,
-            568.79,
-            568.85,
-            568.23,
-            567.66,
-            567.62,
-            568.32,
-            566.75,
-            566.92,
-            567.48,
-            566.44,
-            566.51,
-            566.62,
-            566.22,
-            565.41,
-            565.52,
-            565.06,
-            565.60,
-            564.82,
-            564.67,
-            564.52,
-            564.13,
-            564.25,
-            563.51,
-            563.22,
-            563.37,
-            564.32,
-            564.34,
-            563.96,
-            563.78,
-            564.73,
-        ])
-        years = np.arange(1875, 1875 + len(water_level))
-
-        df = pd.DataFrame({
-            "water_level": water_level,
-            "year": years,
-            "time": np.arange(1, len(water_level) + 1),
-        })
-
-    if "water_level" in df.columns and "y" not in df.columns:
-        df["y"] = df["water_level"]
+    df = pd.read_csv(file_path)
+    years = (
+        df["year"].values
+        if "year" in df.columns
+        else np.arange(1875, 1875 + len(df["y"]))
+    )
 
     logger.info(f"Lake Huron data shape: {df.shape}")
     logger.info(f"Years: {years[0]} to {years[-1]}")
