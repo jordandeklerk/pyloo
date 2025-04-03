@@ -777,12 +777,10 @@ class PyMCWrapper:
 
         try:
             self.set_data({var_name: future_obs_data}, coords=self.model.coords)
-
             n_samples = idata.posterior.sizes["draw"] * idata.posterior.sizes["chain"]
 
             if num_future_obs > 1:
                 all_step_log_liks = np.zeros((n_samples, num_future_obs))
-
                 original_future_data = future_obs_data.copy()
 
                 for step_idx, future_idx in enumerate(future_indices):
