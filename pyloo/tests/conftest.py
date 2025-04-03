@@ -888,7 +888,7 @@ def time_series_model():
     RANDOM_SEED = 42
     rng = np.random.default_rng(RANDOM_SEED)
 
-    T = 150
+    T = 10000
 
     true_rho = np.array([0.7, -0.3])
     true_sigma = 2.0

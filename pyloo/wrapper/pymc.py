@@ -778,36 +778,94 @@ class PyMCWrapper:
         try:
             self.set_data({var_name: future_obs_data}, coords=self.model.coords)
 
-            log_lik_result = pm.compute_log_likelihood(
-                idata,
-                var_names=[var_name],
-                model=self.model,
-                extend_inferencedata=False,
-            )
-
-            if var_name not in log_lik_result:
-                raise PyMCWrapperError(
-                    f"Failed to compute log likelihood for variable {var_name}. "
-                    "Check model specification and data consistency."
-                )
-
-            log_lik_m = log_lik_result[var_name]
-
-            if "chain" in log_lik_m.dims and "draw" in log_lik_m.dims:
-                log_lik_m = log_lik_m.stack(__sample__=("chain", "draw"))
-
-            n_samples = log_lik_m.sizes["__sample__"]
+            n_samples = idata.posterior.sizes["draw"] * idata.posterior.sizes["chain"]
 
             if num_future_obs > 1:
-                values = log_lik_m.values.reshape(n_samples, num_future_obs)
+                all_step_log_liks = np.zeros((n_samples, num_future_obs))
+
+                original_future_data = future_obs_data.copy()
+
+                for step_idx, future_idx in enumerate(future_indices):
+                    single_step_data = original_future_data[step_idx : step_idx + 1]
+
+                    try:
+                        self.set_data(
+                            {var_name: single_step_data}, coords=self.model.coords
+                        )
+
+                        step_log_lik_result = pm.compute_log_likelihood(
+                            idata,
+                            var_names=[var_name],
+                            model=self.model,
+                            extend_inferencedata=False,
+                        )
+
+                        if var_name in step_log_lik_result:
+                            step_log_lik = step_log_lik_result[var_name]
+
+                            if (
+                                "chain" in step_log_lik.dims
+                                and "draw" in step_log_lik.dims
+                            ):
+                                step_log_lik = step_log_lik.stack(
+                                    __sample__=("chain", "draw")
+                                )
+
+                            all_step_log_liks[:, step_idx] = (
+                                step_log_lik.values.flatten()
+                            )
+                        else:
+                            _log.warning(
+                                "Failed to compute log likelihood for step"
+                                f" {step_idx} (index {future_idx}). Using zeros for"
+                                " this step."
+                            )
+                    except Exception as e:
+                        _log.warning(
+                            f"Error computing log likelihood for step {step_idx} (index"
+                            f" {future_idx}): {str(e)}. Using zeros for this step."
+                        )
+
                 result = xr.DataArray(
-                    values,
+                    all_step_log_liks,
                     dims=["__sample__", "step"],
                     coords={"__sample__": np.arange(n_samples), "step": future_indices},
                     name=f"log_likelihood_{var_name}_future",
                 )
+
+                self.set_data(
+                    {var_name: original_future_data}, coords=self.model.coords
+                )
             else:
-                values = log_lik_m.values.reshape(n_samples)
+                log_lik_result = pm.compute_log_likelihood(
+                    idata,
+                    var_names=[var_name],
+                    model=self.model,
+                    extend_inferencedata=False,
+                )
+
+                if var_name not in log_lik_result:
+                    raise PyMCWrapperError(
+                        f"Failed to compute log likelihood for variable {var_name}. "
+                        "Check model specification and data consistency."
+                    )
+
+                log_lik_m = log_lik_result[var_name]
+
+                if "chain" in log_lik_m.dims and "draw" in log_lik_m.dims:
+                    log_lik_m = log_lik_m.stack(__sample__=("chain", "draw"))
+
+                n_samples = log_lik_m.sizes["__sample__"]
+
+                if log_lik_m.values.size == n_samples:
+                    values = log_lik_m.values.reshape(n_samples)
+                else:
+                    _log.warning(
+                        f"Log likelihood values size {log_lik_m.values.size} doesn't"
+                        f" match expected size {n_samples}. Using zeros."
+                    )
+                    values = np.zeros(n_samples)
+
                 result = xr.DataArray(
                     values,
                     dims=["__sample__"],
