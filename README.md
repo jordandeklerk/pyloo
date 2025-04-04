@@ -39,7 +39,6 @@ PyLOO offers a comprehensive suite of tools for Bayesian model evaluation and co
 *   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow.
 *   **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (`reloo`).
 *   **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (`loo_kfold`).
-*   **Time Series CV (LFO-CV)**: Approximate Leave-Future-Out CV for evaluating time series model forecasts (`loo_future`).
 *   **Moment Matching**: Improve LOO-CV reliability for challenging observations (`loo_moment_match`).
 *   **Variational Inference Support**: Compute LOO-CV for models fitted with Laplace or ADVI approximations (`loo_approximate_posterior`).
 
