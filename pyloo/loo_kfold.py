@@ -627,6 +627,7 @@ def _process_fold(
 
         val_wrapper = deepcopy(fold_wrapper)
         val_wrapper.set_data({var_name: val_data})
+
         ll_k = pm.compute_log_likelihood(
             idata_k,
             var_names=[var_name],
@@ -645,7 +646,7 @@ def _process_fold(
         ufunc_kwargs = {"n_dims": 1, "ravel": False}
         kwargs = {"input_core_dims": [["__sample__"]]}
 
-        elpds_k_xr = wrap_xarray_ufunc(
+        elpd_k = wrap_xarray_ufunc(
             _logsumexp,
             ll_k_stacked,
             func_kwargs={"b_inv": ll_k_stacked.sizes.get("__sample__", 1)},
@@ -659,9 +660,9 @@ def _process_fold(
         if len(k_obs_dims) > 0:
             k_obs_dim = k_obs_dims[0]
             for i in range(len(val_indices)):
-                fold_elpds[i] = elpds_k_xr.isel({k_obs_dim: i}).values.item()
+                fold_elpds[i] = elpd_k.isel({k_obs_dim: i}).values.item()
         else:
-            fold_elpds[0] = elpds_k_xr.values.item()
+            fold_elpds[0] = elpd_k.values.item()
 
     except Exception as e:
         _log.warning(f"Error processing fold: {e}")
