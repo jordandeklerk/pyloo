@@ -23,6 +23,7 @@ from .loo_kfold import (
     loo_kfold,
 )
 from .loo_moment_match import loo_moment_match, loo_moment_match_split
+from .loo_nonfactor import loo_mvn
 from .loo_predictive_metric import loo_predictive_metric
 from .loo_score import loo_score
 from .plots import plot_loo
@@ -46,6 +47,7 @@ __all__ = [
     "loo_group",
     "loo_moment_match",
     "loo_moment_match_split",
+    "loo_mvn",
     "loo_predictive_metric",
     "loo_score",
     "PyMCWrapper",
