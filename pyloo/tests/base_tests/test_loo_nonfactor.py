@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for loo_nonfactor module."""
 
 import logging
@@ -122,6 +121,275 @@ def test_loo_nonfactor_precision_input():
         pytest.fail(
             f"loo_nonfactor with precision matrix raised an unexpected exception: {e}"
         )
+
+
+def test_verify_mvn_structure():
+    """Test the model structure verification helper function."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.random.randn(n_chains, n_samples, n_obs, n_obs)
+    for c in range(n_chains):
+        for s in range(n_samples):
+            cov_samples[c, s] = cov_samples[c, s] @ cov_samples[c, s].T + np.eye(n_obs)
+
+    idata_valid = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    idata_no_mu = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    idata_no_cov_prec = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+            },
+        )
+    )
+
+    idata_no_posterior = InferenceData(
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), np.random.randn(n_obs))},
+            coords={"obs_dim": np.arange(n_obs)},
+        )
+    )
+
+    from pyloo.loo_nonfactor import _validate_mvn_structure
+
+    assert _validate_mvn_structure(idata_valid, "mu", None, None) is True
+
+    with pytest.warns(UserWarning, match="Mean vector .* not found"):
+        assert (
+            _validate_mvn_structure(idata_no_mu, "wrong_mu_name", None, None) is False
+        )
+
+    with pytest.warns(
+        UserWarning, match="Neither covariance nor precision matrix found"
+    ):
+        assert (
+            _validate_mvn_structure(idata_no_cov_prec, "mu", "wrong_cov", "wrong_prec")
+            is False
+        )
+
+    assert _validate_mvn_structure(idata_no_posterior, "mu", None, None) is False
+
+
+def test_loo_nonfactor_warnings():
+    """Test that appropriate warnings are raised for incorrect model structures."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata_missing_cov = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    with pytest.warns(
+        UserWarning,
+        match="specifically designed for non-factorized multivariate normal models",
+    ):
+        with pytest.warns(
+            UserWarning, match="Neither covariance nor precision matrix found"
+        ):
+            with pytest.raises(
+                ValueError, match="Could not find posterior samples for covariance"
+            ):
+                loo_nonfactor(idata_missing_cov, var_name="y")
+
+
+def test_loo_nonfactor_both_cov_prec():
+    """Test that loo_nonfactor works when both covariance and precision matrices are provided."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    prec_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = np.random.randn(n_obs, n_obs) * 0.1
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+            prec_samples[c, s, :, :] = np.linalg.inv(cov_samples[c, s, :, :])
+
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "prec": (("chain", "draw", "obs_dim", "obs_dim_bis"), prec_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    loo_results = loo_nonfactor(idata, var_name="y")
+    assert isinstance(loo_results, ELPDData)
+
+    loo_results_prec = loo_nonfactor(
+        idata, var_name="y", prec_var_name="prec", cov_var_name=None
+    )
+    assert isinstance(loo_results_prec, ELPDData)
+
+
+def test_loo_nonfactor_custom_names():
+    """Test loo_nonfactor with custom variable names."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = np.random.randn(n_obs, n_obs) * 0.1
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mean_vector": (("chain", "draw", "obs_dim"), mu_samples),
+                "covariance_matrix": (
+                    ("chain", "draw", "obs_dim", "obs_dim_bis"),
+                    cov_samples,
+                ),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"observations": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    loo_results = loo_nonfactor(
+        idata,
+        var_name="observations",
+        mu_var_name="mean_vector",
+        cov_var_name="covariance_matrix",
+    )
+
+    assert isinstance(loo_results, ELPDData)
+    assert not np.isnan(loo_results.elpd_loo)
+    assert not np.isnan(loo_results.p_loo)
+
+    with pytest.warns(UserWarning, match="Mean vector 'wrong_mu' not found"):
+        with pytest.raises(ValueError, match="Posterior variable 'wrong_mu' not found"):
+            loo_nonfactor(
+                idata,
+                var_name="observations",
+                mu_var_name="wrong_mu",
+                cov_var_name="covariance_matrix",
+            )
+
+
+def test_loo_nonfactor_singular_matrices():
+    """Test loo_nonfactor handling of singular matrices."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            if c == 0 and s == 0:
+                cov_samples[c, s, :, :] = np.ones((n_obs, n_obs)) * 0.1
+            else:
+                A = np.random.randn(n_obs, n_obs) * 0.1
+                cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    with pytest.warns(UserWarning, match="Covariance matrix is singular"):
+        loo_results = loo_nonfactor(idata, var_name="y")
+        assert isinstance(loo_results, ELPDData)
 
 
 @pytest.mark.skipif(pm is None, reason="PyMC not installed")
