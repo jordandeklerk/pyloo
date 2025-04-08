@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Leave-one-out cross-validation (LOO-CV) for non-factorized multivariate normal models."""
 
 import warnings
