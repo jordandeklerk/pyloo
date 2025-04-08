@@ -44,15 +44,15 @@ def loo_nonfactor(
     .. math::
         \begin{align}
         \mu_{\tilde{y},-i} &= y_i-\bar{c}_{ii}^{-1} g_i \\
-        \sigma_{\tilde{y},-i} &= \sqrt{\bar{c}_{ii}^{-1}}
+        \sigma_{\tilde{y},-i} &= \sqrt{\bar{c}_{ii}^{-1}},
         \end{align}
 
-    where :math:`g_i` and :math:`\bar{c}_{ii}` are:
+    where :math:`g_i` and :math:`\bar{c}_{ii}` are
 
     .. math::
         \begin{align}
         g_i &= \left[C^{-1} y\right]_i \\
-        \bar{c}_{ii} &= \left[C^{-1}\right]_{ii}
+        \bar{c}_{ii} &= \left[C^{-1}\right]_{ii}.
         \end{align}
 
     Using these results, the log predictive density of the :math:`i`-th observation is computed as
@@ -61,14 +61,14 @@ def loo_nonfactor(
         \log p(y_i | y_{-i},\theta)
         = - \frac{1}{2}\log(2\pi)
         + \frac{1}{2}\log \bar{c}_{ii}
-        - \frac{1}{2}\frac{g_i^2}{\bar{c}_{ii}}
+        - \frac{1}{2}\frac{g_i^2}{\bar{c}_{ii}}.
 
     To obtain the leave-one-out predictive density :math:`p(y_i | y_{-i})`, we integrate over
     parameters :math:`\theta` using importance sampling
 
     .. math::
         p(y_i|y_{-i}) \approx
-        \frac{ \sum_{s=1}^S p(y_i|y_{-i},\,\theta^{(s)}) \,w_i^{(s)}}{ \sum_{s=1}^S w_i^{(s)}}
+        \frac{ \sum_{s=1}^S p(y_i|y_{-i},\,\theta^{(s)}) \,w_i^{(s)}}{ \sum_{s=1}^S w_i^{(s)}},
 
     where :math:`w_i^{(s)}` are importance weights computed using Pareto smoothed importance
     sampling (PSIS) or other importance sampling methods.
