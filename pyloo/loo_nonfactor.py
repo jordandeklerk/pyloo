@@ -138,7 +138,18 @@ def loo_nonfactor(
     cross-validation for Bayesian non-factorized normal and Student-t models.
     Computational Statistics, 35(4), 1717-1750.
     """
+    warnings.warn(
+        "loo_nonfactor() is specifically designed for non-factorized multivariate"
+        " normal models. It requires posterior samples of a mean vector and"
+        " covariance/precision matrix. Using this function with other types of models"
+        " will produce incorrect results. If your model doesn't have a multivariate"
+        " normal likelihood or if the likelihood is factorized, use loo() instead.",
+        UserWarning,
+        stacklevel=2,
+    )
+
     inference_data = to_inference_data(data)
+    _validate_mvn_structure(inference_data, mu_var_name, cov_var_name, prec_var_name)
 
     if not hasattr(inference_data, "observed_data"):
         raise TypeError("Must be able to extract an observed_data group from data.")
@@ -486,3 +497,39 @@ def loo_nonfactor(
     result = ELPDData(data=result_data, index=result_index)
     result.attrs = {"is_mvn": True}
     return result
+
+
+def _validate_mvn_structure(inference_data, mu_var_name, cov_var_name, prec_var_name):
+    """Check if the input data appears to be from a multivariate normal model."""
+    if not hasattr(inference_data, "posterior"):
+        return False
+
+    posterior = inference_data.posterior
+
+    if mu_var_name not in posterior.data_vars:
+        warnings.warn(
+            f"Mean vector '{mu_var_name}' not found in posterior. "
+            "This function requires a multivariate normal model with a mean vector.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return False
+
+    has_cov = (
+        cov_var_name is not None and cov_var_name in posterior.data_vars
+    ) or "cov" in posterior.data_vars
+    has_prec = (
+        prec_var_name is not None and prec_var_name in posterior.data_vars
+    ) or "prec" in posterior.data_vars
+
+    if not (has_cov or has_prec):
+        warnings.warn(
+            "Neither covariance nor precision matrix found in posterior. "
+            "loo_nonfactor() requires a multivariate normal model with either "
+            "a covariance or precision matrix.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return False
+
+    return True
