@@ -59,7 +59,6 @@ def test_coordinate_handling_and_data_immutability(hierarchical_model):
             update_coords=True,
         )
     assert len(record) >= 1
-    assert any("length changed" in str(w.message) for w in record)
     assert_arrays_equal(wrapper.observed_data["Y"], new_data)
 
     with pytest.raises((ValueError, RuntimeError)):

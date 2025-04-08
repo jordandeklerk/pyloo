@@ -102,19 +102,11 @@ class PyMCWrapper:
 
         try:
             self._untransformed_model = remove_value_transforms(copy.deepcopy(model))
-        except KeyError as e:
-            _log.warning(
-                "KeyError during model cloning and transform removal: %s. Using"
-                " original model. This might affect parameter transformations if value"
-                " transforms were present.",
-                str(e),
-            )
-            self._untransformed_model = model
         except Exception as e:
             _log.warning(
-                "Failed to clone model and remove transforms: %s. Using original model."
-                " This might affect parameter transformations if value transforms were"
-                " present.",
+                "Failed during model cloning and transform removal: %s. Using original"
+                " model. This might affect parameter transformations if value"
+                " transforms were present.",
                 str(e),
             )
             self._untransformed_model = model
@@ -154,10 +146,9 @@ class PyMCWrapper:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Select and partition observations from a variable's data.
 
-        This method partitions the data into two sets: selected observations and remaining
-        observations. This is particularly useful for leave-one-out cross-validation where
-        you need both the held-out data and the training data. If no variable name is provided,
-        uses the first observed variable in the model.
+        Partitions the data into two sets: selected observations and remaining
+        observations. If no variable name is provided, uses the first observed
+        variable in the model.
 
         Parameters
         ----------
@@ -174,24 +165,14 @@ class PyMCWrapper:
         tuple[np.ndarray, np.ndarray]
             - Selected (held-out) observations
             - Remaining (training) observations
-
-        Raises
-        ------
-        PyMCWrapperError
-            If no observed variables exist or the specified variable name is not found
-        IndexError
-            If indices are out of bounds or negative
         """
         if not self.observed_data:
             raise PyMCWrapperError("No observed variables found in the model")
 
         if var_name is None:
             var_name = self.get_observed_name()
-        elif var_name not in self.observed_data:
-            raise PyMCWrapperError(
-                f"Variable '{var_name}' not found in observed data. "
-                f"Available variables: {list(self.observed_data.keys())}"
-            )
+        else:
+            self._validate_observed_var(var_name)
 
         data = self.observed_data[var_name]
         if axis is None:
@@ -246,14 +227,6 @@ class PyMCWrapper:
         Returns
         -------
         None
-
-        Raises
-        ------
-        PyMCWrapperError
-            If the provided data has incompatible dimensions with the model,
-            if the variable name is not found in the model
-        ValueError
-            If coordinates are invalid or missing required dimensions
         """
         for var_name, values in new_data.items():
             var = self.get_variable(var_name)
@@ -287,58 +260,10 @@ class PyMCWrapper:
                     )
                 values = np.ma.masked_array(values, mask=~mask_array)
 
-            orig_dims = self.get_dims()
-            if orig_dims is None:
-                self.observed_data[var_name] = values
-                # Make data immutable
-                if isinstance(values, np.ndarray):
-                    values.flags.writeable = False
-                continue
-
-            working_coords = {} if coords is None else coords.copy()
-            required_dims = {d for d in orig_dims if d is not None}
-            missing_coords = required_dims - set(working_coords.keys())
-
-            if not update_coords and missing_coords:
-                raise ValueError(
-                    f"Missing coordinates for dimensions {missing_coords} of variable"
-                    f" {var_name}"
-                )
-
-            for dim, size in zip(orig_dims, values.shape):
-                if dim is not None:
-                    if dim not in working_coords:
-                        if update_coords:
-                            working_coords[dim] = list(range(size))
-                            warnings.warn(
-                                "Automatically created coordinates for dimension"
-                                f" {dim}",
-                                UserWarning,
-                                stacklevel=2,
-                            )
-                        else:
-                            raise ValueError(
-                                f"Missing coordinates for dimension {dim} of variable"
-                                f" {var_name}"
-                            )
-                    elif len(working_coords[dim]) != size:
-                        if update_coords:
-                            original_len = len(working_coords[dim])
-                            working_coords[dim] = list(range(size))
-                            warnings.warn(
-                                f"Coordinate length changed from {original_len} to"
-                                f" {size}",
-                                UserWarning,
-                                stacklevel=2,
-                            )
-                        else:
-                            raise ValueError(
-                                f"Coordinate length {len(working_coords[dim])} for"
-                                f" dimension {dim} does not match variable shape"
-                                f" {size} for {var_name}"
-                            )
+            self._coords_update(var_name, values, coords, update_coords)
 
             self.observed_data[var_name] = values
+            # Make data immutable after potential updates
             if isinstance(values, np.ndarray):
                 values.flags.writeable = False
 
@@ -373,15 +298,6 @@ class PyMCWrapper:
             For multiple indices (array, slice), returns a DataArray with dimensions (chain, draw, obs_idx)
             where obs_idx is the dimension for the observations, with an attribute 'observation_indices'
             containing the list of indices.
-
-        Raises
-        ------
-        PyMCWrapperError
-            If the variable is not found, observed data is missing, the variable contains missing values,
-            or if the log likelihood computation fails.
-        IndexError
-            If `idx` is out of bounds for the observed data when providing a single index.
-            For slices or arrays, out-of-bounds indices will be clipped with a warning.
 
         Examples
         --------
@@ -444,8 +360,8 @@ class PyMCWrapper:
                 f"Available observed variables: {list(self.observed_data.keys())}"
             )
 
-        if np.any(self.get_missing_mask(var_name)):
-            raise PyMCWrapperError(f"Missing values found in {var_name}")
+        self._validate_observed_var(var_name)
+        self._check_missing_values(var_name)
 
         if not hasattr(idata, "posterior"):
             raise PyMCWrapperError(
@@ -543,19 +459,6 @@ class PyMCWrapper:
         -------
         InferenceData
             ArviZ InferenceData object containing the posterior samples and log likelihood values.
-
-        Raises
-        ------
-        PyMCWrapperError
-            If sampling parameters are invalid or if the sampling process fails.
-
-        Notes
-        -----
-        The method first checks that your sampling parameters are valid, like making sure you have a
-        positive number of draws and chains. It automatically enables log likelihood computation if you
-        haven't already specified it, since this is necessary for LOO-CV. Also, if any of your model's
-        free random variables are missing transforms, the method adds an identity transform to prevent
-        sampling errors.
         """
         if draws <= 0:
             raise PyMCWrapperError(f"Number of draws must be positive, got {draws}")
@@ -851,10 +754,6 @@ class PyMCWrapper:
     ) -> xr.DataArray:
         """Compute the log likelihood for a set of posterior draws.
 
-        This method calculates the pointwise log likelihood for an observed variable
-        in the model. It can either use the current parameter values in the model or
-        a specific set of parameter draws.
-
         Parameters
         ----------
         var_name : str | None, default=None
@@ -874,13 +773,6 @@ class PyMCWrapper:
             An xarray DataArray containing the pointwise log likelihood values.
             The dimensions and coordinates of the DataArray will match those of
             the observed variable, with the name format "log_likelihood_{var_name}".
-
-        Raises
-        ------
-        PyMCWrapperError
-            If the variable is not found in the model, if no observed data exists
-            for the variable, if the variable contains missing values, or if the
-            log likelihood computation fails for any other reason.
         """
         if var_name is None:
             var_name = self.get_observed_name()
@@ -897,8 +789,9 @@ class PyMCWrapper:
                 f"Available observed variables: {list(self.observed_data.keys())}"
             )
 
-        if np.any(self.get_missing_mask(var_name)):
-            raise PyMCWrapperError(f"Missing values found in {var_name}")
+        # Use helper methods for validation
+        self._validate_observed_var(var_name)
+        self._check_missing_values(var_name)
 
         try:
             # If draws are provided, temporarily set the model's parameters
@@ -949,7 +842,6 @@ class PyMCWrapper:
                 if shape is None:
                     raise PyMCWrapperError(f"Could not determine shape for {var_name}")
 
-                # Fix here: Create a tuple directly instead of a list
                 dims = tuple(f"dim_{i}" for i in range(len(shape)))
                 coords = {dim: np.arange(size) for dim, size in zip(dims, shape)}
 
@@ -967,7 +859,6 @@ class PyMCWrapper:
                 raise
             raise PyMCWrapperError(f"Failed to compute log likelihood: {str(e)}")
         finally:
-            # Restore original parameter values if they were changed
             if draws is not None:
                 for param_name, original_value in original_values.items():
                     var = self.model.named_vars[param_name]
@@ -1010,17 +901,8 @@ class PyMCWrapper:
         -------
         np.ndarray
             Boolean mask where True indicates missing values
-
-        Raises
-        ------
-        PyMCWrapperError
-            If the variable name is not found
         """
-        if var_name not in self.observed_data:
-            raise PyMCWrapperError(
-                f"Variable '{var_name}' not found in observed data. "
-                f"Available variables: {list(self.observed_data.keys())}"
-            )
+        self._validate_observed_var(var_name)
 
         data = self.observed_data[var_name]
         if isinstance(data, np.ma.MaskedArray):
@@ -1045,11 +927,6 @@ class PyMCWrapper:
         -------
         str
             Name of the first observed variable
-
-        Raises
-        ------
-        PyMCWrapperError
-            If no observed variables exist in the model
         """
         if not self.observed_data:
             raise PyMCWrapperError("No observed variables found in the model")
@@ -1062,11 +939,6 @@ class PyMCWrapper:
         -------
         np.ndarray
             Data of the first observed variable
-
-        Raises
-        ------
-        PyMCWrapperError
-            If no observed variables exist in the model
         """
         return self.observed_data[self.get_observed_name()].copy()
 
@@ -1140,11 +1012,6 @@ class PyMCWrapper:
         -------
         tuple[int, ...] | None
             Shape of the variable or None if variable not found
-
-        Notes
-        -----
-        For observed variables, returns the shape of the observed data.
-        For other variables, returns the shape from the model definition.
         """
         if var_name in self.observed_data:
             return tuple(self.observed_data[var_name].shape)
@@ -1174,3 +1041,74 @@ class PyMCWrapper:
         except Exception as e:
             _log.warning("Forward transform failed: %s", str(e))
             raise
+
+    def _coords_update(
+        self,
+        var_name: str,
+        values: np.ndarray,
+        coords: dict[str, Sequence] | None,
+        update_coords: bool,
+    ) -> None:
+        """Modifies 'working_coords' but doesn't directly set self.observed_data or
+        self.observed_dims. The caller (`set_data`) is responsible for setting
+        self.observed_data. Coordinate info is primarily managed via InferenceData
+        or model attributes elsewhere.
+        """
+        orig_dims = self.get_dims(var_name)
+        if orig_dims is None:
+            return
+
+        working_coords = {} if coords is None else coords.copy()
+        required_dims = {d for d in orig_dims if d is not None}
+        missing_coords = required_dims - set(working_coords.keys())
+
+        if not update_coords and missing_coords:
+            raise ValueError(
+                f"Missing coordinates for dimensions {missing_coords} of variable"
+                f" {var_name}"
+            )
+
+        for dim, size in zip(orig_dims, values.shape):
+            if dim is not None:
+                if dim not in working_coords:
+                    if update_coords:
+                        working_coords[dim] = list(range(size))
+                        warnings.warn(
+                            f"Automatically created coordinates for dimension {dim}",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                    else:
+                        raise ValueError(
+                            f"Missing coordinates for dimension {dim} of variable"
+                            f" {var_name}"
+                        )
+                elif len(working_coords[dim]) != size:
+                    if update_coords:
+                        original_len = len(working_coords[dim])
+                        working_coords[dim] = list(range(size))
+                        warnings.warn(
+                            f"Coordinate length for dimension {dim} changed from"
+                            f" {original_len} to {size}",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                    else:
+                        raise ValueError(
+                            f"Coordinate length {len(working_coords[dim])} for"
+                            f" dimension {dim} does not match variable shape {size}"
+                            f" for {var_name}"
+                        )
+
+    def _validate_observed_var(self, var_name: str) -> None:
+        """Check if the variable name exists in observed_data."""
+        if var_name not in self.observed_data:
+            raise PyMCWrapperError(
+                f"Variable '{var_name}' not found in observed data. "
+                f"Available variables: {list(self.observed_data.keys())}"
+            )
+
+    def _check_missing_values(self, var_name: str) -> None:
+        """Check if the observed variable contains missing values."""
+        if np.any(self.get_missing_mask(var_name)):
+            raise PyMCWrapperError(f"Missing values found in {var_name}")
