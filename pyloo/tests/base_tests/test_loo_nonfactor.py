@@ -10,12 +10,12 @@ import pytest
 import xarray as xr
 from arviz import InferenceData
 
-from pyloo import loo_mvn
+from pyloo import loo_nonfactor
 from pyloo.elpd import ELPDData
 
 
-def test_loo_mvn_basic():
-    """Test basic functionality of loo_mvn."""
+def test_loo_nonfactor_basic():
+    """Test basic functionality of loo_nonfactor."""
     n_obs = 10
     n_samples = 100
     n_chains = 2
@@ -49,7 +49,7 @@ def test_loo_mvn_basic():
     )
 
     try:
-        loo_results = loo_mvn(idata, var_name="y", pointwise=True)
+        loo_results = loo_nonfactor(idata, var_name="y", pointwise=True)
 
         assert isinstance(loo_results, ELPDData)
         assert "elpd_loo" in loo_results
@@ -62,11 +62,11 @@ def test_loo_mvn_basic():
         assert not np.isnan(loo_results.p_loo)
 
     except Exception as e:
-        pytest.fail(f"loo_mvn raised an unexpected exception: {e}")
+        pytest.fail(f"loo_nonfactor raised an unexpected exception: {e}")
 
 
-def test_loo_mvn_precision_input():
-    """Test loo_mvn using precision matrix input."""
+def test_loo_nonfactor_precision_input():
+    """Test loo_nonfactor using precision matrix input."""
     n_obs = 8
     n_samples = 120
     n_chains = 2
@@ -104,7 +104,9 @@ def test_loo_mvn_precision_input():
     )
 
     try:
-        loo_results = loo_mvn(idata, var_name="y", prec_var_name="prec", pointwise=True)
+        loo_results = loo_nonfactor(
+            idata, var_name="y", prec_var_name="prec", pointwise=True
+        )
 
         assert isinstance(loo_results, ELPDData)
         assert "elpd_loo" in loo_results
@@ -118,13 +120,13 @@ def test_loo_mvn_precision_input():
 
     except Exception as e:
         pytest.fail(
-            f"loo_mvn with precision matrix raised an unexpected exception: {e}"
+            f"loo_nonfactor with precision matrix raised an unexpected exception: {e}"
         )
 
 
 @pytest.mark.skipif(pm is None, reason="PyMC not installed")
-def test_loo_mvn_pymc_model():
-    """Test loo_mvn with data generated from a PyMC model using a joint MVN likelihood."""
+def test_loo_nonfactor_pymc_model():
+    """Test loo_nonfactor with data generated from a PyMC model using a joint MVN likelihood."""
     n_obs = 200
     y_obs = np.random.randn(n_obs)
 
@@ -142,7 +144,7 @@ def test_loo_mvn_pymc_model():
             draws=500, tune=500, chains=2, return_inferencedata=True, target_accept=0.9
         )
 
-        loo_results = loo_mvn(
+        loo_results = loo_nonfactor(
             idata,
             var_name="y_obs",
             mu_var_name="mu",
@@ -164,6 +166,6 @@ def test_loo_mvn_pymc_model():
         assert not np.any(np.isnan(loo_results.loo_i))
         assert not np.any(np.isnan(loo_results.pareto_k))
 
-        logging.info(f"loo_mvn successful: elpd_loo={loo_results.elpd_loo}")
+        logging.info(f"loo_nonfactor successful: elpd_loo={loo_results.elpd_loo}")
         logging.info(f"p_loo={loo_results.p_loo}")
         logging.info(f"p_loo_se={loo_results.p_loo_se}")

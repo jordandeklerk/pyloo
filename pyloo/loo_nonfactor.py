@@ -15,10 +15,10 @@ from .elpd import ELPDData
 from .rcparams import rcParams
 from .utils import _logsumexp, to_inference_data, wrap_xarray_ufunc
 
-__all__ = ["loo_mvn"]
+__all__ = ["loo_nonfactor"]
 
 
-def loo_mvn(
+def loo_nonfactor(
     data: InferenceData | Any,
     pointwise: bool | None = None,
     var_name: str | None = None,
@@ -28,14 +28,51 @@ def loo_mvn(
     mu_var_name: str = "mu",
     cov_var_name: str | None = None,
     prec_var_name: str | None = None,
-    **kwargs,
 ) -> ELPDData:
     r"""Compute LOO-CV for multivariate normal models using importance sampling.
 
-    Estimates the expected log pointwise predictive density (elpd) for
-    non-factorized multivariate normal models using importance sampling
-    leave-one-out cross-validation. By default, uses Pareto-smoothed importance
-    sampling (PSIS).
+    Estimates the expected log pointwise predictive density (elpd) for non-factorized
+    multivariate normal models using importance sampling leave-one-out cross-validation.
+
+    In non-factorized models, the joint likelihood of the response values :math:`p(y | \theta)`
+    is not factorized into observation-specific components, but rather given directly as one
+    joint expression. For some models, an analytic factorized formulation is simply not available,
+    while for others, a non-factorized form may be preferred for efficiency and numerical stability.
+
+    For multivariate normal models with covariance matrix :math:`C`, the LOO predictive mean
+    and standard deviation can be computed efficiently as
+
+    .. math::
+        \begin{align}
+        \mu_{\tilde{y},-i} &= y_i-\bar{c}_{ii}^{-1} g_i \\
+        \sigma_{\tilde{y},-i} &= \sqrt{\bar{c}_{ii}^{-1}}
+        \end{align}
+
+    where :math:`g_i` and :math:`\bar{c}_{ii}` are:
+
+    .. math::
+        \begin{align}
+        g_i &= \left[C^{-1} y\right]_i \\
+        \bar{c}_{ii} &= \left[C^{-1}\right]_{ii}
+        \end{align}
+
+    Using these results, the log predictive density of the :math:`i`-th observation is computed as
+
+    .. math::
+        \log p(y_i | y_{-i},\theta)
+        = - \frac{1}{2}\log(2\pi)
+        + \frac{1}{2}\log \bar{c}_{ii}
+        - \frac{1}{2}\frac{g_i^2}{\bar{c}_{ii}}
+
+    To obtain the leave-one-out predictive density :math:`p(y_i | y_{-i})`, we integrate over
+    parameters :math:`\theta` using importance sampling
+
+    .. math::
+        p(y_i|y_{-i}) \approx
+        \frac{ \sum_{s=1}^S p(y_i|y_{-i},\,\theta^{(s)}) \,w_i^{(s)}}{ \sum_{s=1}^S w_i^{(s)}}
+
+    where :math:`w_i^{(s)}` are importance weights computed using Pareto smoothed importance
+    sampling (PSIS) or other importance sampling methods.
 
     Parameters
     ----------
@@ -63,16 +100,38 @@ def loo_mvn(
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
-    **kwargs:
-        Additional keyword arguments. May include names for mean vector and
-        covariance/precision matrix variables in the posterior group if they
-        differ from standard conventions. Defaults are "mu" for the mean,
-        and the function will search for "cov" or "prec" for the
-        covariance/precision matrix.
+    mu_var_name: str
+        Name of the variable in posterior group storing the mean vector.
+        Defaults to "mu".
+    cov_var_name: str | None
+        Name of the variable in posterior group storing the covariance matrix.
+        If not provided, the function will look for a variable named "cov".
+    prec_var_name: str | None
+        Name of the variable in posterior group storing the precision matrix.
+        If not provided, the function will look for a variable named "prec".
+        Only used if covariance matrix is not found.
 
     Returns
     -------
-    ELPDData object containing the LOO-CV results.
+    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
+    elpd_loo: approximated expected log pointwise predictive density (elpd)
+    se: standard error of the elpd
+    p_loo: effective number of parameters
+    p_loo_se: standard error of p_loo
+    n_samples: number of samples
+    n_data_points: number of data points
+    warning: bool
+        True if using PSIS and the estimated shape parameter of Pareto distribution
+        is greater than ``good_k``.
+    loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
+            only if pointwise=True
+    diagnostic: array of diagnostic values, only if pointwise=True
+        - For PSIS: Pareto shape parameter (pareto_k)
+        - For SIS/TIS: Effective sample size (ess)
+    scale: scale of the elpd
+    looic: LOO information criterion (computed as -2 * elpd_loo)
+    looic_se: standard error of looic
+    good_k: For PSIS method and sample size :math:`S`, threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`
 
     References
     ----------
@@ -115,6 +174,7 @@ def loo_mvn(
         y = obs_group[var_name]
     except KeyError:
         raise ValueError(f"Variable '{var_name}' not found in observed_data group.")
+
     y_name = var_name
     if y.ndim != 1:
         # TODO: Extend to handle multivariate y (N x D)
@@ -378,7 +438,6 @@ def loo_mvn(
     )
 
     lppd = lppd_i.sum().item()
-
     p_loo = lppd - loo_lppd / scale_value
     p_loo_se = np.sqrt(np.sum(np.var(loo_lppd_i.values)))
 
@@ -420,6 +479,7 @@ def loo_mvn(
 
         result_data.append(diagnostic_named)
         result_index.append(diagnostic_name)
+
         if method == ISMethod.PSIS:
             result_data.append(good_k)
             result_index.append("good_k")
