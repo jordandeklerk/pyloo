@@ -126,22 +126,52 @@ def test_loo_nonfactor_precision_input():
 
 @pytest.mark.skipif(pm is None, reason="PyMC not installed")
 def test_loo_nonfactor_pymc_model():
-    """Test loo_nonfactor with data generated from a PyMC model using a joint MVN likelihood."""
-    n_obs = 200
-    y_obs = np.random.randn(n_obs)
+    """Test loo_nonfactor with a realistic spatial model using a joint MVN likelihood."""
+    np.random.seed(42)
+    n_obs = 25
+
+    coords_x = np.random.uniform(0, 10, size=n_obs)
+    coords_y = np.random.uniform(0, 10, size=n_obs)
+
+    coords = np.vstack([coords_x, coords_y]).T
+    dists = np.zeros((n_obs, n_obs))
+    for i in range(n_obs):
+        for j in range(n_obs):
+            dists[i, j] = np.sqrt(np.sum((coords[i] - coords[j]) ** 2))
+
+    true_sigma = 1.0
+    true_ls = 2.0
+    true_cov = true_sigma**2 * np.exp(-dists / true_ls)
+    true_cov += np.eye(n_obs) * 0.01
+
+    true_mean = 2 + 0.5 * coords_x - 0.3 * coords_y
+    y_obs = np.random.multivariate_normal(true_mean, true_cov)
 
     with pm.Model() as model:
-        mu = pm.Normal("mu", mu=0, sigma=2, shape=n_obs)
-        sd = pm.HalfNormal("sd", sigma=1, shape=n_obs)
+        intercept = pm.Normal("intercept", mu=0, sigma=2)
+        beta_x = pm.Normal("beta_x", mu=0, sigma=1)
+        beta_y = pm.Normal("beta_y", mu=0, sigma=1)
 
-        cov_values = pt.diag(sd**2)
+        mean_values = intercept + beta_x * coords_x + beta_y * coords_y
+
+        pm.Deterministic("mu", mean_values)
+
+        sigma = pm.HalfNormal("sigma", sigma=2)
+        length_scale = pm.Gamma("length_scale", alpha=2, beta=1)
+
+        cov_values = sigma**2 * pt.exp(-dists / length_scale)
+        cov_values = cov_values + pt.eye(n_obs) * 0.01
+
         pm.Deterministic("cov", cov_values)
-
-        pm.MvNormal("y_obs", mu=mu, cov=cov_values, observed=y_obs)
+        pm.MvNormal("y_obs", mu=mean_values, cov=cov_values, observed=y_obs)
 
     with model:
         idata = pm.sample(
-            draws=500, tune=500, chains=2, return_inferencedata=True, target_accept=0.9
+            draws=500,
+            tune=1000,
+            chains=2,
+            return_inferencedata=True,
+            target_accept=0.95,
         )
 
         loo_results = loo_nonfactor(
@@ -169,3 +199,5 @@ def test_loo_nonfactor_pymc_model():
         logging.info(f"loo_nonfactor successful: elpd_loo={loo_results.elpd_loo}")
         logging.info(f"p_loo={loo_results.p_loo}")
         logging.info(f"p_loo_se={loo_results.p_loo_se}")
+
+        logging.info(f"{loo_results}")

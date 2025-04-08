@@ -483,4 +483,6 @@ def loo_nonfactor(
             result_data.append(good_k)
             result_index.append("good_k")
 
-    return ELPDData(data=result_data, index=result_index)
+    result = ELPDData(data=result_data, index=result_index)
+    result.attrs = {"is_mvn": True}
+    return result
