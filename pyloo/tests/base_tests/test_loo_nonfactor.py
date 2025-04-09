@@ -1,4 +1,4 @@
-"""Tests for loo_nonfactor module."""
+"""Tests for non-factorized multivariate models."""
 
 import logging
 
