@@ -1,9 +1,10 @@
-"""Leave-one-out cross-validation (LOO-CV) for non-factorized multivariate normal models."""
+"""Leave-one-out cross-validation (LOO-CV) for non-factorized multivariate normal and Student-t models."""
 
 import warnings
 from typing import Any, Literal
 
 import numpy as np
+import scipy.special
 import xarray as xr
 from arviz.data import InferenceData
 from arviz.stats.diagnostics import ess
@@ -27,11 +28,13 @@ def loo_nonfactor(
     mu_var_name: str = "mu",
     cov_var_name: str | None = None,
     prec_var_name: str | None = None,
+    model_type: Literal["normal", "student_t"] = "normal",
+    df_var_name: str = "df",
 ) -> ELPDData:
-    r"""Compute LOO-CV for multivariate normal models using importance sampling.
+    r"""Compute LOO-CV for multivariate normal and Student-t models using importance sampling.
 
     Estimates the expected log pointwise predictive density (elpd) for non-factorized
-    multivariate normal models using importance sampling leave-one-out cross-validation.
+    multivariate normal and Student-t models using importance sampling leave-one-out cross-validation.
 
     In non-factorized models, the joint likelihood of the response values :math:`p(y | \theta)`
     is not factorized into observation-specific components, but rather given directly as one
@@ -73,13 +76,43 @@ def loo_nonfactor(
     where :math:`w_i^{(s)}` are importance weights computed using Pareto smoothed importance
     sampling (PSIS) or other importance sampling methods.
 
+    For multivariate Student-t models with degrees of freedom :math:`\\nu`, location vector
+    :math:`\\mu` and scale matrix :math:`\\Sigma`, the conditional distribution is also
+    a Student-t distribution with parameters
+
+    .. math::
+        \\begin{align}
+        \\tilde{\\nu}_i &= \\nu + N - 1 \\quad \\text{(where N is data size)} \\\\
+        \\tilde{\\mu}_i &= y_i - \\frac{g_i}{\\bar{c}_{ii}} \\\\
+        \\tilde{\\sigma}_i &= \\frac{\\nu + \\beta_{-i}}{\\nu + N - 1} \\cdot \\frac{1}{\\bar{c}_{ii}},
+        \\end{align}
+
+    where :math:`\\beta_{-i}` is a quadratic form defined as
+
+    .. math::
+        \\beta_{-i} = (y_{-i} - \\mu_{-i})^T
+        \\left(C^{-1}_{-i,-i} - \\frac{\\bar{c}_{-i,i}\\bar{c}^T_{-i,i}}{\\bar{c}_{ii}}\\right)
+        (y_{-i} - \\mu_{-i}).
+
+    The log-likelihood for this conditional Student-t distribution is
+
+    .. math::
+        \\begin{align}
+        \\log p(y_i | y_{-i},\\theta) &= \\log\\Gamma\\left(\\frac{\\tilde{\\nu}_i+1}{2}\\right) -
+        \\log\\Gamma\\left(\\frac{\\tilde{\\nu}_i}{2}\\right) \\\\
+        &- \\frac{1}{2}\\log(\\tilde{\\nu}_i\\pi\\tilde{\\sigma}_i) \\\\
+        &- \\frac{\\tilde{\\nu}_i+1}{2}\\log\\left(1 +
+        \\frac{(y_i - \\tilde{\\mu}_i)^2}{\\tilde{\\nu}_i\\tilde{\\sigma}_i}\\right).
+        \\end{align}
+
     Parameters
     ----------
     data: InferenceData | Any
         Any object that can be converted to an :class:`arviz.InferenceData` object.
         Must contain posterior samples for the mean vector and covariance matrix
-        (or precision matrix) of the multivariate normal likelihood, as well as
-        the observed data `y`.
+        (or precision matrix) of the multivariate normal or Student-t likelihood,
+        as well as the observed data `y`. For Student-t models, it must also contain
+        posterior samples for the degrees of freedom parameter.
     pointwise: bool | None
         If True the pointwise predictive accuracy will be returned. Defaults to
         ``stats.ic_pointwise`` rcParam.
@@ -109,6 +142,11 @@ def loo_nonfactor(
         Name of the variable in posterior group storing the precision matrix.
         If not provided, the function will look for a variable named "prec".
         Only used if covariance matrix is not found.
+    model_type: Literal["normal", "student_t"]
+        Type of the model. Either "normal" (default) or "student_t".
+    df_var_name: str
+        Name of the variable in posterior group storing the degrees of freedom.
+        Only used when model_type="student_t". Defaults to "df".
 
     Returns
     -------
@@ -138,18 +176,28 @@ def loo_nonfactor(
     cross-validation for Bayesian non-factorized normal and Student-t models.
     Computational Statistics, 35(4), 1717-1750.
     """
+    if model_type not in ["normal", "student_t"]:
+        raise ValueError(
+            f"Unsupported model_type: {model_type}. Must be 'normal' or 'student_t'."
+        )
+
     warnings.warn(
-        "loo_nonfactor() is specifically designed for non-factorized multivariate"
-        " normal models. It requires posterior samples of a mean vector and"
-        " covariance/precision matrix. Using this function with other types of models"
-        " will produce incorrect results. If your model doesn't have a multivariate"
-        " normal likelihood or if the likelihood is factorized, use loo() instead.",
+        f"loo_nonfactor() with model_type='{model_type}' requires the correct model"
+        " specification. Using this function with mismatched models will produce"
+        " incorrect results.",
         UserWarning,
         stacklevel=2,
     )
 
     inference_data = to_inference_data(data)
-    _validate_mvn_structure(inference_data, mu_var_name, cov_var_name, prec_var_name)
+    _validate_mvn_structure(
+        inference_data,
+        mu_var_name,
+        cov_var_name,
+        prec_var_name,
+        model_type,
+        df_var_name,
+    )
 
     if not hasattr(inference_data, "observed_data"):
         raise TypeError("Must be able to extract an observed_data group from data.")
@@ -187,7 +235,6 @@ def loo_nonfactor(
 
     y_name = var_name
     if y.ndim != 1:
-        # TODO: Extend to handle multivariate y (N x D)
         raise ValueError(
             f"Observed data '{y_name}' must be 1-dimensional (N,). Found shape"
             f" {y.shape}."
@@ -230,6 +277,7 @@ def loo_nonfactor(
             " ('prec') matrix. Specify the variable name using `cov_var_name` or"
             " `prec_var_name`."
         )
+
     if cov_matrix is not None and prec_matrix is not None:
         warnings.warn(
             f"Found both covariance ('{cov_var_name}') and precision"
@@ -240,6 +288,7 @@ def loo_nonfactor(
         prec_matrix = None
 
     mu = mu.stack(__sample__=("chain", "draw"))
+
     if cov_matrix is not None:
         cov_matrix = cov_matrix.stack(__sample__=("chain", "draw"))
         if cov_matrix.shape[-3:] != (n_data_points, n_data_points, mu.shape[-1]):
@@ -318,6 +367,18 @@ def loo_nonfactor(
     log_const = -0.5 * np.log(2 * np.pi)
     y_vals = y.values
 
+    # Get degrees of freedom for Student-t models
+    df = None
+    if model_type == "student_t":
+        try:
+            df = post_group[df_var_name]
+            df = df.stack(__sample__=("chain", "draw"))
+        except KeyError:
+            raise ValueError(
+                f"Degrees of freedom variable '{df_var_name}' not found in posterior. "
+                "Please specify the correct variable name using 'df_var_name'."
+            )
+
     for s in range(n_samples):
         mu_s = mu.values[..., s]
         if cov_matrix is not None:
@@ -325,11 +386,6 @@ def loo_nonfactor(
             try:
                 cinv_s = inv(cov_s)
             except np.linalg.LinAlgError:
-                warnings.warn(
-                    f"Sample {s}: Covariance matrix is singular. Skipping.",
-                    UserWarning,
-                    stacklevel=2,
-                )
                 log_lik_i[s, :] = -np.inf
                 continue
         else:
@@ -337,38 +393,84 @@ def loo_nonfactor(
             try:
                 cinv_s = inv(cinv_s)
             except np.linalg.LinAlgError:
-                warnings.warn(
-                    f"Sample {s}: Precision matrix is singular. Skipping.",
-                    UserWarning,
-                    stacklevel=2,
-                )
                 log_lik_i[s, :] = -np.inf
                 continue
 
         g_s = cinv_s @ (y_vals - mu_s)
         cbar_diag_s = np.diag(cinv_s)
 
-        if np.any(cbar_diag_s <= 0):
-            warnings.warn(
-                f"Sample {s}: Non-positive values found in diagonal of inverse"
-                " covariance (c̄_ii). This might indicate numerical instability."
-                " Results may be unreliable. Setting log-likelihood to -inf for"
-                " affected points.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-            bad_idx = cbar_diag_s <= 0
+        bad_idx = cbar_diag_s <= 0
+        if np.any(bad_idx):
             cbar_diag_s[bad_idx] = np.finfo(float).eps  # Avoid log(0) or log(-)
 
+        # Compute model-specific conditional log-likelihood
+        if model_type == "normal":
+            # Normal model calculation
             log_lik_i[s, :] = (
                 log_const + 0.5 * np.log(cbar_diag_s) - 0.5 * (g_s**2 / cbar_diag_s)
             )
-            log_lik_i[s, bad_idx] = -np.inf
-        else:
-            log_lik_i[s, :] = (
-                log_const + 0.5 * np.log(cbar_diag_s) - 0.5 * (g_s**2 / cbar_diag_s)
+            if np.any(cbar_diag_s <= 0):
+                log_lik_i[s, bad_idx] = -np.inf
+
+        elif model_type == "student_t":
+            # Get degrees of freedom for this sample
+            if df is None:
+                raise ValueError(
+                    "Must provide degrees of freedom variable when"
+                    " model_type='student_t'."
+                )
+            df_s = float(df.values[..., s])
+
+            if df_s <= 0:
+                warnings.warn(
+                    f"Sample {s}: Non-positive degrees of freedom ({df_s}). "
+                    "Setting log-likelihood to -inf.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                log_lik_i[s, :] = -np.inf
+                continue
+
+            # Compute all betas
+            betas = np.array([
+                compute_beta_minus_i(y_vals, mu_s, cinv_s, i)
+                for i in range(n_data_points)
+            ])
+
+            if np.any(np.isnan(betas)) or np.any(np.isinf(betas)):
+                warnings.warn(
+                    f"Sample {s}: Numerical issues in beta computation. "
+                    "Setting problematic points to -inf.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                problematic = np.isnan(betas) | np.isinf(betas)
+                log_lik_i[s, problematic] = -np.inf
+
+            # Compute conditional parameters
+            cond_df = df_s + n_data_points - 1
+            cond_loc = y_vals - g_s / cbar_diag_s
+            cond_scale = ((df_s + betas) / (df_s + n_data_points - 1)) * (
+                1 / cbar_diag_s
             )
+
+            # Compute log-likelihood for Student-t
+            for i in range(n_data_points):
+                if np.isnan(betas[i]) or np.isinf(betas[i]) or cbar_diag_s[i] <= 0:
+                    log_lik_i[s, i] = -np.inf
+                    continue
+
+                log_lik_i[s, i] = (
+                    scipy.special.gammaln((cond_df + 1) / 2)
+                    - scipy.special.gammaln(cond_df / 2)
+                    - 0.5 * np.log(cond_df * np.pi * cond_scale[i])
+                    - ((cond_df + 1) / 2)
+                    * np.log(
+                        1
+                        + (1 / cond_df)
+                        * ((y_vals[i] - cond_loc[i]) ** 2 / cond_scale[i])
+                    )
+                )
 
     log_lik_i_xarray = xr.DataArray(
         log_lik_i.T,  # Transpose to (N, S)
@@ -377,19 +479,17 @@ def loo_nonfactor(
         name="conditional_log_likelihood",
     )
 
-    if np.any(np.isnan(log_lik_i_xarray.values)):
-        warnings.warn(
-            "NaN values detected in conditional log-likelihood calculation, likely due"
-            " to singular matrices or numerical issues. Replacing with -inf.",
-            UserWarning,
-            stacklevel=2,
-        )
+    has_nan = np.any(np.isnan(log_lik_i_xarray.values))
+    has_neginf = np.any(np.isneginf(log_lik_i_xarray.values))
+
+    if has_nan:
         log_lik_i_xarray = log_lik_i_xarray.fillna(-np.inf)
 
-    if np.any(np.isneginf(log_lik_i_xarray.values)):
+    if has_nan or has_neginf:
         warnings.warn(
-            "Negative infinity values detected in conditional log-likelihood. "
-            "These points will have zero weight in the final calculation.",
+            "Invalid values detected in log-likelihood calculation. "
+            "NaN values have been replaced with -inf. "
+            "Points with -inf values will have zero weight in the final calculation.",
             UserWarning,
             stacklevel=2,
         )
@@ -499,8 +599,64 @@ def loo_nonfactor(
     return result
 
 
-def _validate_mvn_structure(inference_data, mu_var_name, cov_var_name, prec_var_name):
-    """Check if the input data appears to be from a multivariate normal model."""
+def compute_beta_minus_i(y_vals, mu_s, cinv_s, i):
+    r"""Compute the :math:`\\beta_{-i}` quadratic form for Student-t distribution.
+
+    .. math::
+        \beta_{-i} = (y_{-i} - \mu_{-i})^T
+        \left(C^{-1}_{-i,-i} - \frac{\bar{c}_{-i,i}\bar{c}^T_{-i,i}}{\bar{c}_{ii}}\right)
+        (y_{-i} - \mu_{-i})
+
+    Parameters
+    ----------
+    y_vals : array
+        The observed data vector
+    mu_s : array
+        The mean vector
+    cinv_s : array
+        The precision matrix
+    i : int
+        The index of the observation to leave out
+
+    Returns
+    -------
+    float
+        The calculated quadratic form value
+
+    Notes
+    -----
+    This function is based on Proposition 3 in Bürkner, P., et al. (2020).
+    """
+    y_minus_i = np.delete(y_vals, i)
+    mu_minus_i = np.delete(mu_s, i)
+
+    # Column i of precision matrix (without element i)
+    sigma_bar_minus_i_i = np.delete(cinv_s[:, i], i)
+
+    # Diagonal element i
+    sigma_bar_ii = cinv_s[i, i]
+
+    # Precision sub-matrix (removing row/column i)
+    prec_minus_i = np.delete(np.delete(cinv_s, i, axis=0), i, axis=1)
+
+    # Compute adjustment term
+    adjustment = np.outer(sigma_bar_minus_i_i, sigma_bar_minus_i_i) / sigma_bar_ii
+
+    # Compute effective precision
+    effective_prec = prec_minus_i - adjustment
+    residual = y_minus_i - mu_minus_i
+    return residual.T @ effective_prec @ residual
+
+
+def _validate_mvn_structure(
+    inference_data,
+    mu_var_name,
+    cov_var_name,
+    prec_var_name,
+    model_type="normal",
+    df_var_name="df",
+):
+    """Check if the input data appears to be from a multivariate normal or Student-t model."""
     if not hasattr(inference_data, "posterior"):
         return False
 
@@ -531,5 +687,16 @@ def _validate_mvn_structure(inference_data, mu_var_name, cov_var_name, prec_var_
             stacklevel=3,
         )
         return False
+
+    if model_type == "student_t":
+        if df_var_name not in posterior.data_vars:
+            warnings.warn(
+                f"Degrees of freedom variable '{df_var_name}' not found in posterior. "
+                "Student-t models require a degrees of freedom parameter. "
+                "Verify the variable name using the 'df_var_name' parameter.",
+                UserWarning,
+                stacklevel=3,
+            )
+            return False
 
     return True
