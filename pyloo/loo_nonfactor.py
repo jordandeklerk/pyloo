@@ -175,6 +175,17 @@ def loo_nonfactor(
     Bürkner, P. C., Gabry, J., & Vehtari, A. (2020). Efficient leave-one-out
     cross-validation for Bayesian non-factorized normal and Student-t models.
     Computational Statistics, 35(4), 1717-1750.
+
+    See Also
+    --------
+    loo : Leave-one-out cross-validation
+    loo_subsample : Leave-one-out cross-validation with subsampling
+    loo_moment_match : Leave-one-out cross-validation with moment matching
+    loo_kfold : K-fold cross-validation
+    loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
+    loo_score : Compute LOO score for continuous ranked probability score
+    loo_group : Leave-one-group-out cross-validation
+    waic : Compute WAIC
     """
     if model_type not in ["normal", "student_t"]:
         raise ValueError(

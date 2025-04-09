@@ -249,6 +249,7 @@ def loo_moment_match(
 
     See Also
     --------
+    loo : Leave-one-out cross-validation
     loo_subsample : Leave-one-out cross-validation with subsampling
     loo_kfold : K-fold cross-validation
     loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations

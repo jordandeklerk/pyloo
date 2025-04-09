@@ -156,6 +156,7 @@ def loo_approximate_posterior(
 
     See Also
     --------
+    loo : Leave-one-out cross-validation
     loo_subsample : Leave-one-out cross-validation with subsampling
     loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
