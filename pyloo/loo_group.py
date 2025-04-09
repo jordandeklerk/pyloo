@@ -120,6 +120,7 @@ def loo_group(
     loo_kfold : K-fold cross-validation
     loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
     loo_score : Compute LOO score for continuous ranked probability score
+    loo_nonfactor : Leave-one-out cross-validation for non-factorized models
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)
