@@ -170,11 +170,78 @@ def loo_nonfactor(
     looic_se: standard error of looic
     good_k: For PSIS method and sample size :math:`S`, threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`
 
-    References
-    ----------
-    Bürkner, P. C., Gabry, J., & Vehtari, A. (2020). Efficient leave-one-out
-    cross-validation for Bayesian non-factorized normal and Student-t models.
-    Computational Statistics, 35(4), 1717-1750.
+    Examples
+    --------
+    We can calculate leave-one-out cross-validation for a multivariate normal model in PyMC
+
+    .. code-block:: python
+
+        import numpy as np
+        import pymc as pm
+        import pytensor.tensor as pt
+        import pyloo as pl
+
+        # Spatial data
+        np.random.seed(42)
+        n_obs = 25
+
+        coords_x = np.random.uniform(0, 10, size=n_obs)
+        coords_y = np.random.uniform(0, 10, size=n_obs)
+        coords = np.vstack([coords_x, coords_y]).T
+
+        # Calculate pairwise distances between all points
+        dists = np.zeros((n_obs, n_obs))
+        for i in range(n_obs):
+            for j in range(n_obs):
+                dists[i, j] = np.sqrt(np.sum((coords[i] - coords[j]) ** 2))
+
+        # Generate data from a spatial model
+        true_sigma = 1.0
+        true_ls = 2.0
+        true_cov = true_sigma**2 * np.exp(-dists / true_ls)
+        true_cov += np.eye(n_obs) * 0.01
+
+        true_mean = 2 + 0.5 * coords_x - 0.3 * coords_y
+        y_obs = np.random.multivariate_normal(true_mean, true_cov)
+
+        with pm.Model() as model:
+            # Fixed effects
+            intercept = pm.Normal("intercept", mu=0, sigma=2)
+            beta_x = pm.Normal("beta_x", mu=0, sigma=1)
+            beta_y = pm.Normal("beta_y", mu=0, sigma=1)
+
+            # Mean function
+            mean_values = intercept + beta_x * coords_x + beta_y * coords_y
+            pm.Deterministic("mu", mean_values)
+
+            # Spatial covariance
+            sigma = pm.HalfNormal("sigma", sigma=2)
+            length_scale = pm.Gamma("length_scale", alpha=2, beta=1)
+
+            # Calculate covariance matrix
+            cov_values = sigma**2 * pt.exp(-dists / length_scale)
+            cov_values = cov_values + pt.eye(n_obs) * 0.01
+            pm.Deterministic("cov", cov_values)
+
+            # Multivariate normal likelihood
+            pm.MvNormal("y_obs", mu=mean_values, cov=cov_values, observed=y_obs)
+
+            idata = pm.sample(
+                draws=500,
+                tune=1000,
+                chains=2,
+                return_inferencedata=True,
+                target_accept=0.95,
+            )
+
+        # LOO-CV for this non-factorized model
+        loo_results = pl.loo_nonfactor(
+            idata,
+            var_name="y_obs",
+            mu_var_name="mu",
+            cov_var_name="cov",
+            pointwise=True,
+        )
 
     See Also
     --------
@@ -186,6 +253,12 @@ def loo_nonfactor(
     loo_score : Compute LOO score for continuous ranked probability score
     loo_group : Leave-one-group-out cross-validation
     waic : Compute WAIC
+
+    References
+    ----------
+    Bürkner, P. C., Gabry, J., & Vehtari, A. (2020). Efficient leave-one-out
+    cross-validation for Bayesian non-factorized normal and Student-t models.
+    Computational Statistics, 35(4), 1717-1750.
     """
     if model_type not in ["normal", "student_t"]:
         raise ValueError(
