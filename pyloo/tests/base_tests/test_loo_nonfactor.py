@@ -64,6 +64,62 @@ def test_loo_nonfactor_basic():
         pytest.fail(f"loo_nonfactor raised an unexpected exception: {e}")
 
 
+def test_loo_nonfactor_student_t_basic():
+    """Test basic functionality of loo_nonfactor with Student-t model."""
+    n_obs = 10
+    n_samples = 100
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = np.random.randn(n_obs, n_obs) * 0.1
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    df_samples = np.abs(np.random.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    try:
+        loo_results = loo_nonfactor(
+            idata, var_name="y", pointwise=True, model_type="student_t"
+        )
+
+        assert isinstance(loo_results, ELPDData)
+        assert "elpd_loo" in loo_results
+        assert "p_loo" in loo_results
+        assert "loo_i" in loo_results
+        assert "pareto_k" in loo_results
+        assert loo_results.loo_i.shape == (n_obs,)
+        assert loo_results.pareto_k.shape == (n_obs,)
+        assert not np.isnan(loo_results.elpd_loo)
+        assert not np.isnan(loo_results.p_loo)
+
+    except Exception as e:
+        pytest.fail(f"loo_nonfactor with Student-t raised an unexpected exception: {e}")
+
+
 def test_loo_nonfactor_precision_input():
     """Test loo_nonfactor using precision matrix input."""
     n_obs = 8
@@ -120,6 +176,73 @@ def test_loo_nonfactor_precision_input():
     except Exception as e:
         pytest.fail(
             f"loo_nonfactor with precision matrix raised an unexpected exception: {e}"
+        )
+
+
+def test_loo_nonfactor_student_t_precision_input():
+    """Test loo_nonfactor with Student-t model using precision matrix input."""
+    n_obs = 8
+    n_samples = 120
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    prec_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = np.random.randn(n_obs, n_obs) * 0.1
+            cov_s = A @ A.T + np.eye(n_obs) * 0.5
+            try:
+                prec_samples[c, s, :, :] = np.linalg.inv(cov_s)
+            except np.linalg.LinAlgError:
+                prec_samples[c, s, :, :] = np.eye(n_obs)
+
+    df_samples = np.abs(np.random.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "prec": (("chain", "draw", "obs_dim", "obs_dim_bis"), prec_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    try:
+        loo_results = loo_nonfactor(
+            idata,
+            var_name="y",
+            prec_var_name="prec",
+            pointwise=True,
+            model_type="student_t",
+        )
+
+        assert isinstance(loo_results, ELPDData)
+        assert "elpd_loo" in loo_results
+        assert "p_loo" in loo_results
+        assert "loo_i" in loo_results
+        assert "pareto_k" in loo_results
+        assert loo_results.loo_i.shape == (n_obs,)
+        assert loo_results.pareto_k.shape == (n_obs,)
+        assert not np.isnan(loo_results.elpd_loo)
+        assert not np.isnan(loo_results.p_loo)
+
+    except Exception as e:
+        pytest.fail(
+            "loo_nonfactor with Student-t precision matrix raised an unexpected"
+            f" exception: {e}"
         )
 
 
@@ -204,6 +327,62 @@ def test_verify_mvn_structure():
     assert _validate_mvn_structure(idata_no_posterior, "mu", None, None) is False
 
 
+def test_verify_student_t_structure():
+    """Test validation of Student-t model structure."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.random.randn(n_chains, n_samples, n_obs, n_obs)
+    df_samples = np.abs(np.random.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            cov_samples[c, s] = cov_samples[c, s] @ cov_samples[c, s].T + np.eye(n_obs)
+
+    idata_valid = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    idata_missing_df = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    from pyloo.loo_nonfactor import _validate_mvn_structure
+
+    assert _validate_mvn_structure(idata_valid, "mu", None, None, "student_t") is True
+
+    with pytest.warns(UserWarning, match="Degrees of freedom.*not found"):
+        assert (
+            _validate_mvn_structure(idata_missing_df, "mu", None, None, "student_t")
+            is False
+        )
+
+
 def test_loo_nonfactor_warnings():
     """Test that appropriate warnings are raised for incorrect model structures."""
     n_obs = 5
@@ -232,7 +411,7 @@ def test_loo_nonfactor_warnings():
 
     with pytest.warns(
         UserWarning,
-        match="specifically designed for non-factorized multivariate normal models",
+        match="loo_nonfactor\\(\\) with model_type='normal' requires the correct model",
     ):
         with pytest.warns(
             UserWarning, match="Neither covariance nor precision matrix found"
@@ -349,6 +528,119 @@ def test_loo_nonfactor_custom_names():
             )
 
 
+def test_loo_nonfactor_student_t_custom_names():
+    """Test loo_nonfactor with Student-t model using custom variable names."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    df_samples = np.abs(np.random.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = np.random.randn(n_obs, n_obs) * 0.1
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "location": (("chain", "draw", "obs_dim"), mu_samples),
+                "scale_matrix": (
+                    ("chain", "draw", "obs_dim", "obs_dim_bis"),
+                    cov_samples,
+                ),
+                "nu": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"observations": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    loo_results = loo_nonfactor(
+        idata,
+        var_name="observations",
+        mu_var_name="location",
+        cov_var_name="scale_matrix",
+        model_type="student_t",
+        df_var_name="nu",
+    )
+
+    assert isinstance(loo_results, ELPDData)
+    assert not np.isnan(loo_results.elpd_loo)
+    assert not np.isnan(loo_results.p_loo)
+
+    with pytest.warns(UserWarning, match="Degrees of freedom.*not found"):
+        with pytest.raises(ValueError, match="Degrees of freedom variable.*not found"):
+            loo_nonfactor(
+                idata,
+                var_name="observations",
+                mu_var_name="location",
+                cov_var_name="scale_matrix",
+                model_type="student_t",
+                df_var_name="wrong_df",
+            )
+
+
+def test_loo_nonfactor_student_t_negative_df():
+    """Test loo_nonfactor with Student-t model including negative degrees of freedom."""
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = np.random.randn(n_chains, n_samples, n_obs)
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    df_samples = np.abs(np.random.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+    df_samples[0, 0] = -1.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = np.random.randn(n_obs, n_obs) * 0.1
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = np.random.randn(n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    with pytest.warns(UserWarning, match="Non-positive degrees of freedom"):
+        loo_results = loo_nonfactor(
+            idata, var_name="y", model_type="student_t", pointwise=True
+        )
+        assert isinstance(loo_results, ELPDData)
+        assert not np.isnan(loo_results.elpd_loo)
+        assert not np.isnan(loo_results.p_loo)
+
+
 def test_loo_nonfactor_singular_matrices():
     """Test loo_nonfactor handling of singular matrices."""
     n_obs = 5
@@ -387,7 +679,7 @@ def test_loo_nonfactor_singular_matrices():
         ),
     )
 
-    with pytest.warns(UserWarning, match="Covariance matrix is singular"):
+    with pytest.warns(UserWarning, match="Invalid values detected in log-likelihood"):
         loo_results = loo_nonfactor(idata, var_name="y")
         assert isinstance(loo_results, ELPDData)
 
@@ -469,3 +761,92 @@ def test_loo_nonfactor_pymc_model():
         logging.info(f"p_loo_se={loo_results.p_loo_se}")
 
         logging.info(f"{loo_results}")
+
+
+@pytest.mark.skipif(pm is None, reason="PyMC not installed")
+def test_loo_nonfactor_student_t_pymc_model():
+    """Test loo_nonfactor with a realistic spatial model using a multivariate Student-t likelihood."""
+    np.random.seed(42)
+    n_obs = 20
+
+    coords_x = np.random.uniform(0, 10, size=n_obs)
+    coords_y = np.random.uniform(0, 10, size=n_obs)
+
+    coords = np.vstack([coords_x, coords_y]).T
+    dists = np.zeros((n_obs, n_obs))
+    for i in range(n_obs):
+        for j in range(n_obs):
+            dists[i, j] = np.sqrt(np.sum((coords[i] - coords[j]) ** 2))
+
+    true_df = 4.0
+    true_sigma = 1.0
+    true_ls = 2.0
+    true_cov = true_sigma**2 * np.exp(-dists / true_ls)
+    true_cov += np.eye(n_obs) * 0.01
+
+    true_mean = 2 + 0.5 * coords_x - 0.3 * coords_y
+
+    z = np.random.multivariate_normal(np.zeros(n_obs), true_cov)
+    chi2 = np.random.chisquare(true_df) / true_df
+    y_obs = true_mean + z / np.sqrt(chi2)
+
+    with pm.Model() as model:
+        intercept = pm.Normal("intercept", mu=0, sigma=2)
+        beta_x = pm.Normal("beta_x", mu=0, sigma=1)
+        beta_y = pm.Normal("beta_y", mu=0, sigma=1)
+
+        mean_values = intercept + beta_x * coords_x + beta_y * coords_y
+        pm.Deterministic("mu", mean_values)
+
+        sigma = pm.HalfNormal("sigma", sigma=2)
+        length_scale = pm.Gamma("length_scale", alpha=2, beta=1)
+
+        cov_values = sigma**2 * pt.exp(-dists / length_scale)
+        cov_values = cov_values + pt.eye(n_obs) * 0.01
+        pm.Deterministic("cov", cov_values)
+
+        df = pm.Gamma("df", alpha=2, beta=0.5)
+        pm.Deterministic("df_det", df)
+
+        pm.MvStudentT("y_obs", nu=df, mu=mean_values, scale=cov_values, observed=y_obs)
+
+    with model:
+        idata = pm.sample(
+            draws=500,
+            tune=1000,
+            chains=2,
+            return_inferencedata=True,
+            target_accept=0.95,
+        )
+
+        loo_results = loo_nonfactor(
+            idata,
+            var_name="y_obs",
+            mu_var_name="mu",
+            cov_var_name="cov",
+            model_type="student_t",
+            df_var_name="df_det",
+            pointwise=True,
+        )
+
+        assert isinstance(loo_results, ELPDData)
+
+        assert "elpd_loo" in loo_results
+        assert "p_loo" in loo_results
+        assert "loo_i" in loo_results
+        assert "pareto_k" in loo_results
+        assert loo_results.loo_i.shape == (n_obs,)
+        assert loo_results.pareto_k.shape == (n_obs,)
+
+        assert not np.isnan(loo_results.elpd_loo)
+        assert not np.isnan(loo_results.p_loo)
+        assert not np.any(np.isnan(loo_results.loo_i))
+        assert not np.any(np.isnan(loo_results.pareto_k))
+
+        logging.info(
+            f"Student-t loo_nonfactor successful: elpd_loo={loo_results.elpd_loo}"
+        )
+        logging.info(f"p_loo={loo_results.p_loo}")
+        logging.info(f"p_loo_se={loo_results.p_loo_se}")
+
+        logging.info(loo_results)
