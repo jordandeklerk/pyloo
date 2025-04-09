@@ -6,6 +6,7 @@ import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor.tensor as pt
 import pytest
 import xarray as xr
 from arviz import InferenceData
@@ -880,3 +881,662 @@ def high_dimensional_regression_model():
         )
 
     return model, idata
+
+
+@pytest.fixture(scope="session")
+def mvn_inference_data():
+    """Create InferenceData with multivariate normal model data."""
+    rng = np.random.default_rng(42)
+    n_obs = 10
+    n_samples = 100
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def mvt_inference_data():
+    """Create InferenceData with multivariate Student-t model data."""
+    rng = np.random.default_rng(42)
+    n_obs = 10
+    n_samples = 100
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    df_samples = np.abs(rng.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def mvn_precision_data():
+    """Create InferenceData with precision matrix instead of covariance."""
+    rng = np.random.default_rng(42)
+    n_obs = 8
+    n_samples = 120
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    prec_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_s = A @ A.T + np.eye(n_obs) * 0.5
+            try:
+                prec_samples[c, s, :, :] = np.linalg.inv(cov_s)
+            except np.linalg.LinAlgError:
+                prec_samples[c, s, :, :] = np.eye(n_obs)
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "prec": (("chain", "draw", "obs_dim", "obs_dim_bis"), prec_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def mvt_precision_data():
+    """Create InferenceData with Student-t model using precision matrix."""
+    rng = np.random.default_rng(42)
+    n_obs = 8
+    n_samples = 120
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    prec_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    df_samples = np.abs(rng.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_s = A @ A.T + np.eye(n_obs) * 0.5
+            try:
+                prec_samples[c, s, :, :] = np.linalg.inv(cov_s)
+            except np.linalg.LinAlgError:
+                prec_samples[c, s, :, :] = np.eye(n_obs)
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "prec": (("chain", "draw", "obs_dim", "obs_dim_bis"), prec_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def mvn_custom_names_data():
+    """Create InferenceData with custom variable names."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mean_vector": (("chain", "draw", "obs_dim"), mu_samples),
+                "covariance_matrix": (
+                    ("chain", "draw", "obs_dim", "obs_dim_bis"),
+                    cov_samples,
+                ),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"observations": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def mvt_custom_names_data():
+    """Create InferenceData with Student-t model using custom variable names."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    df_samples = np.abs(rng.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "location": (("chain", "draw", "obs_dim"), mu_samples),
+                "scale_matrix": (
+                    ("chain", "draw", "obs_dim", "obs_dim_bis"),
+                    cov_samples,
+                ),
+                "nu": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"observations": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def mvt_negative_df_data():
+    """Create InferenceData with Student-t model including negative degrees of freedom."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    df_samples = np.abs(rng.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+    df_samples[0, 0] = -1.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def singular_matrix_data():
+    """Create InferenceData with singular covariance matrix."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            if c == 0 and s == 0:
+                cov_samples[c, s, :, :] = np.ones((n_obs, n_obs)) * 0.1
+            else:
+                A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+                cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def both_cov_prec_data():
+    """Create InferenceData with both covariance and precision matrices."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+    prec_samples = np.empty((n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            A = rng.normal(0, 0.1, size=(n_obs, n_obs))
+            cov_samples[c, s, :, :] = A @ A.T + np.eye(n_obs) * 0.5
+            prec_samples[c, s, :, :] = np.linalg.inv(cov_samples[c, s, :, :])
+
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "prec": (("chain", "draw", "obs_dim", "obs_dim_bis"), prec_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def missing_cov_data():
+    """Create InferenceData with missing covariance matrix."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    y_obs_vals = rng.normal(0, 1, size=n_obs)
+
+    idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+            },
+        ),
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), y_obs_vals)},
+            coords={"obs_dim": np.arange(n_obs)},
+        ),
+    )
+
+    return idata
+
+
+@pytest.fixture(scope="session")
+def mvn_validation_data():
+    """Create data for testing model structure validation."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs, n_obs))
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            cov_samples[c, s] = cov_samples[c, s] @ cov_samples[c, s].T + np.eye(n_obs)
+
+    valid_idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    no_mu_idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    no_cov_prec_idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+            },
+        )
+    )
+
+    no_posterior_idata = InferenceData(
+        observed_data=xr.Dataset(
+            {"y": (("obs_dim",), rng.normal(0, 1, size=n_obs))},
+            coords={"obs_dim": np.arange(n_obs)},
+        )
+    )
+
+    return {
+        "valid": valid_idata,
+        "no_mu": no_mu_idata,
+        "no_cov_prec": no_cov_prec_idata,
+        "no_posterior": no_posterior_idata,
+    }
+
+
+@pytest.fixture(scope="session")
+def mvt_validation_data():
+    """Create data for testing Student-t model structure validation."""
+    rng = np.random.default_rng(42)
+    n_obs = 5
+    n_samples = 10
+    n_chains = 2
+
+    mu_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs))
+    cov_samples = rng.normal(0, 1, size=(n_chains, n_samples, n_obs, n_obs))
+    df_samples = np.abs(rng.gamma(5, 1, size=(n_chains, n_samples))) + 2.0
+
+    for c in range(n_chains):
+        for s in range(n_samples):
+            cov_samples[c, s] = cov_samples[c, s] @ cov_samples[c, s].T + np.eye(n_obs)
+
+    valid_idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+                "df": (("chain", "draw"), df_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    missing_df_idata = InferenceData(
+        posterior=xr.Dataset(
+            {
+                "mu": (("chain", "draw", "obs_dim"), mu_samples),
+                "cov": (("chain", "draw", "obs_dim", "obs_dim_bis"), cov_samples),
+            },
+            coords={
+                "chain": np.arange(n_chains),
+                "draw": np.arange(n_samples),
+                "obs_dim": np.arange(n_obs),
+                "obs_dim_bis": np.arange(n_obs),
+            },
+        )
+    )
+
+    return {"valid": valid_idata, "missing_df": missing_df_idata}
+
+
+@pytest.fixture(scope="session")
+def mvn_spatial_model():
+    """Create a PyMC spatial model with multivariate normal likelihood."""
+    if pm is None:
+        pytest.skip("PyMC not installed")
+
+    np.random.seed(42)
+    n_obs = 25
+
+    coords_x = np.random.uniform(0, 10, size=n_obs)
+    coords_y = np.random.uniform(0, 10, size=n_obs)
+
+    coords = np.vstack([coords_x, coords_y]).T
+    dists = np.zeros((n_obs, n_obs))
+    for i in range(n_obs):
+        for j in range(n_obs):
+            dists[i, j] = np.sqrt(np.sum((coords[i] - coords[j]) ** 2))
+
+    true_sigma = 1.0
+    true_ls = 2.0
+    true_cov = true_sigma**2 * np.exp(-dists / true_ls)
+    true_cov += np.eye(n_obs) * 0.01
+
+    true_mean = 2 + 0.5 * coords_x - 0.3 * coords_y
+    y_obs = np.random.multivariate_normal(true_mean, true_cov)
+
+    with pm.Model() as model:
+        intercept = pm.Normal("intercept", mu=0, sigma=2)
+        beta_x = pm.Normal("beta_x", mu=0, sigma=1)
+        beta_y = pm.Normal("beta_y", mu=0, sigma=1)
+
+        mean_values = intercept + beta_x * coords_x + beta_y * coords_y
+
+        pm.Deterministic("mu", mean_values)
+
+        sigma = pm.HalfNormal("sigma", sigma=2)
+        length_scale = pm.Gamma("length_scale", alpha=2, beta=1)
+
+        cov_values = sigma**2 * pt.exp(-dists / length_scale)
+        cov_values = cov_values + pt.eye(n_obs) * 0.01
+
+        pm.Deterministic("cov", cov_values)
+        pm.MvNormal("y_obs", mu=mean_values, cov=cov_values, observed=y_obs)
+
+        idata = pm.sample(
+            draws=500,
+            tune=1000,
+            chains=2,
+            return_inferencedata=True,
+            target_accept=0.95,
+        )
+
+    return model, idata, coords_x, coords_y, dists
+
+
+@pytest.fixture(scope="session")
+def mvt_spatial_model():
+    """Create a PyMC spatial model with multivariate Student-t likelihood."""
+    if pm is None:
+        pytest.skip("PyMC not installed")
+
+    np.random.seed(42)
+    n_obs = 20
+
+    coords_x = np.random.uniform(0, 10, size=n_obs)
+    coords_y = np.random.uniform(0, 10, size=n_obs)
+
+    coords = np.vstack([coords_x, coords_y]).T
+    dists = np.zeros((n_obs, n_obs))
+    for i in range(n_obs):
+        for j in range(n_obs):
+            dists[i, j] = np.sqrt(np.sum((coords[i] - coords[j]) ** 2))
+
+    true_df = 4.0
+    true_sigma = 1.0
+    true_ls = 2.0
+    true_cov = true_sigma**2 * np.exp(-dists / true_ls)
+    true_cov += np.eye(n_obs) * 0.01
+
+    true_mean = 2 + 0.5 * coords_x - 0.3 * coords_y
+
+    z = np.random.multivariate_normal(np.zeros(n_obs), true_cov)
+    chi2 = np.random.chisquare(true_df) / true_df
+    y_obs = true_mean + z / np.sqrt(chi2)
+
+    with pm.Model() as model:
+        intercept = pm.Normal("intercept", mu=0, sigma=2)
+        beta_x = pm.Normal("beta_x", mu=0, sigma=1)
+        beta_y = pm.Normal("beta_y", mu=0, sigma=1)
+
+        mean_values = intercept + beta_x * coords_x + beta_y * coords_y
+        pm.Deterministic("mu", mean_values)
+
+        sigma = pm.HalfNormal("sigma", sigma=2)
+        length_scale = pm.Gamma("length_scale", alpha=2, beta=1)
+
+        cov_values = sigma**2 * pt.exp(-dists / length_scale)
+        cov_values = cov_values + pt.eye(n_obs) * 0.01
+        pm.Deterministic("cov", cov_values)
+
+        df = pm.Gamma("df", alpha=2, beta=0.5)
+        pm.Deterministic("df_det", df)
+
+        pm.MvStudentT("y_obs", nu=df, mu=mean_values, scale=cov_values, observed=y_obs)
+
+        idata = pm.sample(
+            draws=500,
+            tune=1000,
+            chains=2,
+            return_inferencedata=True,
+            target_accept=0.95,
+        )
+
+    return model, idata, coords_x, coords_y, dists
