@@ -249,11 +249,13 @@ def loo_moment_match(
 
     See Also
     --------
+    loo : Leave-one-out cross-validation
     loo_subsample : Leave-one-out cross-validation with subsampling
     loo_kfold : K-fold cross-validation
     loo_approximate_posterior : Leave-one-out cross-validation for posterior approximations
     loo_score : Compute LOO score for continuous ranked probability score
     loo_group : Leave-one-group-out cross-validation
+    loo_nonfactor : Leave-one-out cross-validation for non-factorized models
     waic : Compute WAIC
     """
     log_level = logging.INFO if verbose else logging.WARNING

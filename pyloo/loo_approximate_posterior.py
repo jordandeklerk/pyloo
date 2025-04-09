@@ -156,11 +156,13 @@ def loo_approximate_posterior(
 
     See Also
     --------
+    loo : Leave-one-out cross-validation
     loo_subsample : Leave-one-out cross-validation with subsampling
     loo_moment_match : Leave-one-out cross-validation with moment matching
     loo_kfold : K-fold cross-validation
     loo_score : Compute LOO score for continuous ranked probability score
     loo_group : Leave-one-group-out cross-validation
+    loo_nonfactor : Leave-one-out cross-validation for non-factorized models
     waic : Compute WAIC
     """
     inference_data = to_inference_data(data)

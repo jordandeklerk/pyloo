@@ -15,6 +15,26 @@ elpd_loo   {elpd:<8.2f}    {se:<.2f}
 p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
 looic      {looic:<8.2f}    {looic_se:<.2f}"""
 
+# Non-factorized Multivariate Normal LOO output
+MVN_BASE_FMT = """
+Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
+Using non-factorized multivariate normal model.
+
+         Estimate       SE
+elpd_loo   {elpd:<8.2f}    {se:<.2f}
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}"""
+
+# Non-factorized Student-t LOO output
+MVT_BASE_FMT = """
+Computed from {n_samples} posterior samples and {n_points} observations log-likelihood matrix.
+Using non-factorized multivariate Student-t model.
+
+         Estimate       SE
+elpd_loo   {elpd:<8.2f}    {se:<.2f}
+p_loo       {p_loo:<8.2f}    {p_loo_se:<.2f}
+looic      {looic:<8.2f}    {looic_se:<.2f}"""
+
 
 # Subsampled LOO output
 SUBSAMPLE_BASE_FMT = """
@@ -355,16 +375,44 @@ elpd_loo   {elpd:<8.2f}    -""".format(
                 else:
                     looic = self["looic"]
                     looic_se = self["looic_se"]
-                    base = STD_BASE_FMT.format(
-                        n_samples=self.n_samples,
-                        n_points=self.n_data_points,
-                        elpd=elpd_loo,
-                        se=se,
-                        p_loo=self["p_loo"],
-                        p_loo_se=self["p_loo_se"],
-                        looic=looic,
-                        looic_se=looic_se,
-                    )
+
+                    if hasattr(self, "attrs") and self.attrs.get("is_mvn", False):
+                        if (
+                            hasattr(self, "attrs")
+                            and self.attrs.get("model_type") == "student_t"
+                        ):
+                            base = MVT_BASE_FMT.format(
+                                n_samples=self.n_samples,
+                                n_points=self.n_data_points,
+                                elpd=elpd_loo,
+                                se=se,
+                                p_loo=self["p_loo"],
+                                p_loo_se=self["p_loo_se"],
+                                looic=looic,
+                                looic_se=looic_se,
+                            )
+                        else:
+                            base = MVN_BASE_FMT.format(
+                                n_samples=self.n_samples,
+                                n_points=self.n_data_points,
+                                elpd=elpd_loo,
+                                se=se,
+                                p_loo=self["p_loo"],
+                                p_loo_se=self["p_loo_se"],
+                                looic=looic,
+                                looic_se=looic_se,
+                            )
+                    else:
+                        base = STD_BASE_FMT.format(
+                            n_samples=self.n_samples,
+                            n_points=self.n_data_points,
+                            elpd=elpd_loo,
+                            se=se,
+                            p_loo=self["p_loo"],
+                            p_loo_se=self["p_loo_se"],
+                            looic=looic,
+                            looic_se=looic_se,
+                        )
 
             if self.warning:
                 base += (

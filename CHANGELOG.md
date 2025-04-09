@@ -2,15 +2,18 @@
 
 ## Unreleased
 
-pyloo is a comprehensive toolkit for model comparison and validation in Bayesian inference. Our latest developments focus on both core functionality and advanced features for specific modeling frameworks, specifically PyMC.
+PyLOO is a comprehensive toolkit for model comparison and validation in Bayesian inference. Our latest developments focus on both core functionality and advanced features for specific modeling frameworks, specifically PyMC.
 
 ### Core Functionality
 
 We've built a flexible foundation based on similar implementations in Arviz for model assessment that works with any probabilistic programming language through ArviZ's InferenceData format:
 
 - **LOO-CV Implementation**: Leave-one-out cross-validation with multiple importance sampling methods (PSIS, SIS, TIS), comprehensive diagnostics, and flexible output scales.
-- **WAIC Implementation**: Widely Applicable Information Criterion as an alternative approach to model assessment, with consistent interface and output formats.
-- **Efficient Subsampling**: Statistical subsampling techniques for large datasets that reduce computation time while maintaining accuracy:
+- **WAIC Implementation**: Widely Applicable Information Criterion as an alternative model assessment metric (`waic`).
+- **Non-factorized LOO-CV**: Compute LOO-CV for multivariate normal and Student-t models where the likelihood cannot be factorized by observations (`loo_nonfactor`).
+- **Model Comparison**: Compare models based on ELPD using various methods like stacking (`loo_compare`).
+- **LOO-Based Metrics**: Estimate predictive performance (e.g., MAE, MSE, CRPS) using LOO estimates (`loo_predictive_metric`, `loo_score`).
+- **Grouped & Subsampled CV**: Perform Leave-One-Group-Out CV (`loo_group`) and efficient statistical subsampling techniques for large datasets (`loo_subsample`) that reduce computation time while maintaining accuracy:
   - Multiple approximation methods (`PLPD`, `LPD`)
   - Various estimator approaches (`diff_srs`, `hh_pps`, `srs`)
   - Enhanced support for multidimensional data
@@ -19,15 +22,15 @@ We've built a flexible foundation based on similar implementations in Arviz for 
   - Expected LOO computations
   - Various importance sampling methods
 
-### Advanced PyMC Integration
+### Advanced & PyMC Integration
 
 Specialized tools for PyMC models that handle the complexities of PyMC's internal structures:
 
-- **Universal PyMC Wrapper**: Standardized interface to model components that manages parameter transformations, data manipulation, and posterior sampling.
-- **Re-LOO Implementation**: Exact refitting for problematic observations in LOO-CV when importance sampling fails to provide reliable estimates.
-- **K-fold Cross-validation**: Comprehensive K-fold CV with customizable fold creation, stratified sampling, and detailed diagnostics.
-- **Moment Matching**: Computational alternative to model re-fitting that transforms posterior draws to better approximate leave-one-out posteriors, improving reliability of LOO-CV estimates for observations with high Pareto k diagnostics.
-- **Posterior Approximations**: Compute LOO-CV for posterior approximations.
+- **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow.
+- **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (`reloo`).
+- **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (`loo_kfold`).
+- **Moment Matching**: Improve LOO-CV reliability for challenging observations (`loo_moment_match`).
+- **Variational Inference Support**: Compute LOO-CV for models fitted with Laplace or ADVI approximations (`loo_approximate_posterior`).
 
 ### Maintenance and Dependencies
 
