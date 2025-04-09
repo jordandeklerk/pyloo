@@ -29,9 +29,12 @@ from .models import (
 )
 from .test_data import (
     both_cov_prec_data,
+    extreme_data,
+    log_likelihood_data,
     loo_predictive_metric_binary_data,
     loo_predictive_metric_data,
     missing_cov_data,
+    multidim_data,
     mvn_custom_names_data,
     mvn_inference_data,
     mvn_precision_data,
@@ -67,6 +70,9 @@ __all__ = [
     "high_dimensional_regression_model",
     "mvn_spatial_model",
     "mvt_spatial_model",
+    "log_likelihood_data",
+    "multidim_data",
+    "extreme_data",
     "loo_predictive_metric_data",
     "loo_predictive_metric_binary_data",
     "prepare_inference_data_for_crps",
@@ -145,29 +151,6 @@ def numpy_arrays(rng):
         "random_weights": rng.normal(size=(1000, 8)),
         "random_ratios": rng.normal(size=(2000, 5)),
     }
-
-
-@pytest.fixture(scope="session")
-def log_likelihood_data(centered_eight):
-    """Return log likelihood data for PSIS tests."""
-    return centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
-
-
-@pytest.fixture(scope="session")
-def multidim_data(rng):
-    """Return multidimensional data for testing."""
-    return {
-        "llm": rng.normal(size=(4, 23, 15, 2)),  # chain, draw, dim1, dim2
-        "ll1": rng.normal(size=(4, 23, 30)),  # chain, draw, combined_dims
-    }
-
-
-@pytest.fixture(scope="session")
-def extreme_data(log_likelihood_data):
-    """Return data with extreme values for testing edge cases."""
-    data = log_likelihood_data.values.T.copy()
-    data[:, 1] = 10  # Add extreme values
-    return data
 
 
 @pytest.fixture(scope="module")

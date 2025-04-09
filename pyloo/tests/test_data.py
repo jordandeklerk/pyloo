@@ -7,6 +7,29 @@ from arviz import InferenceData
 
 
 @pytest.fixture(scope="session")
+def log_likelihood_data(centered_eight):
+    """Return log likelihood data for PSIS tests."""
+    return centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
+
+
+@pytest.fixture(scope="session")
+def multidim_data(rng):
+    """Return multidimensional data for testing."""
+    return {
+        "llm": rng.normal(size=(4, 23, 15, 2)),  # chain, draw, dim1, dim2
+        "ll1": rng.normal(size=(4, 23, 30)),  # chain, draw, combined_dims
+    }
+
+
+@pytest.fixture(scope="session")
+def extreme_data(log_likelihood_data):
+    """Return data with extreme values for testing edge cases."""
+    data = log_likelihood_data.values.T.copy()
+    data[:, 1] = 10  # Add extreme values
+    return data
+
+
+@pytest.fixture(scope="session")
 def loo_predictive_metric_data():
     """Create test data for loo_predictive_metric tests."""
     n_chains = 4
