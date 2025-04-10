@@ -50,7 +50,7 @@ def loo_compare(
     compare_dict : dict of {str: InferenceData or ELPDData}
         A dictionary of model names and InferenceData or ELPDData objects
     ic : str, optional
-        Information Criterion (LOO, WAIC, or kfold) used to compare models.
+        Information Criterion (loo, waic, or kfold) used to compare models.
         Default is "loo". We recommend using LOO over WAIC for most cases.
     method : str, optional
         Method used to estimate the weights for each model. Available options are:
