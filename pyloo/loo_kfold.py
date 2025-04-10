@@ -402,7 +402,7 @@ def _prepare_folds(
     groups: np.ndarray | None,
     random_seed: int | None,
 ) -> tuple[np.ndarray, int]:
-    """Prepare or validate fold assignments for K-fold cross-validation.
+    """Prepare and validate fold assignments for K-fold cross-validation.
 
     Returns
     -------
@@ -539,6 +539,7 @@ def _kfold_split_random(K: int, N: int, seed: int | None = None) -> np.ndarray:
 
     fold_indices = np.random.permutation(N)
     start = 0
+
     for i in range(K):
         end = start + fold_sizes[i]
         folds[fold_indices[start:end]] = i + 1
@@ -681,7 +682,7 @@ def _compute_lpds_full(log_lik_full: xr.DataArray) -> np.ndarray:
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
     kwargs = {"input_core_dims": [["__sample__"]]}
 
-    lpds_full_xr = wrap_xarray_ufunc(
+    lpds_full = wrap_xarray_ufunc(
         _logsumexp,
         log_lik_stacked,
         func_kwargs={"b_inv": log_lik_stacked.sizes.get("__sample__", 1)},
@@ -689,4 +690,4 @@ def _compute_lpds_full(log_lik_full: xr.DataArray) -> np.ndarray:
         **kwargs,
     )
 
-    return lpds_full_xr.values
+    return lpds_full.values
