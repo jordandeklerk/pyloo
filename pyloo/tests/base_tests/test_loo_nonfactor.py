@@ -6,8 +6,8 @@ import numpy as np
 import pymc as pm
 import pytest
 
-from pyloo import loo_nonfactor
-from pyloo.elpd import ELPDData
+from ...elpd import ELPDData
+from ...loo_nonfactor import _validate_model_structure, loo_nonfactor
 
 
 def test_loo_nonfactor_basic(mvn_inference_data):
@@ -82,43 +82,43 @@ def test_loo_nonfactor_student_t_precision_input(mvt_precision_data):
 
 def test_verify_mvn_structure(mvn_validation_data):
     """Test the model structure verification helper function."""
-    from pyloo.loo_nonfactor import _validate_mvn_structure
 
     valid_idata = mvn_validation_data["valid"]
     no_mu_idata = mvn_validation_data["no_mu"]
     no_cov_prec_idata = mvn_validation_data["no_cov_prec"]
     no_posterior_idata = mvn_validation_data["no_posterior"]
 
-    assert _validate_mvn_structure(valid_idata, "mu", None, None) is True
+    assert _validate_model_structure(valid_idata, "mu", None, None) is True
 
     with pytest.warns(UserWarning, match="Mean vector .* not found"):
         assert (
-            _validate_mvn_structure(no_mu_idata, "wrong_mu_name", None, None) is False
+            _validate_model_structure(no_mu_idata, "wrong_mu_name", None, None) is False
         )
 
     with pytest.warns(
         UserWarning, match="Neither covariance nor precision matrix found"
     ):
         assert (
-            _validate_mvn_structure(no_cov_prec_idata, "mu", "wrong_cov", "wrong_prec")
+            _validate_model_structure(
+                no_cov_prec_idata, "mu", "wrong_cov", "wrong_prec"
+            )
             is False
         )
 
-    assert _validate_mvn_structure(no_posterior_idata, "mu", None, None) is False
+    assert _validate_model_structure(no_posterior_idata, "mu", None, None) is False
 
 
 def test_verify_student_t_structure(mvt_validation_data):
     """Test validation of Student-t model structure."""
-    from pyloo.loo_nonfactor import _validate_mvn_structure
 
     valid_idata = mvt_validation_data["valid"]
     missing_df_idata = mvt_validation_data["missing_df"]
 
-    assert _validate_mvn_structure(valid_idata, "mu", None, None, "student_t") is True
+    assert _validate_model_structure(valid_idata, "mu", None, None, "student_t") is True
 
     with pytest.warns(UserWarning, match="Degrees of freedom.*not found"):
         assert (
-            _validate_mvn_structure(missing_df_idata, "mu", None, None, "student_t")
+            _validate_model_structure(missing_df_idata, "mu", None, None, "student_t")
             is False
         )
 
