@@ -1,4 +1,4 @@
-"""Helper function to compute LOO for a single observation using importance sampling methods."""
+"""Leave-one-out cross-validation (LOO-CV) for a single observation using importance sampling methods."""
 
 import warnings
 from typing import Any, Literal
@@ -191,16 +191,17 @@ def loo_i(
 
     if method == ISMethod.PSIS:
         if np.any(diagnostic > good_k):
+            n_high_k = np.sum(diagnostic > good_k)
+
             warnings.warn(
                 "Estimated shape parameter of Pareto distribution is greater than"
-                f" {good_k:.2f} for the observation. You should consider using a more"
-                " robust model, this is because importance sampling is less likely to"
-                " work well if the marginal posterior and LOO posterior are very"
-                " different. This is more likely to happen with a non-robust model and"
-                " highly influential observations.",
+                f" {good_k:.2f} for {n_high_k} observations. This indicates that"
+                " importance sampling may be unreliable because the marginal"
+                " posterior and LOO posterior are very different.",
                 UserWarning,
                 stacklevel=2,
             )
+
             warn_mg = True
     else:
         # For SIS/TIS, warn if effective sample size is too low
