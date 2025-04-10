@@ -107,7 +107,7 @@ def loo_kfold(
 
     Examples
     --------
-    Let's consider using K-fold cross-validation with a simple linear regression model:
+    Let's consider using K-fold cross-validation with a simple linear regression model
 
     .. code-block:: python
 
@@ -124,7 +124,7 @@ def loo_kfold(
         y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
 
     Let's create a PyMC model that represents our linear regression problem.
-    We'll use weakly informative priors for all parameters:
+    We'll use weakly informative priors for all parameters
 
     .. code-block:: python
 
@@ -145,7 +145,7 @@ def loo_kfold(
 
     With our model fitted, we can now perform K-fold cross-validation to assess its predictive performance.
     First, we'll create a PyMCWrapper object, which provides a standardized interface for working with
-    PyMC models in cross-validation:
+    PyMC models in cross-validation
 
     .. code-block:: python
 
@@ -187,7 +187,7 @@ def loo_kfold(
         kfold_result = pl.loo_kfold(wrapper, K=5, stratify=wrapper.get_observed_data(), random_seed=123)
 
     For hierarchical or grouped data, it's important to ensure that all observations from the same
-    group are assigned to the same fold. This can be achieved using the groups parameter:
+    group are assigned to the same fold. This can be achieved using the groups parameter
 
     .. code-block:: python
 
