@@ -246,39 +246,39 @@ def loo_group(
 
             warn_mg = True
 
-    log_weights_xr = xr.DataArray(
+    log_weights = xr.DataArray(
         log_weights, dims=["group", "__sample__"], coords={"group": unique_groups}
     )
 
     ufunc_kwargs = {"n_dims": 1, "ravel": False}
     xarray_kwargs = {"input_core_dims": [["__sample__"]]}
 
-    logo_lppd_i_xr = scale_value * wrap_xarray_ufunc(
+    logo_lppd_i = scale_value * wrap_xarray_ufunc(
         _logsumexp,
-        log_weights_xr,
+        log_weights,
         ufunc_kwargs=ufunc_kwargs,
         **xarray_kwargs,
-    )
-    logo_lppd_i_xr = logo_lppd_i_xr.rename("logo_i")
-    logo_lppd = logo_lppd_i_xr.values.sum()
-    logo_lppd_se = (n_groups * np.var(logo_lppd_i_xr.values)) ** 0.5
+    ).rename("logo_i")
 
-    group_log_liks_xr = xr.DataArray(
+    logo_lppd = logo_lppd_i.values.sum()
+    logo_lppd_se = (n_groups * np.var(logo_lppd_i.values)) ** 0.5
+
+    group_log_liks = xr.DataArray(
         group_log_liks, dims=["group", "__sample__"], coords={"group": unique_groups}
     )
 
-    group_lppd_xr = wrap_xarray_ufunc(
+    group_lppd = wrap_xarray_ufunc(
         _logsumexp,
-        group_log_liks_xr,
+        group_log_liks,
         func_kwargs={"b_inv": n_samples},
         ufunc_kwargs=ufunc_kwargs,
         **xarray_kwargs,
     )
 
-    lppd = group_lppd_xr.values.sum()
+    lppd = group_lppd.values.sum()
 
     p_logo = lppd - logo_lppd / scale_value
-    p_logo_se = np.sqrt(np.sum(np.var(logo_lppd_i_xr.values)))
+    p_logo_se = np.sqrt(np.sum(np.var(logo_lppd_i.values)))
     logoic = -2 * logo_lppd
     logoic_se = 2 * logo_lppd_se
 
@@ -327,7 +327,7 @@ def loo_group(
         n_samples,
         n_groups,
         warn_mg,
-        logo_lppd_i_xr,
+        logo_lppd_i,
         scale,
         logoic,
         logoic_se,
