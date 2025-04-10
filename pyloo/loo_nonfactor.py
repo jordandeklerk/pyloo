@@ -274,7 +274,7 @@ def loo_nonfactor(
     )
 
     inference_data = to_inference_data(data)
-    _validate_mvn_structure(
+    _validate_model_structure(
         inference_data,
         mu_var_name,
         cov_var_name,
@@ -732,7 +732,7 @@ def compute_beta_minus_i(y_vals, mu_s, cinv_s, i):
     return residual.T @ effective_prec @ residual
 
 
-def _validate_mvn_structure(
+def _validate_model_structure(
     inference_data,
     mu_var_name,
     cov_var_name,
