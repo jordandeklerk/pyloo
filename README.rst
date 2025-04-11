@@ -1,4 +1,4 @@
-.. image:: ./assets/logo_symbol.png
+.. image:: ./assets/pyloo.png
    :width: 175
    :align: left
 
