@@ -27,6 +27,8 @@ except ImportError:
         stacklevel=2,
     )
 
+__all__ = ["Laplace"]
+
 
 class LaplaceWrapperError(Exception):
     """Exception raised for errors in the LaplaceWrapper."""

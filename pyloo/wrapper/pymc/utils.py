@@ -460,12 +460,46 @@ def _extract_model_components(self) -> None:
 
     self.free_vars = [rv.name for rv in self.model.free_RVs]
     self.deterministic_vars = [det.name for det in self.model.deterministics]
-    self.value_vars = [rv.name for rv in self.model.value_vars]
-    self.unobserved_value_vars = [rv.name for rv in self.model.unobserved_value_vars]
-    self.basic_RVs = [rv.name for rv in self.model.basic_RVs]
-    self.unobserved_vars = [rv.name for rv in self.model.unobserved_RVs]
-    self.continuous_value_vars = [rv.name for rv in self.model.continuous_value_vars]
-    self.discrete_value_vars = [rv.name for rv in self.model.discrete_value_vars]
+
+    try:
+        self.value_vars = [rv.name for rv in self.model.value_vars]
+    except (KeyError, AttributeError):
+        self.value_vars = []
+        _log.warning("Could not extract value_vars from model")
+
+    try:
+        self.unobserved_value_vars = [
+            rv.name for rv in self.model.unobserved_value_vars
+        ]
+    except (KeyError, AttributeError):
+        self.unobserved_value_vars = []
+        _log.warning("Could not extract unobserved_value_vars from model")
+
+    try:
+        self.basic_RVs = [rv.name for rv in self.model.basic_RVs]
+    except (KeyError, AttributeError):
+        self.basic_RVs = []
+        _log.warning("Could not extract basic_RVs from model")
+
+    try:
+        self.unobserved_vars = [rv.name for rv in self.model.unobserved_RVs]
+    except (KeyError, AttributeError):
+        self.unobserved_vars = []
+        _log.warning("Could not extract unobserved_RVs from model")
+
+    try:
+        self.continuous_value_vars = [
+            rv.name for rv in self.model.continuous_value_vars
+        ]
+    except (KeyError, AttributeError):
+        self.continuous_value_vars = []
+        _log.warning("Could not extract continuous_value_vars from model")
+
+    try:
+        self.discrete_value_vars = [rv.name for rv in self.model.discrete_value_vars]
+    except (KeyError, AttributeError):
+        self.discrete_value_vars = []
+        _log.warning("Could not extract discrete_value_vars from model")
 
 
 def _get_coords(self, var_name: str) -> dict[str, Sequence[int]] | None:

@@ -32,7 +32,7 @@
    :target: https://www.python.org/
    :alt: Python version
 
-**pyloo** is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models with advanced features for **PyMC** models. Inspired by its R twin `loo <https://github.com/stan-dev/loo>`_, **pyloo** brings similar functionality to the Python ecosystem.
+__pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models with advanced features for **PyMC** models. Inspired by its R twin `loo <https://github.com/stan-dev/loo>`_, __pyloo__ brings similar functionality to the Python ecosystem.
 
 .. warning::
    This project is in active development and not all features have been implemented yet. While the core functionality is available, some advanced features are still being developed.
@@ -44,7 +44,7 @@ The package implements the fast and stable computations for approximate LOO-CV f
 Features
 -------
 
-PyLOO offers a comprehensive suite of tools for Bayesian model selection and comparison:
+__pyloo__ offers a comprehensive suite of tools for Bayesian model selection and comparison:
 
 Core Functionality
 ~~~~~~~~~~~~~~~~

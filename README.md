@@ -24,7 +24,7 @@ The package implements the fast and stable computations for approximate LOO-CV f
 
 ## Features
 
-PyLOO offers a comprehensive suite of tools for Bayesian model selection and comparison:
+__pyloo__ offers a comprehensive suite of tools for Bayesian model selection and comparison:
 
 ### Core Functionality
 

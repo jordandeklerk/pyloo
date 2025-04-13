@@ -1,14 +1,16 @@
 """Tests for PyMC model wrapper."""
 
+import copy
 import logging
 
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 from arviz import InferenceData
 
 from ...loo import loo
-from ...wrapper.pymc import PyMCWrapper, PyMCWrapperError
+from ...wrapper.pymc.pymc import PyMCWrapper, PyMCWrapperError
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,
@@ -810,3 +812,474 @@ def test_mixture_model_log_likelihood_i_workflow(mixture_model):
     assert_finite(log_like)
 
     wrapper.set_data({wrapper.get_observed_name(): original_data})
+
+
+def test_check_implemented_methods():
+    """Test the check_implemented_methods functionality."""
+
+    class MockWrapper:
+        def __init__(self):
+            pass
+
+        def implemented_method(self):
+            return "This method is implemented"
+
+    mock_wrapper = MockWrapper()
+    mock_wrapper.check_implemented_methods = (
+        PyMCWrapper.check_implemented_methods.__get__(mock_wrapper, MockWrapper)
+    )
+
+    required_methods = ["set_data", "log_likelihood_i", "implemented_method"]
+    missing_methods = mock_wrapper.check_implemented_methods(required_methods)
+    assert set(missing_methods) == {"set_data", "log_likelihood_i"}
+    assert "implemented_method" not in missing_methods
+
+    required_methods = ["implemented_method"]
+    missing_methods = mock_wrapper.check_implemented_methods(required_methods)
+    assert missing_methods == []
+
+    missing_methods = mock_wrapper.check_implemented_methods([])
+    assert missing_methods == []
+
+
+def test_get_dims(simple_model, hierarchical_model):
+    """Test the get_dims method for retrieving variable dimensions."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    dims = wrapper.get_dims("y")
+    assert dims is not None
+    assert len(dims) > 0
+
+    dims_implicit = wrapper.get_dims()
+    assert dims_implicit is not None
+    assert dims_implicit == dims
+
+    dims_param = wrapper.get_dims("alpha")
+    assert dims_param is None or len(dims_param) == 0
+
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    dims_hier = wrapper.get_dims("Y")
+    assert dims_hier is not None
+    assert len(dims_hier) == 2
+
+    dims_nonexistent = wrapper.get_dims("nonexistent_var")
+    assert dims_nonexistent is None
+
+
+def test_get_draws(simple_model):
+    """Test the get_draws method for retrieving posterior samples."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    draws = wrapper.get_draws()
+
+    assert isinstance(draws, xr.Dataset)
+
+    for var_name in ["alpha", "beta", "sigma"]:
+        assert var_name in draws
+
+    assert "chain" in draws.dims
+    assert "draw" in draws.dims
+
+    n_chains = len(idata.posterior.chain)
+    n_draws = len(idata.posterior.draw)
+    assert draws.sizes["chain"] == n_chains
+    assert draws.sizes["draw"] == n_draws
+
+    idata_copy = copy.deepcopy(idata)
+    delattr(idata_copy, "posterior")
+
+    with pytest.raises(PyMCWrapperError, match="must contain posterior samples"):
+        temp_wrapper = wrapper
+        temp_wrapper.idata = idata_copy
+        temp_wrapper.get_draws()
+
+
+def test_get_variable(simple_model, hierarchical_model):
+    """Test the get_variable method for retrieving model variables."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    var = wrapper.get_variable("alpha")
+    assert var is not None
+    assert var.name == "alpha"
+
+    var_missing = wrapper.get_variable("nonexistent_var")
+    assert var_missing is None
+
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    var_obs = wrapper.get_variable("Y")
+    assert var_obs is not None
+    assert var_obs.name == "Y"
+
+    var_hier = wrapper.get_variable("group_effects_raw")
+    assert var_hier is not None
+    assert var_hier.name == "group_effects_raw"
+
+
+def test_variational_approximation_handling(simple_model, monkeypatch):
+    """Test handling of variational approximations in the wrapper."""
+    model, idata = simple_model
+
+    class MockApproximation:
+        def __init__(self):
+            self.called = False
+
+        def sample(self, draws=1000, random_seed=None):
+            self.called = True
+            return {
+                "alpha": np.random.normal(0, 1, size=draws),
+                "beta": np.random.normal(0, 1, size=draws),
+                "sigma": np.abs(np.random.normal(0, 1, size=draws)),
+            }
+
+    mock_approx = MockApproximation()
+
+    wrapper = PyMCWrapper(model, idata, approximation=mock_approx)
+
+    assert wrapper.approximation is mock_approx
+
+    assert wrapper.approximation is not None
+    assert isinstance(wrapper.approximation, MockApproximation)
+
+
+def test_parameter_transformation_edge_cases(simple_model, caplog):
+    """Test edge cases in parameter transformations."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    unconstrained = wrapper.get_unconstrained_parameters()
+
+    invalid_unconstrained = {
+        "alpha": "not an array",
+    }
+
+    with pytest.raises((TypeError, PyMCWrapperError)):
+        wrapper.constrain_parameters(invalid_unconstrained)
+
+    partial_unconstrained = {k: v for k, v in unconstrained.items() if k != "alpha"}
+    constrained = wrapper.constrain_parameters(partial_unconstrained)
+
+    assert "alpha" not in constrained
+    assert set(constrained.keys()) == set(partial_unconstrained.keys())
+
+    with caplog.at_level(logging.WARNING):
+
+        class BrokenTransform:
+            def forward(self, *args, **kwargs):
+                raise ValueError("Test forward error")
+
+            def backward(self, *args, **kwargs):
+                raise ValueError("Test backward error")
+
+        var = None
+        for v in wrapper.model.free_RVs:
+            if v.name == "sigma":
+                var = v
+                break
+
+        if var is not None:
+            original_transform = wrapper.model.rvs_to_transforms.get(var)
+
+            try:
+                wrapper.model.rvs_to_transforms[var] = BrokenTransform()
+
+                broken_unconstrained = wrapper.get_unconstrained_parameters()
+                assert (
+                    "Failed to transform" in caplog.text
+                    or "transform failed" in caplog.text
+                )
+
+                assert "sigma" in broken_unconstrained
+
+                caplog.clear()
+                broken_constrained = wrapper.constrain_parameters(broken_unconstrained)
+                assert (
+                    "Failed to transform" in caplog.text
+                    or "transform failed" in caplog.text
+                )
+
+                assert "sigma" in broken_constrained
+
+            finally:
+                if original_transform is not None:
+                    wrapper.model.rvs_to_transforms[var] = original_transform
+                else:
+                    wrapper.model.rvs_to_transforms.pop(var, None)
+
+
+def test_missing_value_handling(simple_model):
+    """Test handling of missing values in observed data."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    original_data = wrapper.get_observed_data()
+    data_with_missing = original_data.copy()
+    data_with_missing[::3] = np.nan
+
+    wrapper.set_data({"y": data_with_missing})
+
+    mask = wrapper.get_missing_mask("y")
+    assert np.all(mask[::3])
+    assert not np.any(mask[1::3])
+    assert not np.any(mask[2::3])
+
+    mask_axis = wrapper.get_missing_mask("y", axis=0)
+    assert np.sum(mask_axis) == np.sum(mask)
+
+    with pytest.raises(PyMCWrapperError, match="Missing values found"):
+        wrapper.log_likelihood_i(1, idata)
+
+    selected, remaining = wrapper.select_observations(slice(0, 10))
+    assert len(selected) == 10
+    assert len(remaining) == 90
+
+    wrapper.set_data({"y": original_data})
+
+
+def test_sample_posterior_errors(simple_model):
+    """Test comprehensive error cases for sample_posterior method."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    with pytest.raises(PyMCWrapperError, match="Number of draws must be positive"):
+        wrapper.sample_posterior(draws=0)
+
+    with pytest.raises(PyMCWrapperError, match="Number of draws must be positive"):
+        wrapper.sample_posterior(draws=-100)
+
+    with pytest.raises(PyMCWrapperError, match="Number of chains must be positive"):
+        wrapper.sample_posterior(chains=0)
+
+    with pytest.raises(PyMCWrapperError, match="Number of chains must be positive"):
+        wrapper.sample_posterior(chains=-2)
+
+    try:
+        wrapper.sample_posterior(draws=10, chains=1, target_accept=0.8)
+    except Exception as e:
+        raise e
+
+    with pytest.raises(PyMCWrapperError):
+        original_sample = pm.sample
+        try:
+
+            def mock_sample(*args, **kwargs):
+                raise ValueError("Test error in sampling")
+
+            pm.sample = mock_sample
+            wrapper.sample_posterior(draws=10, chains=1)
+        finally:
+            pm.sample = original_sample
+
+
+def test_coordinate_handling(hierarchical_model):
+    """Test comprehensive coordinate handling in different scenarios."""
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    new_data = np.random.normal(0, 1, size=(8, 20))
+    coords = {"group": list(range(8)), "obs_id": list(range(20))}
+    wrapper.set_data({"Y": new_data}, coords=coords)
+    assert_arrays_equal(wrapper.observed_data["Y"], new_data)
+
+    new_data = np.random.normal(0, 1, size=(10, 25))
+    with pytest.warns(UserWarning):
+        wrapper.set_data(
+            {"Y": new_data},
+            coords={"group": list(range(8)), "obs_id": list(range(20))},
+            update_coords=True,
+        )
+    assert_arrays_equal(wrapper.observed_data["Y"], new_data)
+
+    new_data = np.random.normal(0, 1, size=(12, 30))
+    with pytest.raises(
+        ValueError, match="Coordinate length .* does not match variable shape"
+    ):
+        wrapper.set_data(
+            {"Y": new_data},
+            coords={"group": list(range(8)), "obs_id": list(range(20))},
+            update_coords=False,
+        )
+
+    new_data = np.random.normal(0, 1, size=(8, 20))
+    partial_coords = {"group": list(range(8))}
+    with pytest.raises(ValueError, match="Missing coordinates for dimensions"):
+        wrapper.set_data({"Y": new_data}, coords=partial_coords, update_coords=False)
+
+    new_data = np.random.normal(0, 1, size=(8, 20))
+    wrong_length_coords = {"group": list(range(8)), "obs_id": list(range(15))}
+    with pytest.raises(ValueError, match="Coordinate length .* does not match"):
+        wrapper.set_data(
+            {"Y": new_data}, coords=wrong_length_coords, update_coords=False
+        )
+
+    new_data = np.random.normal(0, 1, size=(8, 20))
+    mask = np.ones((8, 20), dtype=bool)
+    mask[0, :] = False
+
+    with pytest.raises(PyMCWrapperError, match="Mask shape"):
+        wrong_mask = np.ones((9, 20), dtype=bool)
+        wrapper.set_data({"Y": new_data}, coords=coords, mask={"Y": wrong_mask})
+
+    try:
+        wrapper.set_data({"Y": new_data}, coords=coords, mask={"Y": mask})
+        masked_data = wrapper.observed_data["Y"]
+        if hasattr(masked_data, "mask"):
+            assert np.all(masked_data.mask[0, :])
+    except Exception as e:
+        if "mask" not in str(e):
+            raise
+
+
+def test_observed_data_access_errors():
+    """Test error handling when accessing observed data incorrectly."""
+
+    class MockWrapper:
+        def __init__(self):
+            self.observed_data = {}
+
+    mock_wrapper = MockWrapper()
+    mock_wrapper._validate_observed_var = PyMCWrapper._validate_observed_var.__get__(
+        mock_wrapper, MockWrapper
+    )
+
+    with pytest.raises(PyMCWrapperError, match="not found in observed data"):
+        mock_wrapper._validate_observed_var("nonexistent_var")
+
+    mock_wrapper.observed_data = {"y": np.random.normal(0, 1, size=10)}
+    mock_wrapper._validate_observed_var("y")
+
+
+def test_wrapper_initialization_with_var_names(simple_model):
+    """Test wrapper initialization with var_names parameter."""
+    model, idata = simple_model
+
+    var_names = ["alpha", "beta"]
+    wrapper = PyMCWrapper(model, idata, var_names=var_names)
+    assert wrapper.var_names == var_names
+
+    original_data = idata.observed_data["y"].values.copy()
+    wrapper.set_data({"y": original_data})
+    assert len(wrapper.observed_data) > 0
+
+    log_like_i = wrapper.log_likelihood_i(0, idata)
+    assert isinstance(log_like_i, xr.DataArray)
+    assert set(log_like_i.dims) == {"chain", "draw"}
+
+
+def test_log_likelihood_i_invalid_idata(simple_model):
+    """Test log_likelihood_i with invalid InferenceData object."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    idata_invalid = InferenceData()
+
+    with pytest.raises(PyMCWrapperError, match="must contain posterior samples"):
+        wrapper.log_likelihood_i(0, idata_invalid)
+
+    idata_copy = copy.deepcopy(idata)
+
+    original_compute_ll = pm.compute_log_likelihood
+    try:
+
+        def mock_compute_ll(*args, **kwargs):
+            return {}
+
+        pm.compute_log_likelihood = mock_compute_ll
+        with pytest.raises(PyMCWrapperError, match="Failed to compute log likelihood"):
+            wrapper.log_likelihood_i(0, idata_copy)
+    finally:
+        pm.compute_log_likelihood = original_compute_ll
+
+
+def test_get_shape_behavior(simple_model, hierarchical_model):
+    """Test the get_shape method's behavior with different variables."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    shape = wrapper.get_shape("y")
+    assert shape is not None
+    assert shape == (100,)
+
+    shape_alpha = wrapper.get_shape("alpha")
+    assert shape_alpha is not None
+    assert shape_alpha == () or shape_alpha == (1,)
+
+    shape_nonexistent = wrapper.get_shape("nonexistent_var")
+    assert shape_nonexistent is None
+
+    model, idata = hierarchical_model
+    wrapper = PyMCWrapper(model, idata)
+
+    shape_Y = wrapper.get_shape("Y")
+    assert shape_Y is not None
+    assert len(shape_Y) == 2
+
+    shape_group_effects = wrapper.get_shape("group_effects_raw")
+    assert shape_group_effects is not None
+    assert len(shape_group_effects) > 0
+
+
+def test_initialization_error_handling(caplog):
+    """Test error handling during initialization."""
+
+    class MockVar:
+        def __init__(self, name, shape=()):
+            self.name = name
+            self.shape = shape
+            self.tag = None
+
+    class MockModel:
+        def __init__(self):
+            self.var1 = MockVar("var1", ())
+            self.var2 = MockVar("var2", ())
+            self.named_vars = {"var1": self.var1, "var2": self.var2}
+            self.free_RVs = []
+            self.rvs_to_transforms = {}
+            self.observed_RVs = []
+            self.deterministics = []
+
+    mock_idata = InferenceData()
+
+    with pytest.raises(PyMCWrapperError, match="must contain posterior samples"):
+        PyMCWrapper(MockModel(), mock_idata)
+
+
+def test_error_handling(simple_model):
+    """Test comprehensive error handling across various methods."""
+    model, idata = simple_model
+    wrapper = PyMCWrapper(model, idata)
+
+    with pytest.raises(PyMCWrapperError, match="Variable .* not found in model"):
+        wrapper.set_data({"nonexistent_var": np.zeros(10)})
+
+    wrapper_no_observed = copy.deepcopy(wrapper)
+    wrapper_no_observed.observed_data = {}
+    with pytest.raises(PyMCWrapperError, match="No observed variables found"):
+        wrapper_no_observed.select_observations(slice(0, 10))
+
+    with pytest.raises(PyMCWrapperError, match="No observed variables found"):
+        wrapper_no_observed.get_observed_name()
+
+    with pytest.raises((IndexError, PyMCWrapperError)):
+        wrapper.select_observations(object())
+
+    with pytest.raises(PyMCWrapperError, match="not found in model"):
+        wrapper.log_likelihood_i(0, idata, "invalid_var")
+
+    with pytest.raises(IndexError):
+        wrapper.log_likelihood_i(1000, idata)
+
+    bad_idata = copy.deepcopy(idata)
+    if hasattr(bad_idata, "log_likelihood"):
+        delattr(bad_idata, "log_likelihood")
+
+    try:
+        wrapper.log_likelihood_i(0, bad_idata)
+    except PyMCWrapperError:
+        pass

@@ -9,7 +9,7 @@ from .elpd import ELPDData
 from .loo import loo
 from .loo_subsample import loo_subsample
 from .utils import _logsumexp
-from .wrapper.pymc import PyMCWrapper
+from .wrapper.pymc.pymc import PyMCWrapper
 
 __all__ = ["reloo"]
 

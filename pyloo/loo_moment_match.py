@@ -24,7 +24,7 @@ from .helpers import (
 )
 from .split_moment_match import loo_moment_match_split
 from .utils import _logsumexp
-from .wrapper.pymc import PyMCWrapper
+from .wrapper.pymc.pymc import PyMCWrapper
 
 __all__ = ["loo_moment_match"]
 
