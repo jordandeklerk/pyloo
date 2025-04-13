@@ -11,7 +11,7 @@ import xarray as xr
 from ...loo import loo
 from ...loo_subsample import loo_subsample, update_subsample
 from ...psis import psislw
-from ...wrapper.pymc import PyMCWrapper
+from ...wrapper.pymc.pymc import PyMCWrapper
 from ..helpers import assert_allclose, assert_array_almost_equal
 
 logger = logging.getLogger(__name__)

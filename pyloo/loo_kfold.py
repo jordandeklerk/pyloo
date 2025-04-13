@@ -12,7 +12,7 @@ import xarray as xr
 from .elpd import ELPDData
 from .rcparams import rcParams
 from .utils import _logsumexp, get_log_likelihood, wrap_xarray_ufunc
-from .wrapper.pymc import PyMCWrapper
+from .wrapper.pymc.pymc import PyMCWrapper
 
 __all__ = ["loo_kfold"]
 

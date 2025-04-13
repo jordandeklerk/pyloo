@@ -10,7 +10,7 @@ import xarray as xr
 from arviz import InferenceData
 
 from ...loo import loo
-from ...wrapper.pymc import PyMCWrapper, PyMCWrapperError
+from ...wrapper.pymc.pymc import PyMCWrapper, PyMCWrapperError
 from ..helpers import (
     assert_arrays_allclose,
     assert_arrays_almost_equal,

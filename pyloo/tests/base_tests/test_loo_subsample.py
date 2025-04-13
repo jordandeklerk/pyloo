@@ -16,7 +16,7 @@ from ...loo_subsample import (
     loo_subsample,
     update_subsample,
 )
-from ...wrapper.laplace import Laplace
+from ...wrapper.pymc.laplace import Laplace
 from ..helpers import (
     assert_array_almost_equal,
     assert_arrays_allclose,

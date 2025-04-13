@@ -12,7 +12,7 @@ from ...loo_kfold import (
     _kfold_split_stratified,
     loo_kfold,
 )
-from ...wrapper.pymc import PyMCWrapper
+from ...wrapper.pymc.pymc import PyMCWrapper
 
 logger = logging.getLogger(__name__)
 

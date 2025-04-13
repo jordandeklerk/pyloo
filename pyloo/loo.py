@@ -439,7 +439,7 @@ def loo(
         result["looic_se"] = looic_se
 
     if moment_match:
-        from .wrapper.pymc import PyMCWrapper
+        from .wrapper.pymc.pymc import PyMCWrapper
 
         wrapper = kwargs.get("wrapper", None)
         model_obj = wrapper

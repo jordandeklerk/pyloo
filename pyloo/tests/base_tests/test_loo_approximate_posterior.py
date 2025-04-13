@@ -10,8 +10,8 @@ from arviz.data import InferenceData
 
 from ...loo import loo
 from ...loo_approximate_posterior import loo_approximate_posterior
-from ...wrapper.laplace import Laplace
-from ...wrapper.utils import compute_log_weights
+from ...wrapper.pymc.laplace import Laplace
+from ...wrapper.pymc.utils import compute_log_weights
 from ..helpers import assert_arrays_allclose
 
 logger = logging.getLogger(__name__)

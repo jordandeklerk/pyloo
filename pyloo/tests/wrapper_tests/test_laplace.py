@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from arviz import InferenceData
 
-from ...wrapper.laplace import PYMC_EXTRAS_AVAILABLE, Laplace, LaplaceVIResult
+from ...wrapper.pymc.laplace import PYMC_EXTRAS_AVAILABLE, Laplace, LaplaceVIResult
 from ..helpers import assert_bounded, assert_finite
 
 logger = logging.getLogger(__name__)

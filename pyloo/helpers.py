@@ -10,7 +10,7 @@ import pymc as pm
 import xarray as xr
 from arviz.stats.diagnostics import ess
 
-from .wrapper.pymc import PyMCWrapper
+from .wrapper.pymc.pymc import PyMCWrapper
 
 __all__ = [
     "log_lik_i_upars",

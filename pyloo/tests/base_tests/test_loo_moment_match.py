@@ -26,7 +26,7 @@ from ...loo_moment_match import (
     update_quantities_i,
 )
 from ...split_moment_match import loo_moment_match_split
-from ...wrapper.pymc import PyMCWrapper
+from ...wrapper.pymc.pymc import PyMCWrapper
 from ..helpers import assert_allclose
 
 logger = logging.getLogger(__name__)
