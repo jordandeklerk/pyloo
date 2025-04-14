@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11']
+        python-version: ['3.13']
         test-subset:
           - |
             pyloo/tests/base_tests/test_base.py
@@ -100,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11']
+        python-version: ['3.13']
         test-subset:
           - |
             pyloo/tests/base_tests/test_base.py
@@ -182,7 +182,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11']
+        python-version: ['3.13']
         test-subset:
           - |
             pyloo/tests/base_tests/test_base.py
@@ -238,12 +238,6 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-
-    - name: Install gfortran
-      run: |
-        brew update
-        brew install gcc
-        echo "$(brew --prefix)/bin" >> $GITHUB_PATH
 
     - name: Install dependencies
       run: |
