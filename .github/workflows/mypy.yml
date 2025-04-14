@@ -34,4 +34,4 @@ jobs:
 
       - name: Run mypy
         run: |
-          mypy pyloo # Target the main package directory
+          mypy pyloo
