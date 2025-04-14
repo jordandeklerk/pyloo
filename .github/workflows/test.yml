@@ -75,6 +75,10 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Install gfortran (macOS)
+      if: runner.os == 'macOS'
+      run: brew install gcc
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
