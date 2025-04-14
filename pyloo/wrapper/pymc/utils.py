@@ -279,7 +279,6 @@ def _process_and_validate_indices(
 
 
 def _format_log_likelihood_result(
-    self,
     log_like_i: xr.DataArray,
     indices: np.ndarray,
     single_idx: bool,

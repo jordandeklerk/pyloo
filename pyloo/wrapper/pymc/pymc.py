@@ -403,7 +403,6 @@ class PyMCWrapper:
 
             log_like_i = log_like[var_name]
             log_like_i = _format_log_likelihood_result(
-                self,
                 log_like_i,
                 indices,
                 single_idx,
