@@ -86,7 +86,7 @@ jobs:
         python -m pytest -vv --cov=pyloo --cov-append --cov-report=xml --no-cov-on-fail --cov-report term --durations=50 $TEST_SUBSET
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.xml
@@ -169,7 +169,7 @@ jobs:
         python -m pytest -vv --cov=pyloo --cov-append --cov-report=xml --no-cov-on-fail --cov-report term --durations=50 %TEST_SUBSET%
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.xml
@@ -251,7 +251,7 @@ jobs:
         python -m pytest -vv --cov=pyloo --cov-append --cov-report=xml --no-cov-on-fail --cov-report term --durations=50 $TEST_SUBSET
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.xml
