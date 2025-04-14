@@ -1,4 +1,4 @@
-name: pyloo Tests
+name: tests
 
 on:
   push:
