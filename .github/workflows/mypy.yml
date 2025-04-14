@@ -1,0 +1,37 @@
+name: mypy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    shell: bash -leo pipefail {0}
+
+jobs:
+  mypy:
+    name: Mypy Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies for mypy
+        run: |
+          python -m pip install --upgrade pip
+          # Install core and dev dependencies (assuming mypy is in dev)
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          # Install the package itself in editable mode
+          pip install -e .
+
+      - name: Run mypy
+        run: |
+          mypy pyloo # Target the main package directory

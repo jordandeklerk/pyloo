@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.10', '3.11', '3.13']
         test-subset:
           - |
             pyloo/tests/base_tests/test_base.py
@@ -75,16 +75,12 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install gfortran (macOS)
-      if: runner.os == 'macOS'
-      run: brew install gcc
-
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements-test.txt
+        python -m pip install --prefer-binary -r requirements-test.txt
         # Install extras needed for specific subsets if applicable (e.g., plots, wrappers)
-        pip install -e .[test,plots,wrappers]
+        python -m pip install --prefer-binary -e .[test,plots,wrappers]
 
     - name: Run tests
       run: |
@@ -105,7 +101,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.10', '3.11', '3.13']
         test-subset:
           - |
             pyloo/tests/base_tests/test_base.py
@@ -165,8 +161,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements-test.txt
-        pip install -e .[test,plots,wrappers]
+        python -m pip install --prefer-binary -r requirements-test.txt
+        python -m pip install --prefer-binary -e .[test,plots,wrappers]
 
     - name: Run tests
       run: >- # Use >- for multi-line cmd commands
@@ -183,11 +179,11 @@ jobs:
 
   macos:
     name: macOS Tests (Python ${{ matrix.python-version }})
-    runs-on: macos-latest # Use macos-latest unless a specific version is needed
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.10', '3.11', '3.13']
         test-subset:
           - |
             pyloo/tests/base_tests/test_base.py
@@ -235,7 +231,7 @@ jobs:
       TEST_SUBSET: ${{ matrix.test-subset }}
     defaults:
       run:
-        shell: bash -leo pipefail {0} # Use bash shell
+        shell: bash -leo pipefail {0}
 
     steps:
     - uses: actions/checkout@v4
@@ -244,11 +240,49 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
+    - name: Install gfortran
+      run: |
+        brew update
+        brew install gcc
+        echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+        # Verify gfortran installation
+        which gfortran || echo "gfortran not found in PATH"
+        gfortran --version || echo "gfortran command failed"
+
+    - name: Set up Fortran environment variables
+      run: |
+        echo "FC=gfortran" >> $GITHUB_ENV
+        echo "F77=gfortran" >> $GITHUB_ENV
+        echo "FFLAGS=-fPIC" >> $GITHUB_ENV
+        echo "F90=gfortran" >> $GITHUB_ENV
+
+    - name: Setup pip config
+      run: |
+        mkdir -p ~/.config/pip
+        echo "[global]" > ~/.config/pip/pip.conf
+        echo "extra-index-url=https://pypi.anaconda.org/scipy-wheels-nightly/simple" >> ~/.config/pip/pip.conf
+        echo "prefer-binary=true" >> ~/.config/pip/pip.conf
+
+    - name: Install dependencies for Python 3.13
+      if: matrix.python-version == '3.13'
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements-test.txt
-        pip install -e .[test,plots,wrappers]
+        # For Python 3.13, use pre-built wheels when possible and specify compatible versions
+        python -m pip install --prefer-binary "numpy>=1.21.0,<2.0.0" || python -m pip install --prefer-binary "numpy>=2.0.0"
+        python -m pip install --prefer-binary "scipy>=1.10.0,<2.0.0" || python -m pip install --prefer-binary "scipy>=1.7.0"
+        python -m pip install --prefer-binary pytest pytest-cov arviz==0.15.1
+        # Install the package in development mode
+        python -m pip install --prefer-binary -e .[test,plots,wrappers]
+        # Verify installation
+        python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
+        python -c "import scipy; print(f'SciPy version: {scipy.__version__}')" || echo "SciPy import failed"
+
+    - name: Install dependencies for Python 3.10/3.11
+      if: matrix.python-version != '3.13'
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --prefer-binary -r requirements-test.txt
+        python -m pip install --prefer-binary -e .[test,plots,wrappers]
 
     - name: Run tests
       run: |
@@ -263,11 +297,10 @@ jobs:
         name: macos-py${{ matrix.python-version }}
         fail_ci_if_error: false
 
-  # Optional: Add a final job to check the status of all test jobs
   all_tests_passed:
     name: All Tests Passed
-    if: ${{ always() }} # Ensures this job runs even if previous jobs fail
-    needs: [ubuntu, windows, macos] # Depends on all OS-specific jobs
+    if: ${{ always() }}
+    needs: [ubuntu, windows, macos]
     runs-on: ubuntu-latest
     steps:
       - name: Check matrix status
