@@ -59,7 +59,7 @@ jobs:
         pip install -e .[test]
     - name: Run LOO tests
       run: |
-        pytest pyloo/tests/base_tests/test_loo*.py \
+        pytest "pyloo/tests/base_tests/test_loo*.py" \
                pyloo/tests/base_tests/test_reloo.py
 
   test-sampling:
@@ -108,7 +108,8 @@ jobs:
         pip install -e .[test]
     - name: Run Approximation tests
       run: |
-        pytest pyloo/tests/base_tests/test_approximations_*.py
+        # Quote the path with wildcard for cross-platform compatibility
+        pytest "pyloo/tests/base_tests/test_approximations_*.py"
 
   test-estimators:
     name: Estimator Tests (${{ matrix.python-version }}, ${{ matrix.os }})
@@ -131,7 +132,8 @@ jobs:
         pip install -e .[test]
     - name: Run Estimator tests
       run: |
-        pytest pyloo/tests/base_tests/test_estimators_*.py
+        # Quote the path with wildcard for cross-platform compatibility
+        pytest "pyloo/tests/base_tests/test_estimators_*.py"
 
   test-metrics:
     name: Metrics Tests (${{ matrix.python-version }}, ${{ matrix.os }})
