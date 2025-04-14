@@ -24,9 +24,9 @@
 ..    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
 ..    :alt: Commit Activity
 
-.. |last_commit| image:: https://img.shields.io/github/last-commit/jordandeklerk/pyloo
-   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
-   :alt: Last Commit
+.. .. |last_commit| image:: https://img.shields.io/github/last-commit/jordandeklerk/pyloo
+..    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
+..    :alt: Last Commit
 
 .. |python| image:: https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue
    :target: https://www.python.org/
