@@ -64,9 +64,7 @@ class MockCmdStanModel:
             for i in range(n_obs):
                 mu_i = np.exp(np.dot(self.x[i], beta_s) + intercept_s + self.offset[i])
                 self.log_lik[s, i] = (
-                    self.y[i] * np.log(mu_i)
-                    - mu_i
-                    - np.log(np.math.factorial(self.y[i]))
+                    self.y[i] * np.log(mu_i) - mu_i - np.log(np.factorial(self.y[i]))
                 )
 
     def stan_variables(self):
