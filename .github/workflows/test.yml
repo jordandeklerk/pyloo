@@ -146,6 +146,7 @@ jobs:
 
     env:
       TEST_SUBSET: ${{ matrix.test-subset }}
+      MPLBACKEND: Agg  # Set matplotlib backend to non-interactive Agg
     defaults:
       run:
         shell: cmd /C call {0} # Use cmd shell for Windows
