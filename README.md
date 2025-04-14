@@ -2,7 +2,7 @@
 <img src="./assets/pyloo_logo_revised.png"  width="250">
 </h1> -->
 
-<img src="./assets/pyloo.png"  width="150" align="center">
+<img src="./assets/pyloo.png"  width="150" align="left">
 
 <!-- [![PyPI Downloads](https://img.shields.io/pypi/dm/pyloo.svg?label=Pypi%20downloads)](https://pypi.org/project/pyloo/) -->
 <!-- [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/pyloo.svg?label=Conda%20downloads)](https://anaconda.org/conda-forge/pyloo) -->
@@ -15,7 +15,7 @@
 <!-- [![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/) -->
 
 __pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models with advanced features for **PyMC** models. Inspired by its R twin [loo](https://github.com/stan-dev/loo), __pyloo__ brings similar functionality to the Python ecosystem.
-
+<br><br>
 The package implements the fast and stable computations for approximate LOO-CV from
 
 * Vehtari, A., Gelman, A., and Gabry, J. (2024). [Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC](https://arxiv.org/abs/1507.02646). _Statistics and Computing_. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
