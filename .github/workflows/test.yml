@@ -1,0 +1,205 @@
+name: Pyloo Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-core:
+    name: Core Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        pip install -e pyloo/.[test]
+    - name: Run core tests
+      run: |
+        pytest pyloo/pyloo/tests/base_tests/test_base.py \
+               pyloo/pyloo/tests/base_tests/test_utils.py \
+               pyloo/pyloo/tests/base_tests/test_rcparams.py \
+               pyloo/pyloo/tests/test_data.py \
+               pyloo/pyloo/tests/helpers.py \
+               pyloo/pyloo/tests/models.py
+
+  test-loo:
+    name: LOO Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        pip install -e pyloo/.[test]
+    - name: Run LOO tests
+      run: |
+        pytest pyloo/pyloo/tests/base_tests/test_loo*.py \
+               pyloo/pyloo/tests/base_tests/test_reloo.py
+
+  test-sampling:
+    name: Sampling Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        pip install -e pyloo/.[test]
+    - name: Run Sampling tests
+      run: |
+        pytest pyloo/pyloo/tests/base_tests/test_psis.py \
+               pyloo/pyloo/tests/base_tests/test_sis.py \
+               pyloo/pyloo/tests/base_tests/test_tis.py
+
+  test-approximations:
+    name: Approximation Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        pip install -e pyloo/.[test]
+    - name: Run Approximation tests
+      run: |
+        pytest pyloo/pyloo/tests/base_tests/test_approximations_*.py
+
+  test-estimators:
+    name: Estimator Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        pip install -e pyloo/.[test]
+    - name: Run Estimator tests
+      run: |
+        pytest pyloo/pyloo/tests/base_tests/test_estimators_*.py
+
+  test-metrics:
+    name: Metrics Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        pip install -e pyloo/.[test]
+    - name: Run Metrics tests
+      run: |
+        pytest pyloo/pyloo/tests/base_tests/test_compare.py \
+               pyloo/pyloo/tests/base_tests/test_e_loo.py \
+               pyloo/pyloo/tests/base_tests/test_elpd.py \
+               pyloo/pyloo/tests/base_tests/test_waic.py
+
+  test-plots:
+    name: Plotting Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        # Note: Plotting might have specific dependencies, ensure they are in requirements-test.txt or extras
+        pip install -e pyloo/.[test,plots] # Assuming a 'plots' extra exists or deps are in test
+    - name: Run Plotting tests
+      run: |
+        pytest pyloo/pyloo/tests/base_tests/test_plots_matplotlib.py
+
+  test-wrappers:
+    name: Wrapper Tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r pyloo/requirements-test.txt
+        # Wrappers might need specific dependencies (e.g., pymc)
+        pip install -e pyloo/.[test,wrappers] # Assuming a 'wrappers' extra exists or deps are in test
+    - name: Run wrapper tests
+      run: |
+        pytest pyloo/pyloo/tests/wrapper_tests
