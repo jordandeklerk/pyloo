@@ -20,9 +20,9 @@
    :target: https://www.codacy.com/gh/jordandeklerk/pyloo/dashboard?utm_source=github.com&utm_medium=referral&utm_content=jordandeklerk/pyloo&utm_campaign=Badge_Grade
    :alt: Codacy Badge
 
-.. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
-   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
-   :alt: Commit Activity
+.. .. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
+..    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
+..    :alt: Commit Activity
 
 .. |last_commit| image:: https://img.shields.io/github/last-commit/jordandeklerk/pyloo
    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
