@@ -185,15 +185,16 @@ class PyMCWrapper:
 
         try:
             mask = _create_selection_mask(indices, data.shape[axis], axis)
-            idx = [slice(None)] * data.ndim
 
-            # Select observations
-            idx[axis] = mask
-            selected = data[tuple(idx)]
+            selected_idx_tuple = tuple(
+                mask if i == axis else slice(None) for i in range(data.ndim)
+            )
+            selected = data[selected_idx_tuple]
 
-            # Remaining observations
-            idx[axis] = ~mask
-            remaining = data[tuple(idx)]
+            remaining_idx_tuple = tuple(
+                ~mask if i == axis else slice(None) for i in range(data.ndim)
+            )
+            remaining = data[remaining_idx_tuple]
 
             return selected, remaining
 

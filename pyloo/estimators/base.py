@@ -113,7 +113,7 @@ def subsample_indices(
                 "Number of observations cannot exceed total sample size "
                 "when using SRS without replacement"
             )
-        idx = sorted(
+        idx = np.sort(
             np.random.choice(
                 len(elpd_loo_approximation), size=observations, replace=False
             )
