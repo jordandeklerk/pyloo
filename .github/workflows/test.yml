@@ -1,4 +1,4 @@
-name: Pyloo Tests
+name: tests
 
 on:
   push:
@@ -28,15 +28,28 @@ jobs:
         pip install -r requirements-test.txt
         # Install the package itself in editable mode from the repo root
         pip install -e .[test]
-    - name: Run core tests
+    - name: Run core tests (with coverage for ubuntu/py3.11)
       run: |
+        # Add coverage flags only for the ubuntu/py3.11 matrix entry
+        COVERAGE_FLAGS=""
+        if [[ "${{ matrix.os }}" == "ubuntu-latest" && "${{ matrix.python-version }}" == "3.11" ]]; then
+          COVERAGE_FLAGS="--cov=pyloo --cov-report=xml"
+        fi
         # Paths to tests are relative to the repo root
-        pytest pyloo/tests/base_tests/test_base.py \
+        pytest $COVERAGE_FLAGS \
+               pyloo/tests/base_tests/test_base.py \
                pyloo/tests/base_tests/test_utils.py \
                pyloo/tests/base_tests/test_rcparams.py \
                pyloo/tests/test_data.py \
                pyloo/tests/helpers.py \
                pyloo/tests/models.py
+
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: jordandeklerk/pyloo
 
   test-loo:
     name: LOO Tests (${{ matrix.python-version }}, ${{ matrix.os }})

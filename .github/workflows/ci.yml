@@ -34,15 +34,7 @@ jobs:
       run: |
         flake8 pyloo
 
-    - name: Run tests with coverage
-      run: |
-        pytest pyloo/tests --cov=pyloo --cov-report=xml
-
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        slug: jordandeklerk/pyloo
+    # Test execution and coverage reporting are now handled in test.yml
 
     - name: Build documentation
       run: |
