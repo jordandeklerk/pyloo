@@ -7,7 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  lint-typecheck:
+    name: Linting and Type Checking
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -21,22 +22,19 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
+    - name: Install dependencies for linting/typing
       run: |
         python -m pip install --upgrade pip
+        # Install core and dev dependencies (assuming flake8/mypy are in dev)
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
-        pip install -r requirements-test.txt
-        pip install -r requirements-docs.txt
+        # Install the package itself in editable mode
         pip install -e .
 
     - name: Lint with flake8
       run: |
         flake8 pyloo
 
-    # Test execution and coverage reporting are now handled in test.yml
-
-    - name: Build documentation
+    - name: Check types with mypy
       run: |
-        cd docs
-        make html
+        mypy pyloo
