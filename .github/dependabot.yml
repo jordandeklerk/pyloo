@@ -1,40 +1,10 @@
 version: 2
 updates:
-  # Python dependencies (including pre-commit hooks)
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "python"
-    groups:
-      pre-commit-hooks:
-        patterns:
-          - "pre-commit"
-          - "black"
-          - "flake8*"
-          - "isort"
-          - "mypy"
-        update-types:
-          - "minor"
-          - "patch"
-    ignore:
-      # Ignore patch updates for numpy and scipy as they can break compatibility
-      - dependency-name: "numpy"
-        update-types: ["version-update:semver-patch"]
-      - dependency-name: "scipy"
-        update-types: ["version-update:semver-patch"]
-
-  # GitHub Actions
+  # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "github-actions"
+      - "Github CI/CD"
+      - "no releasenotes"
