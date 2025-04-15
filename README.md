@@ -28,9 +28,6 @@ Analysis, doi:10.1214/17-BA1091.
 [arXiv preprint arXiv:1704.02030](https://arxiv.org/abs/1704.02030).
 
 We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (like Pareto k estimates) and estimates for effective sample size and Monte Carlo error, providing greater insight into the reliability of the results.
-<br>
-
-> ⚠️ **Note**: This project is in active development.
 
 ## Features
 
@@ -114,7 +111,7 @@ All Pareto k estimates are good (k < 0.7)
 
 ## Installation
 
-> ⚠️ **Note**: Not yet available for installation from PyPI.
+> ⚠️ **Note**: `pyloo` is currently under active development and has not yet been officially released or published to PyPI. While the core functionality is being stabilized, expect potential changes to the API and features. Installation is currently only possible directly from the development version on GitHub (see below).
 
 ```bash
 pip install pyloo

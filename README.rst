@@ -48,10 +48,6 @@ and computes model weights as described in:
 * Yao, Y., Vehtari, A., Simpson, D., and Gelman, A. (2018). `Using stacking to average Bayesian predictive distributions <https://projecteuclid.org/euclid.ba/1516093227>`_. *Bayesian Analysis*. doi:10.1214/17-BA1091. (`arXiv preprint <https://arxiv.org/abs/1704.02030>`_).
 
 We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (like Pareto k estimates) and estimates for effective sample size and Monte Carlo error, providing greater insight into the reliability of the results.
-<br>
-
-.. warning::
-   **Note**: This project is in active development.
 
 Features
 --------
@@ -145,7 +141,7 @@ Installation
 ------------
 
 .. warning::
-   **Note**: Not yet available for installation from PyPI.
+   **Note**: ``pyloo`` is currently under active development and has not yet been officially released or published to PyPI. While the core functionality is being stabilized, expect potential changes to the API and features. Installation is currently only possible directly from the development version on GitHub (see below).
 
 .. code-block:: bash
 
