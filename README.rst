@@ -1,5 +1,5 @@
 .. image:: ./assets/pyloo-official.png
-   :width: 200
+   :width: 150
    :align: left
 
 |active| |build_status| |codecov| |black| |commit_activity| |last_commit| |python|
