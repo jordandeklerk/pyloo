@@ -143,13 +143,9 @@ def test_loo_nonfactor_warnings(missing_cov_data):
 
 def test_loo_nonfactor_both_cov_prec(both_cov_prec_data):
     """Test that loo_nonfactor works when both covariance and precision matrices are provided."""
-    # Note: The warning check is removed as it wasn't reliably caught by pytest.warns
-    # in this context, potentially due to other warnings.
-    # We primarily check that the function runs when both are present.
     loo_results = loo_nonfactor(both_cov_prec_data, var_name="y")
     assert isinstance(loo_results, ELPDData)
 
-    # Explicitly use precision (this part should still work)
     loo_results_prec = loo_nonfactor(
         both_cov_prec_data, var_name="y", prec_var_name="prec", cov_var_name=None
     )
