@@ -1,6 +1,7 @@
-.. image:: ./assets/pyloo-official.png
-   :width: 175
-   :align: left
+.. raw:: html
+
+   <img src="./assets/pyloo-light.png#gh-light-mode-only" width="175" align="left" alt="pyloo logo" />
+   <img src="./assets/pyloo-dark.png#gh-dark-mode-only" width="175" align="left" alt="pyloo logo" />
 
 |active| |build_status| |codecov| |black| |commit_activity| |last_commit| |python|
 
