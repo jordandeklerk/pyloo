@@ -35,19 +35,19 @@ We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (
 ### Core Functionality
 
 *   **Approximate Leave-One-Out Cross-Validation (LOO-CV)**: Efficiently compute LOO-CV using Pareto Smoothed Importance Sampling (PSIS) and other methods, complete with diagnostics (`loo`).
-*   **Non-factorized LOO-CV**: Compute LOO-CV for multivariate normal and Student-t models where the likelihood cannot be factorized by observations (`loo_nonfactor`).
-*   **Model Comparison**: Compare models based on ELPD using various methods like stacking (`loo_compare`).
+*   **Model Comparison**: Compare models based on ELPD using various methods like stacking or Bayesian bootstrap (`loo_compare`).
 *   **LOO-Based Metrics**: Estimate predictive performance (e.g., MAE, MSE, CRPS) using LOO estimates (`loo_predictive_metric`, `loo_score`).
-*   **Grouped & Subsampled CV**: Perform Leave-One-Group-Out CV (`loo_group`) and efficient subsampling for large datasets (`loo_subsample`).
+*   **Non-factorized LOO-CV**: Compute LOO-CV for multivariate normal and Student-t models where the likelihood cannot be factorized by observations (`loo_nonfactor`).
+*   **Grouped & Subsampled LOO-CV**: Perform Leave-One-Group-Out CV (`loo_group`) and efficient subsampling for large datasets (`loo_subsample`).
 *   **Widely Applicable Information Criterion (WAIC)**: Calculate WAIC as an alternative model assessment metric (`waic`).
 
 ### Advanced & PyMC Integration
 
 *   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow (`PyMCWrapper`).
+*   **Moment Matching**: Improve LOO-CV reliability for challenging observations by matching moments (`loo_moment_match`).
 *   **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (`reloo`).
-*   **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (`loo_kfold`).
-*   **Moment Matching**: Improve LOO-CV reliability for challenging observations (`loo_moment_match`).
-*   **Variational Inference Support**: Compute LOO-CV for models fitted with Laplace or ADVI approximations (`loo_approximate_posterior`).
+*   **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification, groups, and diagnostics (`loo_kfold`).
+*   **Variational Inference Support**: Compute LOO-CV for models fitted with Laplace or ADVI variational approximations (`loo_approximate_posterior`).
 
 ## Quickstart
 
