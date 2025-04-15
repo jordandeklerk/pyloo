@@ -1,5 +1,5 @@
-<img src="./assets/pyloo-dark.png#gh-light-mode-only" width="175" align="left" alt="pyloo logo"></img>
-<img src="./assets/pyloo-light.png#gh-dark-mode-only" width="175" align="left" alt="pyloo logo"></img>
+<img src="./assets/pyloo-dark.png#gh-light-mode-only" width="175" align="left" alt="pyloo logo" style="vertical-align: top;"></img>
+<img src="./assets/pyloo-light.png#gh-dark-mode-only" width="175" align="left" alt="pyloo logo" style="vertical-align: top;"></img>
 
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![Build Status](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml)
