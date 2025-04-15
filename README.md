@@ -1,8 +1,4 @@
-<!-- <h1 align="center">
-<img src="./assets/pyloo_logo_revised.png"  width="250">
-</h1> -->
-
-<img src="./assets/pyloo-official.png"  width="200" align="left">
+<img src="./assets/pyloo-official.png"  width="200" align="left" />
 
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![Code Coverage](https://codecov.io/gh/jordandeklerk/pyloo/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/pyloo)
@@ -11,13 +7,27 @@
 [![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/pyloo)](https://github.com/jordandeklerk/pyloo/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/)
 
-__pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models with advanced features for **PyMC** models. Inspired by its R twin [loo](https://github.com/stan-dev/loo), __pyloo__ brings similar functionality to the Python ecosystem.
+__pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models with advanced features for **PyMC** models. Inspired by its R twin [loo](https://github.com/stan-dev/loo), __pyloo__ brings similar functionality to the Python ecosystem.
 <br><br><br>
-The package implements the fast and stable computations for approximate LOO-CV from:
 
-* Vehtari, A., Gelman, A., and Gabry, J. (2024). [Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC](https://arxiv.org/abs/1507.02646). _Statistics and Computing_. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
+The package implements the fast and stable computations for approximate LOO-CV from
 
-> ⚠️ **Note**: This project is in active development and not all features have been implemented yet. While the core functionality is available, some advanced features are still being developed.
+* Vehtari, A., Gelman, A., and Gabry, J. (2017). Practical Bayesian model
+evaluation using leave-one-out cross-validation and WAIC.
+_Statistics and Computing_. 27(5), 1413--1432.
+doi:10.1007/s11222-016-9696-4. [Online](https://link.springer.com/article/10.1007/s11222-016-9696-4),
+[arXiv preprint arXiv:1507.04544](https://arxiv.org/abs/1507.04544).
+
+and computes model weights as described in
+
+* Yao, Y., Vehtari, A., Simpson, D., and Gelman, A. (2018). Using
+stacking to average Bayesian predictive distributions. In Bayesian
+Analysis, doi:10.1214/17-BA1091.
+[Online](https://projecteuclid.org/euclid.ba/1516093227),
+[arXiv preprint arXiv:1704.02030](https://arxiv.org/abs/1704.02030).
+<br><br>
+
+> ⚠️ **Note**: This project is in active development.
 
 ## Features
 
