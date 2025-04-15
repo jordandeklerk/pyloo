@@ -119,8 +119,8 @@ class ParameterConverter:
                 flattened_size=flattened_size,
                 start_idx=current_idx,
                 end_idx=end_idx,
-                dims=param_dims,
-                coords=param_coords,
+                dims=[str(d) for d in param_dims],
+                coords={str(k): v for k, v in param_coords.items()},
             )
             current_idx = end_idx
 
@@ -460,7 +460,8 @@ def extract_log_likelihood_for_observation(
     if "__obs__" in obs_dims:
         obs_dim = "__obs__"
     else:
-        obs_dim = obs_dims[0]
+        # Ensure obs_dim is treated as a string
+        obs_dim = str(obs_dims[0])
 
     num_obs = log_lik_result.sizes[obs_dim]
 

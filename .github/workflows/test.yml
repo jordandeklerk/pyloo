@@ -1,0 +1,271 @@
+name: tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel running workflows for updated PRs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu:
+    name: Ubuntu Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.13']
+        test-subset:
+          - |
+            pyloo/tests/base_tests/test_base.py
+            pyloo/tests/base_tests/test_utils.py
+            pyloo/tests/base_tests/test_rcparams.py
+            pyloo/tests/test_data.py
+            pyloo/tests/helpers.py
+            pyloo/tests/models.py
+          - |
+            pyloo/tests/base_tests/test_loo.py
+            pyloo/tests/base_tests/test_loo_i.py
+            pyloo/tests/base_tests/test_loo_score.py
+            pyloo/tests/base_tests/test_loo_group.py
+            pyloo/tests/base_tests/test_loo_kfold.py
+          - |
+            pyloo/tests/base_tests/test_loo_approximate_posterior.py
+            pyloo/tests/base_tests/test_loo_moment_match.py
+            pyloo/tests/base_tests/test_loo_nonfactor.py
+            pyloo/tests/base_tests/test_loo_predictive_metric.py
+            pyloo/tests/base_tests/test_loo_subsample.py
+            pyloo/tests/base_tests/test_reloo.py
+          - |
+            pyloo/tests/base_tests/test_psis.py
+            pyloo/tests/base_tests/test_sis.py
+            pyloo/tests/base_tests/test_tis.py
+            pyloo/tests/base_tests/test_approximations_base.py
+            pyloo/tests/base_tests/test_approximations_importance_sampling.py
+            pyloo/tests/base_tests/test_approximations_lpd.py
+            pyloo/tests/base_tests/test_approximations_plpd.py
+          - |
+            pyloo/tests/base_tests/test_estimators_base.py
+            pyloo/tests/base_tests/test_estimators_difference.py
+            pyloo/tests/base_tests/test_estimators_hansen_hurwitz.py
+            pyloo/tests/base_tests/test_estimators_srs.py
+            pyloo/tests/base_tests/test_compare.py
+            pyloo/tests/base_tests/test_e_loo.py
+            pyloo/tests/base_tests/test_elpd.py
+            pyloo/tests/base_tests/test_waic.py
+          - |
+            pyloo/tests/base_tests/test_plots_matplotlib.py
+            pyloo/tests/wrapper_tests/test_laplace.py
+            pyloo/tests/wrapper_tests/test_pymc_wrapper.py
+
+    env:
+      TEST_SUBSET: ${{ matrix.test-subset }}
+    defaults:
+      run:
+        shell: bash -leo pipefail {0}
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --prefer-binary -r requirements-test.txt
+        python -m pip install --prefer-binary -e .[test,plots,wrappers]
+
+    - name: Run tests
+      run: |
+        python -m pytest -vv --cov=pyloo --cov-append --cov-report=xml --no-cov-on-fail --cov-report term --durations=50 $TEST_SUBSET
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: ubuntu,python${{ matrix.python-version }}
+        name: ubuntu-py${{ matrix.python-version }}
+        fail_ci_if_error: false
+
+  windows:
+    name: Windows Tests (Python ${{ matrix.python-version }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.13']
+        test-subset:
+          - |
+            pyloo/tests/base_tests/test_base.py
+            pyloo/tests/base_tests/test_utils.py
+            pyloo/tests/base_tests/test_rcparams.py
+            pyloo/tests/test_data.py
+            pyloo/tests/helpers.py
+            pyloo/tests/models.py
+          - |
+            pyloo/tests/base_tests/test_loo.py
+            pyloo/tests/base_tests/test_loo_i.py
+            pyloo/tests/base_tests/test_loo_score.py
+            pyloo/tests/base_tests/test_loo_group.py
+            pyloo/tests/base_tests/test_loo_kfold.py
+          - |
+            pyloo/tests/base_tests/test_loo_approximate_posterior.py
+            pyloo/tests/base_tests/test_loo_moment_match.py
+            pyloo/tests/base_tests/test_loo_nonfactor.py
+            pyloo/tests/base_tests/test_loo_predictive_metric.py
+            pyloo/tests/base_tests/test_loo_subsample.py
+            pyloo/tests/base_tests/test_reloo.py
+          - |
+            pyloo/tests/base_tests/test_psis.py
+            pyloo/tests/base_tests/test_sis.py
+            pyloo/tests/base_tests/test_tis.py
+            pyloo/tests/base_tests/test_approximations_base.py
+            pyloo/tests/base_tests/test_approximations_importance_sampling.py
+            pyloo/tests/base_tests/test_approximations_lpd.py
+            pyloo/tests/base_tests/test_approximations_plpd.py
+          - |
+            pyloo/tests/base_tests/test_estimators_base.py
+            pyloo/tests/base_tests/test_estimators_difference.py
+            pyloo/tests/base_tests/test_estimators_hansen_hurwitz.py
+            pyloo/tests/base_tests/test_estimators_srs.py
+            pyloo/tests/base_tests/test_compare.py
+            pyloo/tests/base_tests/test_e_loo.py
+            pyloo/tests/base_tests/test_elpd.py
+            pyloo/tests/base_tests/test_waic.py
+          - |
+            pyloo/tests/base_tests/test_plots_matplotlib.py
+            pyloo/tests/wrapper_tests/test_laplace.py
+            pyloo/tests/wrapper_tests/test_pymc_wrapper.py
+
+    env:
+      TEST_SUBSET: ${{ matrix.test-subset }}
+      MPLBACKEND: Agg  # Set matplotlib backend to non-interactive Agg
+    defaults:
+      run:
+        shell: cmd /C call {0} # Use cmd shell for Windows
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --prefer-binary -r requirements-test.txt
+        python -m pip install --prefer-binary -e .[test,plots,wrappers]
+
+    - name: Run tests
+      run: >- # Use >- for multi-line cmd commands
+        python -m pytest -vv --cov=pyloo --cov-append --cov-report=xml --no-cov-on-fail --cov-report term --durations=50 %TEST_SUBSET%
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: windows,python${{ matrix.python-version }}
+        name: windows-py${{ matrix.python-version }}
+        fail_ci_if_error: false
+
+  macos:
+    name: macOS Tests (Python ${{ matrix.python-version }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.13']
+        test-subset:
+          - |
+            pyloo/tests/base_tests/test_base.py
+            pyloo/tests/base_tests/test_utils.py
+            pyloo/tests/base_tests/test_rcparams.py
+            pyloo/tests/test_data.py
+            pyloo/tests/helpers.py
+            pyloo/tests/models.py
+          - |
+            pyloo/tests/base_tests/test_loo.py
+            pyloo/tests/base_tests/test_loo_i.py
+            pyloo/tests/base_tests/test_loo_score.py
+            pyloo/tests/base_tests/test_loo_group.py
+            pyloo/tests/base_tests/test_loo_kfold.py
+          - |
+            pyloo/tests/base_tests/test_loo_approximate_posterior.py
+            pyloo/tests/base_tests/test_loo_moment_match.py
+            pyloo/tests/base_tests/test_loo_nonfactor.py
+            pyloo/tests/base_tests/test_loo_predictive_metric.py
+            pyloo/tests/base_tests/test_loo_subsample.py
+            pyloo/tests/base_tests/test_reloo.py
+          - |
+            pyloo/tests/base_tests/test_psis.py
+            pyloo/tests/base_tests/test_sis.py
+            pyloo/tests/base_tests/test_tis.py
+            pyloo/tests/base_tests/test_approximations_base.py
+            pyloo/tests/base_tests/test_approximations_importance_sampling.py
+            pyloo/tests/base_tests/test_approximations_lpd.py
+            pyloo/tests/base_tests/test_approximations_plpd.py
+          - |
+            pyloo/tests/base_tests/test_estimators_base.py
+            pyloo/tests/base_tests/test_estimators_difference.py
+            pyloo/tests/base_tests/test_estimators_hansen_hurwitz.py
+            pyloo/tests/base_tests/test_estimators_srs.py
+            pyloo/tests/base_tests/test_compare.py
+            pyloo/tests/base_tests/test_e_loo.py
+            pyloo/tests/base_tests/test_elpd.py
+            pyloo/tests/base_tests/test_waic.py
+          - |
+            pyloo/tests/base_tests/test_plots_matplotlib.py
+            pyloo/tests/wrapper_tests/test_laplace.py
+            pyloo/tests/wrapper_tests/test_pymc_wrapper.py
+
+    env:
+      TEST_SUBSET: ${{ matrix.test-subset }}
+    defaults:
+      run:
+        shell: bash -leo pipefail {0}
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --prefer-binary -r requirements-test.txt
+        python -m pip install --prefer-binary -e .[test,plots,wrappers]
+
+    - name: Run tests
+      run: |
+        python -m pytest -vv --cov=pyloo --cov-append --cov-report=xml --no-cov-on-fail --cov-report term --durations=50 $TEST_SUBSET
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: macos,python${{ matrix.python-version }}
+        name: macos-py${{ matrix.python-version }}
+        fail_ci_if_error: false
+
+  # Final check job
+  all_tests_passed:
+    name: All Tests Passed
+    if: ${{ always() }}
+    needs: [ubuntu, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check matrix status
+        if: ${{ needs.ubuntu.result != 'success' || needs.windows.result != 'success' || needs.macos.result != 'success' }}
+        run: exit 1

@@ -1,6 +1,7 @@
 """Tests for moment matching in LOO-CV."""
 
 import logging
+import math
 from copy import deepcopy
 
 import numpy as np
@@ -64,9 +65,7 @@ class MockCmdStanModel:
             for i in range(n_obs):
                 mu_i = np.exp(np.dot(self.x[i], beta_s) + intercept_s + self.offset[i])
                 self.log_lik[s, i] = (
-                    self.y[i] * np.log(mu_i)
-                    - mu_i
-                    - np.log(np.math.factorial(self.y[i]))
+                    self.y[i] * np.log(mu_i) - mu_i - np.log(math.factorial(self.y[i]))
                 )
 
     def stan_variables(self):
@@ -1120,7 +1119,7 @@ def test_loo_moment_match_cmdstan_example():
 
             mu_i = np.exp(np.dot(x_i, beta) + intercept + offset_i)
 
-            log_lik[s] = y_i * np.log(mu_i) - mu_i - np.log(np.math.factorial(y_i))
+            log_lik[s] = y_i * np.log(mu_i) - mu_i - np.log(math.factorial(y_i))
 
         return log_lik
 

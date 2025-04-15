@@ -1,8 +1,8 @@
 pytest>=7.0.0
 pytest-cov>=4.0.0
-arviz==0.15.1
+arviz>=0.16.0
 numpy>=1.21.0
-scipy>=1.7.0,<1.11.0
+scipy>=1.11.0
 pymc-marketing>=0.11.1
 pymc>=5.0.0
 better-optimize>=0.0.13
