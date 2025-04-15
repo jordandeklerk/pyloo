@@ -1,5 +1,5 @@
-.. image:: ./assets/pyloo.png
-   :width: 175
+.. image:: ./assets/pyloo-official.png
+   :width: 200
    :align: left
 
 |active| |codecov| |black| |codacy| |commit_activity| |last_commit| |python|
@@ -15,10 +15,6 @@
 .. |black| image:: https://img.shields.io/badge/code%20style-black-000000.svg
    :target: https://github.com/ambv/black
    :alt: Code Style
-
-.. .. |codacy| image:: https://app.codacy.com/project/badge/Grade/1c08ec7d782c451784293c996537de14
-..    :target: https://www.codacy.com/gh/jordandeklerk/pyloo/dashboard?utm_source=github.com&utm_medium=referral&utm_content=jordandeklerk/pyloo&utm_campaign=Badge_Grade
-..    :alt: Codacy Badge
 
 .. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
