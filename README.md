@@ -1,40 +1,48 @@
-<!-- <h1 align="center">
-<img src="./assets/pyloo_logo_revised.png"  width="250">
-</h1> -->
-
-<img src="./assets/pyloo-official.png"  width="200" align="left">
+<img src="./assets/pyloo-official.png"  width="150" align="left" />
 
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![Build Status](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml)
 [![Code Coverage](https://codecov.io/gh/jordandeklerk/pyloo/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/pyloo)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo)](https://github.com/jordandeklerk/pyloo/graphs/commit-activity)
 [![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/pyloo)](https://github.com/jordandeklerk/pyloo/graphs/commit-activity)
-[![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/)
+[![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
-__pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models with advanced features for **PyMC** models. Inspired by its R twin [loo](https://github.com/stan-dev/loo), __pyloo__ brings similar functionality to the Python ecosystem.
-<br><br><br>
-The package implements the fast and stable computations for approximate LOO-CV from:
+__pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models with advanced features for **PyMC** models. Inspired by its R twin [loo](https://github.com/stan-dev/loo), __pyloo__ brings similar functionality to the Python ecosystem.
+<br><br>
 
-* Vehtari, A., Gelman, A., and Gabry, J. (2024). [Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC](https://arxiv.org/abs/1507.02646). _Statistics and Computing_. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
+The package implements the fast and stable computations for approximate LOO-CV from
 
-> ⚠️ **Note**: This project is in active development and not all features have been implemented yet. While the core functionality is available, some advanced features are still being developed.
+* Vehtari, A., Gelman, A., and Gabry, J. (2017). Practical Bayesian model
+evaluation using leave-one-out cross-validation and WAIC.
+_Statistics and Computing_. 27(5), 1413--1432.
+doi:10.1007/s11222-016-9696-4. [Online](https://link.springer.com/article/10.1007/s11222-016-9696-4),
+[arXiv preprint arXiv:1507.04544](https://arxiv.org/abs/1507.04544).
+
+and computes model weights as described in
+
+* Yao, Y., Vehtari, A., Simpson, D., and Gelman, A. (2018). Using
+stacking to average Bayesian predictive distributions. In Bayesian
+Analysis, doi:10.1214/17-BA1091.
+[Online](https://projecteuclid.org/euclid.ba/1516093227),
+[arXiv preprint arXiv:1704.02030](https://arxiv.org/abs/1704.02030).
+
+We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (like Pareto k estimates) and estimates for effective sample size and Monte Carlo error, providing greater insight into the reliability of the results.
 
 ## Features
-
-__pyloo__ offers a comprehensive suite of tools for Bayesian model selection and comparison:
 
 ### Core Functionality
 
 *   **Approximate Leave-One-Out Cross-Validation (LOO-CV)**: Efficiently compute LOO-CV using Pareto Smoothed Importance Sampling (PSIS) and other methods, complete with diagnostics (`loo`).
 *   **Non-factorized LOO-CV**: Compute LOO-CV for multivariate normal and Student-t models where the likelihood cannot be factorized by observations (`loo_nonfactor`).
-*   **Widely Applicable Information Criterion (WAIC)**: Calculate WAIC as an alternative model assessment metric (`waic`).
 *   **Model Comparison**: Compare models based on ELPD using various methods like stacking (`loo_compare`).
 *   **LOO-Based Metrics**: Estimate predictive performance (e.g., MAE, MSE, CRPS) using LOO estimates (`loo_predictive_metric`, `loo_score`).
 *   **Grouped & Subsampled CV**: Perform Leave-One-Group-Out CV (`loo_group`) and efficient subsampling for large datasets (`loo_subsample`).
+*   **Widely Applicable Information Criterion (WAIC)**: Calculate WAIC as an alternative model assessment metric (`waic`).
 
 ### Advanced & PyMC Integration
 
-*   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow.
+*   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow (`PyMCWrapper`).
 *   **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (`reloo`).
 *   **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (`loo_kfold`).
 *   **Moment Matching**: Improve LOO-CV reliability for challenging observations (`loo_moment_match`).
@@ -103,7 +111,7 @@ All Pareto k estimates are good (k < 0.7)
 
 ## Installation
 
-> ⚠️ **Note**: Not yet available for installation from PyPI.
+> ⚠️ **Note**: `pyloo` is currently under active development and has not yet been officially released or published to PyPI. While the core functionality is being stabilized, expect potential changes to the API and features. Installation is currently only possible directly from the development version on GitHub (see below).
 
 ```bash
 pip install pyloo
@@ -150,4 +158,15 @@ pip install -e .
   pages={1413--1432},
   year={2017},
   publisher={Springer}
+}
+
+@article{yao2018using,
+  title={Using stacking to average Bayesian predictive distributions},
+  author={Yao, Yuling and Vehtari, Aki and Simpson, Daniel and Gelman, Andrew},
+  journal={Bayesian Analysis},
+  volume={13},
+  number={3},
+  pages={911--1007},
+  year={2018},
+  publisher={International Society for Bayesian Analysis}
 }
