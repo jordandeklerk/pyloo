@@ -25,13 +25,13 @@
    :target: https://mypy-lang.org/
    :alt: Type Checked
 
-.. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
-   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
-   :alt: Commit Activity
-
 .. |last_commit| image:: https://img.shields.io/github/last-commit/jordandeklerk/pyloo
    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
    :alt: Last Commit
+
+.. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
+   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
+   :alt: Commit Activity
 
 .. |python| image:: https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white
    :target: https://www.python.org/
