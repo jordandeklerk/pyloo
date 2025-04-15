@@ -1,4 +1,4 @@
-<img src="./assets/pyloo-official.png"  width="150" align="left" />
+<img src="./assets/pyloo-official.png"  width="175" align="left" />
 
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![Build Status](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml)
