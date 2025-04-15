@@ -32,7 +32,7 @@
    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
    :alt: Last Commit
 
-.. |python| image:: https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue
+.. |python| image:: https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white
    :target: https://www.python.org/
    :alt: Python version
 
