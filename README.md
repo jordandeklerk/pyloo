@@ -45,7 +45,7 @@ We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (
 
 ### Advanced & PyMC Integration
 
-*   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow (`pymc.py`).
+*   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow (`PyMCWrapper`).
 *   **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (`reloo`).
 *   **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (`loo_kfold`).
 *   **Moment Matching**: Improve LOO-CV reliability for challenging observations (`loo_moment_match`).
@@ -161,4 +161,15 @@ pip install -e .
   pages={1413--1432},
   year={2017},
   publisher={Springer}
+}
+
+@article{yao2018using,
+  title={Using stacking to average Bayesian predictive distributions},
+  author={Yao, Yuling and Vehtari, Aki and Simpson, Daniel and Gelman, Andrew},
+  journal={Bayesian Analysis},
+  volume={13},
+  number={3},
+  pages={911--1007},
+  year={2018},
+  publisher={International Society for Bayesian Analysis}
 }

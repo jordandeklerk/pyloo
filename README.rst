@@ -2,11 +2,15 @@
    :width: 200
    :align: left
 
-|active| |codecov| |black| |codacy| |commit_activity| |last_commit| |python|
+|active| |build_status| |codecov| |black| |commit_activity| |last_commit| |python|
 
 .. |active| image:: https://www.repostatus.org/badges/latest/active.svg
    :target: https://www.repostatus.org/#active
    :alt: Project Status: Active
+
+.. |build_status| image:: https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml/badge.svg
+   :target: https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml
+   :alt: Build Status
 
 .. |codecov| image:: https://codecov.io/gh/jordandeklerk/pyloo/branch/main/graph/badge.svg
    :target: https://codecov.io/gh/jordandeklerk/pyloo
@@ -15,6 +19,10 @@
 .. |black| image:: https://img.shields.io/badge/code%20style-black-000000.svg
    :target: https://github.com/ambv/black
    :alt: Code Style
+
+.. |codacy| image:: https://app.codacy.com/project/badge/Grade/YOUR_CODACY_PROJECT_ID
+   :target: https://www.codacy.com/gh/jordandeklerk/pyloo/dashboard?utm_source=github.com&utm_medium=referral&utm_content=jordandeklerk/pyloo&utm_campaign=Badge_Grade
+   :alt: Codacy Badge
 
 .. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
@@ -28,38 +36,44 @@
    :target: https://www.python.org/
    :alt: Python version
 
-__pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models with advanced features for **PyMC** models. Inspired by its R twin `loo <https://github.com/stan-dev/loo>`_, __pyloo__ brings similar functionality to the Python ecosystem.
-
-.. warning::
-   This project is in active development and not all features have been implemented yet. While the core functionality is available, some advanced features are still being developed.
+__pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models with advanced features for **PyMC** models. Inspired by its R twin `loo <https://github.com/stan-dev/loo>`_, __pyloo__ brings similar functionality to the Python ecosystem.
+<br><br>
 
 The package implements the fast and stable computations for approximate LOO-CV from:
 
-* Vehtari, A., Gelman, A., and Gabry, J. (2024). `Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC <https://arxiv.org/abs/1507.02646>`_. *Statistics and Computing*. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4.
+* Vehtari, A., Gelman, A., and Gabry, J. (2017). `Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC <https://link.springer.com/article/10.1007/s11222-016-9696-4>`_. *Statistics and Computing*. 27(5), 1413--1432. doi:10.1007/s11222-016-9696-4. (`arXiv preprint <https://arxiv.org/abs/1507.04544>`_).
+
+and computes model weights as described in:
+
+* Yao, Y., Vehtari, A., Simpson, D., and Gelman, A. (2018). `Using stacking to average Bayesian predictive distributions <https://projecteuclid.org/euclid.ba/1516093227>`_. *Bayesian Analysis*. doi:10.1214/17-BA1091. (`arXiv preprint <https://arxiv.org/abs/1704.02030>`_).
+
+We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (like Pareto k estimates) and estimates for effective sample size and Monte Carlo error, providing greater insight into the reliability of the results.
+<br>
+
+.. warning::
+   **Note**: This project is in active development.
 
 Features
--------
-
-__pyloo__ offers a comprehensive suite of tools for Bayesian model selection and comparison:
+--------
 
 Core Functionality
-~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
-- **Approximate Leave-One-Out Cross-Validation (LOO-CV)**: Efficiently compute LOO-CV using Pareto Smoothed Importance Sampling (PSIS) and other methods, complete with diagnostics (``loo``).
-- **Non-factorized LOO-CV**: Compute LOO-CV for multivariate normal and Student-t models where the likelihood cannot be factorized by observations (``loo_nonfactor``).
-- **Widely Applicable Information Criterion (WAIC)**: Calculate WAIC as an alternative model assessment metric (``waic``).
-- **Model Comparison**: Compare models based on ELPD using various methods like stacking (``loo_compare``).
-- **LOO-Based Metrics**: Estimate predictive performance (e.g., MAE, MSE, CRPS) using LOO estimates (``loo_predictive_metric``, ``loo_score``).
-- **Grouped & Subsampled CV**: Perform Leave-One-Group-Out CV (``loo_group``) and efficient subsampling for large datasets (``loo_subsample``).
+*   **Approximate Leave-One-Out Cross-Validation (LOO-CV)**: Efficiently compute LOO-CV using Pareto Smoothed Importance Sampling (PSIS) and other methods, complete with diagnostics (``loo``).
+*   **Non-factorized LOO-CV**: Compute LOO-CV for multivariate normal and Student-t models where the likelihood cannot be factorized by observations (``loo_nonfactor``).
+*   **Model Comparison**: Compare models based on ELPD using various methods like stacking (``loo_compare``).
+*   **LOO-Based Metrics**: Estimate predictive performance (e.g., MAE, MSE, CRPS) using LOO estimates (``loo_predictive_metric``, ``loo_score``).
+*   **Grouped & Subsampled CV**: Perform Leave-One-Group-Out CV (``loo_group``) and efficient subsampling for large datasets (``loo_subsample``).
+*   **Widely Applicable Information Criterion (WAIC)**: Calculate WAIC as an alternative model assessment metric (``waic``).
 
 Advanced & PyMC Integration
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow.
-- **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (``reloo``).
-- **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (``loo_kfold``).
-- **Moment Matching**: Improve LOO-CV reliability for challenging observations (``loo_moment_match``).
-- **Variational Inference Support**: Compute LOO-CV for models fitted with Laplace or ADVI approximations (``loo_approximate_posterior``).
+*   **PyMC Model Interface**: Seamless integration with PyMC models for streamlined workflow (``PyMCWrapper``).
+*   **Exact Refitting (Reloo)**: Refit models for problematic observations identified by LOO diagnostics (``reloo``).
+*   **K-Fold Cross-Validation**: Flexible K-fold CV implementation with stratification and diagnostics (``loo_kfold``).
+*   **Moment Matching**: Improve LOO-CV reliability for challenging observations (``loo_moment_match``).
+*   **Variational Inference Support**: Compute LOO-CV for models fitted with Laplace or ADVI approximations (``loo_approximate_posterior``).
 
 Quickstart
 ---------
@@ -128,10 +142,10 @@ Compare multiple models with `compare` using stacking weights or other methods:
    All Pareto k estimates are good (k < 0.7)
 
 Installation
------------
+------------
 
 .. warning::
-   Not yet available for installation from PyPI.
+   **Note**: Not yet available for installation from PyPI.
 
 .. code-block:: bash
 
@@ -161,10 +175,10 @@ For development purposes, you can clone the repository and install in editable m
    pip install -e .
 
 Resources
---------
+---------
 
 .. warning::
-   Documentation coming soon.
+   **Note**: Documentation coming soon.
 
 * `Documentation <>`_ (API reference, examples)
 * `Open an issue <>`_ (Bug reports, feature requests)
@@ -181,6 +195,17 @@ Citation
      volume={27},
      number={5},
      pages={1413--1432},
-     year={2024},
+     year={2017},
      publisher={Springer}
+   }
+
+   @article{yao2018using,
+     title={Using stacking to average Bayesian predictive distributions},
+     author={Yao, Yuling and Vehtari, Aki and Simpson, Daniel and Gelman, Andrew},
+     journal={Bayesian Analysis},
+     volume={13},
+     number={3},
+     pages={911--1007},
+     year={2018},
+     publisher={International Society for Bayesian Analysis}
    }
