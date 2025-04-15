@@ -20,17 +20,17 @@
    :target: https://www.codacy.com/gh/jordandeklerk/pyloo/dashboard?utm_source=github.com&utm_medium=referral&utm_content=jordandeklerk/pyloo&utm_campaign=Badge_Grade
    :alt: Codacy Badge
 
-.. .. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
-..    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
-..    :alt: Commit Activity
+.. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
+   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
+   :alt: Commit Activity
 
-.. .. |last_commit| image:: https://img.shields.io/github/last-commit/jordandeklerk/pyloo
-..    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
-..    :alt: Last Commit
+.. |last_commit| image:: https://img.shields.io/github/last-commit/jordandeklerk/pyloo
+   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
+   :alt: Last Commit
 
-.. .. |python| image:: https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue
-..    :target: https://www.python.org/
-..    :alt: Python version
+.. |python| image:: https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue
+   :target: https://www.python.org/
+   :alt: Python version
 
 __pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for Bayesian models with advanced features for **PyMC** models. Inspired by its R twin `loo <https://github.com/stan-dev/loo>`_, __pyloo__ brings similar functionality to the Python ecosystem.
 
