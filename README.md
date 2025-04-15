@@ -5,6 +5,7 @@
 [![Build Status](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml)
 [![Code Coverage](https://codecov.io/gh/jordandeklerk/pyloo/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/pyloo)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
+[![Type Checked](https://img.shields.io/badge/type--checked-mypy-blue?style=flat-square&logo=python)](https://mypy-lang.org/)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo)](https://github.com/jordandeklerk/pyloo/graphs/commit-activity)
 [![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/pyloo)](https://github.com/jordandeklerk/pyloo/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)

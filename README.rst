@@ -3,7 +3,7 @@
    <img src="./assets/pyloo-dark.png#gh-light-mode-only" width="175" align="left" alt="pyloo logo" />
    <img src="./assets/pyloo-light.png#gh-dark-mode-only" width="175" align="left" alt="pyloo logo" />
 
-|active| |build_status| |codecov| |black| |commit_activity| |last_commit| |python|
+|active| |build_status| |codecov| |black| |mypy| |commit_activity| |last_commit| |python|
 
 .. |active| image:: https://www.repostatus.org/badges/latest/active.svg
    :target: https://www.repostatus.org/#active
@@ -20,6 +20,10 @@
 .. |black| image:: https://img.shields.io/badge/code%20style-black-000000.svg
    :target: https://github.com/ambv/black
    :alt: Code Style
+
+.. |mypy| image:: https://img.shields.io/badge/type--checked-mypy-blue?style=flat-square&logo=python
+   :target: https://mypy-lang.org/
+   :alt: Type Checked
 
 .. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
