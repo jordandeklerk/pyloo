@@ -3,7 +3,7 @@
    <img src="./assets/pyloo-dark.png#gh-light-mode-only" width="175" align="left" alt="pyloo logo" />
    <img src="./assets/pyloo-light.png#gh-dark-mode-only" width="175" align="left" alt="pyloo logo" />
 
-|active| |build_status| |codecov| |black| |commit_activity| |last_commit| |python|
+|active| |build_status| |codecov| |black| |mypy| |commit_activity| |last_commit| |python|
 
 .. |active| image:: https://www.repostatus.org/badges/latest/active.svg
    :target: https://www.repostatus.org/#active
@@ -21,20 +21,24 @@
    :target: https://github.com/ambv/black
    :alt: Code Style
 
-.. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
-   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
-   :alt: Commit Activity
+.. |mypy| image:: https://img.shields.io/badge/type--checked-mypy-blue?style=flat-square&logo=python
+   :target: https://mypy-lang.org/
+   :alt: Type Checked
 
 .. |last_commit| image:: https://img.shields.io/github/last-commit/jordandeklerk/pyloo
    :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
    :alt: Last Commit
+
+.. |commit_activity| image:: https://img.shields.io/github/commit-activity/m/jordandeklerk/pyloo
+   :target: https://github.com/jordandeklerk/pyloo/graphs/commit-activity
+   :alt: Commit Activity
 
 .. |python| image:: https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white
    :target: https://www.python.org/
    :alt: Python version
 
 __pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models with advanced features for **PyMC** models. Inspired by its R twin `loo <https://github.com/stan-dev/loo>`_, __pyloo__ brings similar functionality to the Python ecosystem.
-<br><br><br>
+<br><br>
 
 The package implements the fast and stable computations for approximate LOO-CV from:
 
