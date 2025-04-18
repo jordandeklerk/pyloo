@@ -1,0 +1,17 @@
+name: "Pull Request Labeler"
+on:
+# The labeler doesn't execute any contributed code, so it should be fairly safe.
+- pull_request_target  # zizmor: ignore[dangerous-triggers]
+
+jobs:
+  sync:
+    permissions:
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Sync labels with closing issues
+      uses: williambdean/closing-labels@v0.0.4
+      with:
+        exclude: "help wanted,needs info,beginner friendly"
+      env:
+        GH_TOKEN: ${{ github.token }}
