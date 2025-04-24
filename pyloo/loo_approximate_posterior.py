@@ -29,7 +29,12 @@ def loo_approximate_posterior(
     resample_method: str = "psis",
     seed: int | None = None,
 ) -> ELPDData:
-    """Efficient approximate leave-one-out cross-validation (LOO) for posterior approximations.
+    """Compute PSIS-LOO-CV for approximate posteriors.
+
+    Estimates the expected log pointwise predictive density (elpd) using Pareto-smoothed
+    importance sampling leave-one-out cross-validation (PSIS-LOO-CV) for approximate
+    posteriors (e.g., from variational inference). Requires log-densities of the target (log_p)
+    and proposal (log_q) distributions. The PSIS-LOO-CV method is described in [1]_ and [2]_.
 
     Parameters
     ----------
