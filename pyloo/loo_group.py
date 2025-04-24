@@ -27,6 +27,11 @@ def loo_group(
 ) -> ELPDData:
     """Compute leave-one-group-out cross-validation (LOGO-CV) using importance sampling methods.
 
+    Estimates the expected log pointwise predictive density (elpd) by calculating
+    leave-one-group-out cross-validation using Pareto-smoothed importance sampling (PSIS)
+    or other importance sampling methods. This is useful when data has a group structure
+    and predictions are made for entire groups. The PSIS-LOO-CV method is described in [1]_ and [2]_.
+
     Parameters
     ----------
     data: InferenceData | Any
@@ -36,9 +41,9 @@ def loo_group(
         Array of group identifiers for each observation. Must have the same length as
         the number of observations in the log likelihood.
     pointwise: bool | None, optional
-        If True the pointwise predictive accuracy will be returned. Defaults to
-        ``stats.ic_pointwise`` rcParam.
-    var_name : str, optional
+        If True, returns groupwise predictive accuracy values. Defaults to
+        rcParams["stats.ic_pointwise"].
+    var_name : str | None, optional
         The name of the variable in log_likelihood groups storing the pointwise log
         likelihood data to use for loo computation.
     reff: float, optional
@@ -50,7 +55,7 @@ def loo_group(
         - "negative_log": -1 * log-score
         - "deviance": -2 * log-score
     method: Literal['psis', 'sis', 'tis'] | ISMethod, default 'psis'
-        The importance sampling method to use:
+        The importance sampling method to use for LOGO computation:
         - 'psis': Pareto Smoothed Importance Sampling (recommended)
         - 'sis': Standard Importance Sampling
         - 'tis': Truncated Importance Sampling
@@ -58,27 +63,31 @@ def loo_group(
     Returns
     -------
     ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
-    elpd_logo: approximated expected log pointwise predictive density (elpd)
-    se: standard error of the elpd
-    p_logo: effective number of parameters
-    n_samples: number of samples
-    n_groups: number of groups
+    elpd_logo: approximated expected log pointwise predictive density (elpd), calculated group-wise.
+    se: standard error of the elpd.
+    p_logo: effective number of parameters, calculated group-wise.
+    p_logo_se: standard error of the effective number of parameters.
+    n_samples: number of samples.
+    n_groups: number of groups.
     warning: bool
         True if using PSIS and the estimated shape parameter of Pareto distribution
-        is greater than ``good_k``.
+        is greater than ``good_k`` for any group.
     logo_i: :class:`~xarray.DataArray` with the group-wise predictive accuracy,
-            only if pointwise=True
-    diagnostic: array of diagnostic values, only if pointwise=True
+            only if pointwise=True.
+    diagnostic: array of diagnostic values per group, only if pointwise=True
         - For PSIS: Pareto shape parameter (pareto_k)
         - For SIS/TIS: Effective sample size (ess)
-    scale: scale of the elpd
-    good_k: For PSIS method and sample size :math:`S`, threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`
+    scale: scale of the elpd.
+    logoic: LOGO information criterion (`-2 * elpd_logo`).
+    logoic_se: standard error of the LOGO information criterion.
+    good_k: For PSIS method and sample size :math:`S`, threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`.
+    method: The method used for computation ("loo_group").
 
     Notes
     -----
-    This function should be used with caution. In practice, leaving out several observations
-    from a group may change the posterior too much for importance sampling to work. In this case,
-    it is recommended to use quadrature integration to compute the exact LOO-CV.
+    In practice, leaving out several observations from a group may change the posterior 
+    too much for importance sampling to work. In this case, it is recommended to use quadrature 
+    integration to compute the exact LOO-CV.
 
     Examples
     --------
@@ -122,6 +131,17 @@ def loo_group(
     loo_score : Compute LOO score for continuous ranked probability score
     loo_nonfactor : Leave-one-out cross-validation for non-factorized models
     waic : Compute WAIC
+
+    References
+    ----------
+
+    .. [1] Vehtari et al. *Practical Bayesian model evaluation using leave-one-out cross-validation
+        and WAIC*. Statistics and Computing. 27(5) (2017) https://doi.org/10.1007/s11222-016-9696-4
+        arXiv preprint https://arxiv.org/abs/1507.04544.
+
+    .. [2] Vehtari et al. *Pareto Smoothed Importance Sampling*.
+        Journal of Machine Learning Research, 25(72) (2024) https://jmlr.org/papers/v25/19-556.html
+        arXiv preprint https://arxiv.org/abs/1507.02646
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
