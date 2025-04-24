@@ -49,7 +49,12 @@ def loo_subsample(
     resample_method: str = "psis",
     seed: int | None = None,
 ) -> ELPDData:
-    """Compute approximate LOO-CV using subsampling.
+    """Compute approximate leave-one-out cross-validation (LOO-CV) for large data.
+
+    Estimates the expected log pointwise predictive density (elpd) using Pareto smoothed
+    importance sampling leave-one-out cross-validation (PSIS-LOO-CV) with sub-sampling.
+    Defaults to a point estimate based approximation (PLPD) with a simple random sampling
+    difference estimator.
 
     Parameters
     ----------
@@ -81,7 +86,7 @@ def loo_subsample(
         Name of the variable in log_likelihood groups storing the pointwise log
         likelihood data.
     reff : float | None, default None
-        Relative MCMC efficiency, ess / n. If not provided, computed from trace.
+        Relative MCMC efficiency, ``ess / n``. If not provided, computed from trace.
     scale : str | None, default None
         Output scale for LOO_subsample. Available options are:
         - "log": (default) log-score
@@ -123,11 +128,6 @@ def loo_subsample(
     good_k: threshold computed as :math:`\\min(1 - 1/\\log_{10}(S), 0.7)`
 
     The returned object has a custom print method that overrides pd.Series method.
-
-    Notes
-    -----
-    This implementation follows the methodology described in:
-    Magnusson et al. (2019) https://arxiv.org/abs/1902.06504
 
     Examples
     --------
@@ -175,6 +175,23 @@ def loo_subsample(
     loo_group : Leave-one-group-out cross-validation
     loo_nonfactor : Leave-one-out cross-validation for non-factorized models
     waic : Compute WAIC
+
+    References
+    ----------
+
+    .. [1] Vehtari et al. *Practical Bayesian model evaluation using leave-one-out cross-validation
+        and WAIC*. Statistics and Computing. 27(5) (2017) https://doi.org/10.1007/s11222-016-9696-4
+        arXiv preprint https://arxiv.org/abs/1507.04544.
+
+    .. [2] Vehtari et al. *Pareto Smoothed Importance Sampling*.
+        Journal of Machine Learning Research, 25(72) (2024) https://jmlr.org/papers/v25/19-556.html
+        arXiv preprint https://arxiv.org/abs/1507.02646
+
+    .. [3] Magnusson, M., Riis Andersen, M., Jonasson, J., & Vehtari, A. *Bayesian
+       Leave-One-Out Cross-Validation for Large Data.* Proceedings of the 36th
+       International Conference on Machine Learning (ICML 2019), PMLR 97:4244-4253
+       (2019). https://doi.org/10.48550/arXiv.1904.10679 arXiv preprint
+       https://arxiv.org/abs/1904.10679
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
@@ -595,11 +612,7 @@ def update_subsample(
     observations: int | np.ndarray | None = None,
     **kwargs,
 ) -> ELPDData:
-    """Update subsampling results with new observations or parameters.
-
-    This function allows updating the subsampling results by recomputing with a new
-    number of observations or other parameters while maintaining the original data
-    and configuration.
+    """Updates subsampling results with new observations or parameters.
 
     Parameters
     ----------

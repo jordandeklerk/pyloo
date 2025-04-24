@@ -29,7 +29,12 @@ def loo_approximate_posterior(
     resample_method: str = "psis",
     seed: int | None = None,
 ) -> ELPDData:
-    """Efficient approximate leave-one-out cross-validation (LOO) for posterior approximations.
+    """Compute PSIS-LOO-CV for approximate posteriors.
+
+    Estimates the expected log pointwise predictive density (elpd) using Pareto-smoothed
+    importance sampling leave-one-out cross-validation (PSIS-LOO-CV) for approximate
+    posteriors (e.g., from variational inference). Requires log-densities of the target (log_p)
+    and proposal (log_q) distributions. The PSIS-LOO-CV method is described in [1]_ and [2]_.
 
     Parameters
     ----------
@@ -164,6 +169,17 @@ def loo_approximate_posterior(
     loo_group : Leave-one-group-out cross-validation
     loo_nonfactor : Leave-one-out cross-validation for non-factorized models
     waic : Compute WAIC
+
+    References
+    ----------
+
+    .. [1] Vehtari et al. *Practical Bayesian model evaluation using leave-one-out cross-validation
+        and WAIC*. Statistics and Computing. 27(5) (2017) https://doi.org/10.1007/s11222-016-9696-4
+        arXiv preprint https://arxiv.org/abs/1507.04544.
+
+    .. [2] Vehtari et al. *Pareto Smoothed Importance Sampling*.
+        Journal of Machine Learning Research, 25(72) (2024) https://jmlr.org/papers/v25/19-556.html
+        arXiv preprint https://arxiv.org/abs/1507.02646
     """
     inference_data = to_inference_data(data)
     log_likelihood = get_log_likelihood(inference_data, var_name=var_name)
