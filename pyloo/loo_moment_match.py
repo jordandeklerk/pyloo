@@ -47,7 +47,13 @@ def loo_moment_match(
     verbose: bool = False,
     **kwargs,
 ) -> ELPDData:
-    r"""Moment matching algorithm for updating a loo object when Pareto k estimates are large.
+    r"""Apply moment matching to an existing LOO calculation for problematic observations.
+
+    Updates the results of a previously computed leave-one-out cross-validation (LOO)
+    by applying the moment matching algorithm [1]_ to observations with high Pareto k
+    diagnostic values. This can improve the accuracy of LOO estimates without needing
+    to refit the model multiple times. The general PSIS-LOO-CV method is described
+    in [2]_ and [3]_.
 
     Parameters
     ----------
@@ -55,59 +61,61 @@ def loo_moment_match(
         Either a PyMC model wrapper instance or a custom model object that will be passed
         to the user-provided functions
     loo_data : ELPDData
-        A loo object to be modified
+        An existing ELPDData object from a previous `loo` call. It must contain
+        pointwise Pareto k values.
     post_draws : Callable | None, optional
-        A function that takes `model` and returns a matrix of posterior draws of the model parameters.
+        A function that takes `model` and returns a dictionary or structured array
+        of posterior draws for the model parameters.
         Required if not using PyMCWrapper.
     log_lik_i : Callable | None, optional
-        A function that takes `model` and `i` and returns a vector of log-likelihood draws
-        of the `i`th observation based on the model `model`. Required if not using PyMCWrapper.
+        A function that takes `model` and observation index `i`, and returns a 1D array
+        of log-likelihood draws for that observation. Required if not using PyMCWrapper.
     unconstrain_pars : Callable | None, optional
-        A function that takes `model` and `pars` and returns posterior draws on the
-        unconstrained space based on the posterior draws on the constrained space passed via `pars`.
+        A function that takes `model` and `pars` (posterior draws), and returns a 2D array
+        of posterior draws transformed to the unconstrained parameter space.
         Required if not using PyMCWrapper.
     log_prob_upars_fn : Callable | None, optional
-        A function that takes `model` and `upars` and returns a vector of log-posterior density
-        values of the unconstrained posterior draws passed via `upars`.
-        Required if not using PyMCWrapper.
+        A function that takes `model` and `upars` (unconstrained draws), and returns a 1D
+        array of log-posterior density values for those draws. Required if not using PyMCWrapper.
     log_lik_i_upars_fn : Callable | None, optional
-        A function that takes `model`, `upars`, and `i` and returns a vector of log-likelihood
-        draws of the `i`th observation based on the unconstrained posterior draws passed via `upars`.
+        A function that takes `model`, `upars` (unconstrained draws), and observation index `i`,
+        and returns a 1D array of log-likelihood draws for that observation based on `upars`.
         Required if not using PyMCWrapper.
     max_iters : int
         Maximum number of moment matching iterations
     k_threshold : float | None, optional
-        Threshold value for Pareto k values above which moment matching is used.
-        If None, uses :math:`\min(1 - 1/\log_{10}(n_{\text{samples}}), 0.7)`
-    split : bool
-        Whether to do the split transformation at the end of moment matching
-    cov : bool
-        Whether to match the covariance matrix of the samples
-    method : Literal['psis', 'sis', 'tis'] | ISMethod
-        Importance sampling method to use
-    verbose : bool
-        If True, enables detailed logging output for debugging
+        Threshold value for Pareto k values above which moment matching is applied.
+        Defaults to :math:`\min(1 - 1/\log_{10}(S), 0.7)`, where S is the number of samples.
+    split : bool, default True
+        If True, use the split transformation variation of moment matching for stability.
+    cov : bool, default True
+        If True, match the covariance structure during the transformation, in addition
+        to the mean and marginal variances.
+    method : Literal['psis', 'sis', 'tis'] | ISMethod, default 'psis'
+        Importance sampling method used for re-calculating weights after transformation.
+    verbose : bool, default False
+        If True, prints detailed progress messages during the moment matching iterations.
     **kwargs : Any
         Additional keyword arguments passed to the custom functions
 
     Returns
     -------
-    ELPDData object (inherits from :class:`pandas.Series`) with the following row/attributes:
-    elpd_loo: approximated expected log pointwise predictive density (elpd)
-    se: standard error of the elpd
-    p_loo: effective number of parameters
-    n_samples: number of samples
-    n_data_points: number of data points
+    ELPDData object (inherits from :class:`pandas.Series`) with updated LOO estimates:
+    elpd_loo: approximated expected log pointwise predictive density (elpd).
+    se: standard error of the elpd.
+    p_loo: effective number of parameters.
+    p_loo_se: standard error of the effective number of parameters.
+    n_samples: number of samples.
+    n_data_points: number of data points.
     warning: bool
-        True if using PSIS and the estimated shape parameter of Pareto distribution
-        is greater than ``good_k``.
-    loo_i: :class:`~xarray.DataArray` with the pointwise predictive accuracy,
-            only if pointwise=True
-    pareto_k: :class:`~xarray.DataArray` with the Pareto shape parameter k diagnostic values,
-            only if pointwise=True and using PSIS method
-    scale: scale of the elpd
-    looic: leave-one-out information criterion (looic = -2 * elpd_loo)
-    looic_se: standard error of the looic
+        True if any Pareto k values remain above the ``good_k`` threshold after moment matching.
+    loo_i: :class:`~xarray.DataArray` with the updated pointwise predictive accuracy.
+    pareto_k: :class:`~xarray.DataArray` with the updated Pareto shape parameter k values.
+    scale: scale of the elpd (inherited from input `loo_data`).
+    looic: leave-one-out information criterion (`-2 * elpd_loo`).
+    looic_se: standard error of the looic.
+    good_k: Threshold for Pareto k values used.
+    method: The method used for computation ("loo_moment_match").
 
     Notes
     -----
@@ -150,103 +158,6 @@ def loo_moment_match(
             cov=True,
         )
 
-    If you are using a custom model implementation, you need to implement functions for parameter transformation
-    and log probability calculations. For example, for a CmdStanPy model, you can do the following:
-
-    .. code-block:: python
-
-        import numpy as np
-        import pandas as pd
-        import xarray as xr
-        import pyloo as pl
-        import arviz as az
-
-        from cmdstanpy import CmdStanModel
-        from scipy.special import logsumexp
-
-        stan_code =
-        data {
-          int<lower=1> K;
-          int<lower=1> N;
-          matrix[N,K] x;
-          array[N] int y;
-          vector[N] offset;
-          real beta_prior_scale;
-          real alpha_prior_scale;
-        }
-        parameters {
-          vector[K] beta;
-          real intercept;
-        }
-        model {
-          y ~ poisson(exp(x * beta + intercept + offset));
-          beta ~ normal(0, beta_prior_scale);
-          intercept ~ normal(0, alpha_prior_scale);
-        }
-        generated quantities {
-          vector[N] log_lik;
-          for (n in 1:N)
-            log_lik[n] = poisson_lpmf(y[n] | exp(x[n] * beta + intercept + offset[n]));
-        }
-
-        model = CmdStanModel(stan_code=stan_code)
-        fit = model.sample(data=stan_data, chains=4, iter_sampling=1000)
-
-        # Define custom functions required for moment matching
-        def post_draws(model_obj, **kwargs):
-            fit = model_obj['fit']
-            draws_dict = {
-                'beta': fit.stan_variables()['beta'].reshape(fit.chains*fit.draws_per_chain, -1),
-                'intercept': fit.stan_variables()['intercept'].flatten()
-            }
-            return draws_dict
-
-        def log_lik_i(model_obj, i, **kwargs):
-            fit = model_obj['fit']
-            log_lik = fit.stan_variables()['log_lik']
-            return log_lik[:, :, i].reshape(fit.chains*fit.draws_per_chain)
-
-        def unconstrain_pars(model_obj, pars, **kwargs):
-            K = model_obj['data']['K']
-            n_samples = len(pars['intercept'])
-
-            upars = np.zeros((n_samples, K + 1))
-            upars[:, 0] = pars['intercept']  # intercept
-            upars[:, 1:] = pars['beta']      # beta values
-            return upars
-
-        def log_prob_upars(model_obj, upars, **kwargs):
-            # This function needs to compute the log posterior density
-            return log_prob
-
-        def log_lik_i_upars(model_obj, upars, i, **kwargs):
-            # This function needs to compute the log-likelihood for observation i
-            return log_lik
-
-        idata = az.from_cmdstanpy(fit)
-        loo_orig = pl.loo(idata, pointwise=True)
-
-        loo_mm = pl.loo_moment_match(
-            model_obj,
-            loo_orig,
-            post_draws=post_draws,
-            log_lik_i=log_lik_i,
-            unconstrain_pars=unconstrain_pars,
-            log_prob_upars_fn=log_prob_upars,
-            log_lik_i_upars_fn=log_lik_i_upars,
-            k_threshold=0.7,
-            split=True,
-            cov=True
-        )
-
-        print("Original ELPD LOO:", loo_orig.elpd_loo)
-        print("Improved ELPD LOO:", loo_mm.elpd_loo)
-
-    References
-    ----------
-    Paananen, T., Piironen, J., Buerkner, P.-C., Vehtari, A. (2020). Implicitly Adaptive Importance
-    Sampling. arXiv preprint arXiv:1906.08850.
-
     See Also
     --------
     loo : Leave-one-out cross-validation
@@ -257,6 +168,18 @@ def loo_moment_match(
     loo_group : Leave-one-group-out cross-validation
     loo_nonfactor : Leave-one-out cross-validation for non-factorized models
     waic : Compute WAIC
+
+    References
+    ----------
+    
+    .. [1] Paananen, T., Piironen, J., Buerkner, P.-C., Vehtari, A. (2020). Implicitly Adaptive
+        Importance Sampling. arXiv preprint arXiv:1906.08850.
+    .. [2] Vehtari et al. *Practical Bayesian model evaluation using leave-one-out cross-validation
+        and WAIC*. Statistics and Computing. 27(5) (2017) https://doi.org/10.1007/s11222-016-9696-4
+        arXiv preprint https://arxiv.org/abs/1507.04544.
+    .. [3] Vehtari et al. *Pareto Smoothed Importance Sampling*.
+        Journal of Machine Learning Research, 25(72) (2024) https://jmlr.org/papers/v25/19-556.html
+        arXiv preprint https://arxiv.org/abs/1507.02646
     """
     log_level = logging.INFO if verbose else logging.WARNING
     _log.setLevel(log_level)
