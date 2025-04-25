@@ -98,5 +98,3 @@ class PLPDApproximation(LooApproximation):
             return log_likelihood.mean(dim="__sample__").values
         elif "chain" in log_likelihood.dims and "draw" in log_likelihood.dims:
             return log_likelihood.mean(dim=["chain", "draw"]).values
-        else:
-            return np.mean(log_likelihood, axis=-1)

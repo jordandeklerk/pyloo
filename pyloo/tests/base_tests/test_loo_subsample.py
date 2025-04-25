@@ -6,7 +6,7 @@ from copy import deepcopy
 import numpy as np
 import pytest
 import xarray as xr
-
+import arviz as az
 from ...loo import loo
 from ...loo_approximate_posterior import loo_approximate_posterior
 from ...loo_subsample import (
@@ -25,9 +25,7 @@ from ..helpers import (
 
 @pytest.fixture(scope="session")
 def large_model():
-    """Create a large model for testing subsampling."""
     return create_large_model(n_obs=10000)
-
 
 def test_loo_subsample_performance(large_model):
     start_time = time.time()
