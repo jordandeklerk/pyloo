@@ -1,6 +1,5 @@
 """Tests for the LOO-CV subsampling module."""
 
-import logging
 import time
 from copy import deepcopy
 
@@ -23,8 +22,6 @@ from ..helpers import (
     create_large_model,
 )
 
-logger = logging.getLogger(__name__)
-
 
 @pytest.fixture(scope="session")
 def large_model():
@@ -33,7 +30,6 @@ def large_model():
 
 
 def test_loo_subsample_performance(large_model):
-    """Test that subsampling is faster than full LOO for large datasets."""
     start_time = time.time()
     full_loo = loo(large_model)
     full_time = time.time() - start_time
@@ -52,7 +48,6 @@ def test_loo_subsample_performance(large_model):
 
 @pytest.mark.parametrize("method", [m.value for m in LooApproximationMethod])
 def test_loo_subsample_approximations(large_model, method):
-    """Test different LOO approximation methods."""
     result = loo_subsample(
         large_model,
         observations=1000,
@@ -65,7 +60,6 @@ def test_loo_subsample_approximations(large_model, method):
 
 @pytest.mark.parametrize("estimator", [m.value for m in EstimatorMethod])
 def test_loo_subsample_estimators(large_model, estimator):
-    """Test different estimator methods."""
     result = loo_subsample(
         large_model,
         observations=1000,
@@ -77,7 +71,6 @@ def test_loo_subsample_estimators(large_model, estimator):
 
 
 def test_loo_subsample_pointwise(large_model):
-    """Test LOO subsampling with pointwise=True."""
     result = loo_subsample(large_model, observations=1000, pointwise=True)
     assert result is not None
     assert "loo_i" in result
@@ -89,7 +82,6 @@ def test_loo_subsample_pointwise(large_model):
 
 
 def test_loo_subsample_observations_validation(large_model):
-    """Test validation of observations parameter."""
     n_obs = large_model.log_likelihood["obs"].shape[2]
 
     with pytest.raises(ValueError):
@@ -106,7 +98,6 @@ def test_loo_subsample_observations_validation(large_model):
 
 
 def test_loo_subsample_approximation_draws(large_model):
-    """Test subsampling with different numbers of approximation draws."""
     n_draws = large_model.posterior.dims["draw"]
 
     result = loo_subsample(
@@ -125,7 +116,6 @@ def test_loo_subsample_approximation_draws(large_model):
 
 
 def test_loo_subsample_nan_handling(large_model):
-    """Test LOO subsampling with NaN values."""
     large_model = deepcopy(large_model)
     log_like = large_model.log_likelihood["obs"].values
     log_like[0, 0, 0] = np.nan
@@ -143,7 +133,6 @@ def test_loo_subsample_nan_handling(large_model):
 
 
 def test_loo_subsample_multiple_groups(large_model):
-    """Test LOO subsampling with multiple log_likelihood groups."""
     large_model = deepcopy(large_model)
     large_model.log_likelihood["obs2"] = large_model.log_likelihood["obs"]
 
@@ -155,7 +144,6 @@ def test_loo_subsample_multiple_groups(large_model):
 
 
 def test_loo_subsample_consistency(large_model):
-    """Test consistency of LOO subsampling with different sample sizes."""
     n_obs = [500, 1000, 2000]
     results = []
 
@@ -174,7 +162,6 @@ def test_loo_subsample_consistency(large_model):
 
 
 def test_loo_subsample_exact_indices(large_model):
-    """Test LOO subsampling with exact indices provided."""
     indices = np.array([0, 100, 200, 300])
     result = loo_subsample(large_model, observations=indices, pointwise=True)
     assert result is not None
@@ -185,7 +172,6 @@ def test_loo_subsample_exact_indices(large_model):
 
 
 def test_loo_subsample_default_parameters(large_model):
-    """Test that default parameters produce valid results for large datasets."""
     result = loo_subsample(large_model, pointwise=True)
 
     pareto_k = result["pareto_k"][~np.isnan(result["pareto_k"])]
@@ -201,7 +187,6 @@ def test_loo_subsample_default_parameters(large_model):
 
 
 def test_update_subsample_basic(large_model):
-    """Test basic update functionality."""
     result = loo_subsample(large_model, observations=1000)
     updated = update_subsample(result, observations=2000)
 
@@ -211,7 +196,6 @@ def test_update_subsample_basic(large_model):
 
 
 def test_update_subsample_validation():
-    """Test validation in update_subsample."""
     with pytest.raises(TypeError, match="must be an ELPDData object"):
         update_subsample(None, observations=1000)
 
@@ -220,7 +204,6 @@ def test_update_subsample_validation():
 
 
 def test_update_subsample_consistency(large_model):
-    """Test consistency of results after update."""
     result = loo_subsample(large_model, observations=1000)
     updated = update_subsample(result, observations=1000)
     rel_diff = np.abs(updated["elpd_loo"] - result["elpd_loo"]) / np.abs(
@@ -235,7 +218,6 @@ def test_update_subsample_consistency(large_model):
 
 
 def test_update_subsample_parameter_inheritance(large_model):
-    """Test that update inherits parameters correctly."""
     result = loo_subsample(
         large_model,
         observations=1000,
@@ -254,7 +236,6 @@ def test_update_subsample_parameter_inheritance(large_model):
 
 
 def test_update_subsample_parameter_override(large_model):
-    """Test that update allows parameter overrides."""
     result = loo_subsample(
         large_model,
         observations=1000,
@@ -275,7 +256,6 @@ def test_update_subsample_parameter_override(large_model):
 
 
 def test_update_subsample_exact_indices(large_model):
-    """Test update with exact indices."""
     initial_indices = np.array([0, 100, 200, 300])
     result = loo_subsample(large_model, observations=initial_indices, pointwise=True)
 
@@ -287,7 +267,6 @@ def test_update_subsample_exact_indices(large_model):
 
 
 def test_loo_subsample_with_posterior_correction(simple_model):
-    """Test loo_subsample with posterior correction."""
     model, _ = simple_model
 
     wrapper = Laplace(model)
@@ -325,13 +304,8 @@ def test_loo_subsample_with_posterior_correction(simple_model):
     assert_arrays_allclose(result.log_p, log_p)
     assert_arrays_allclose(result.log_q, log_q)
 
-    logger.info(result)
-    logger.info(loo_approx)
-    logger.info(reg_loo_subsample)
-
 
 def test_update_subsample_with_posterior_correction(simple_model):
-    """Test update_subsample with posterior correction."""
     model, _ = simple_model
 
     wrapper = Laplace(model)
@@ -361,6 +335,3 @@ def test_update_subsample_with_posterior_correction(simple_model):
     assert_arrays_allclose(updated_result.log_q, log_q)
 
     assert updated_result["subsampling_SE"] <= initial_result["subsampling_SE"]
-
-    logger.info(initial_result)
-    logger.info(updated_result)
