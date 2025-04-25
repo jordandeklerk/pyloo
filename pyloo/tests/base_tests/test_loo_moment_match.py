@@ -1,6 +1,5 @@
 """Tests for moment matching in LOO-CV."""
 
-import logging
 import math
 from copy import deepcopy
 
@@ -29,8 +28,6 @@ from ...loo_moment_match import (
 from ...split_moment_match import loo_moment_match_split
 from ...wrapper.pymc.pymc import PyMCWrapper
 from ..helpers import assert_allclose
-
-logger = logging.getLogger(__name__)
 
 
 class MockCmdStanModel:
@@ -130,7 +127,6 @@ class CustomModel:
 
 
 def test_loo_moment_match_basic(problematic_model):
-    """Test basic functionality of loo_moment_match."""
     param_names = list(problematic_model.get_unconstrained_parameters().keys())
     loo_orig = loo(problematic_model.idata, pointwise=True)
     original_k_values = loo_orig.pareto_k.values.copy()
@@ -156,9 +152,6 @@ def test_loo_moment_match_basic(problematic_model):
         verbose=True,
     )
 
-    logger.info(loo_orig)
-    logger.info(loo_mm)
-
     improvements = []
     for idx in high_k_indices:
         orig_k = original_k_values[idx]
@@ -170,7 +163,6 @@ def test_loo_moment_match_basic(problematic_model):
 
 
 def test_loo_moment_match_split(problematic_model):
-    """Test split moment matching."""
     loo_orig = loo(problematic_model.idata, pointwise=True)
     original_elpd = loo_orig.elpd_loo
 
@@ -208,7 +200,6 @@ def test_loo_moment_match_split(problematic_model):
 
 
 def test_loo_moment_match_different_methods(problematic_model):
-    """Test moment matching with different importance sampling methods."""
     loo_orig = loo(problematic_model.idata, pointwise=True)
     original_elpd = loo_orig.elpd_loo
 
@@ -242,7 +233,6 @@ def test_loo_moment_match_different_methods(problematic_model):
 
 
 def test_loo_moment_match_iterations(problematic_model):
-    """Test moment matching with different iteration counts."""
     loo_orig = loo(problematic_model.idata, pointwise=True)
 
     iters = [1, 5, 15]
@@ -265,7 +255,6 @@ def test_loo_moment_match_iterations(problematic_model):
 
 
 def test_shift_transformation():
-    """Test the shift transformation."""
     rng = np.random.default_rng(42)
     upars = rng.normal(size=(100, 5))
     lwi = rng.normal(size=100)
@@ -287,7 +276,6 @@ def test_shift_transformation():
 
 
 def test_shift_and_scale_transformation():
-    """Test the shift and scale transformation."""
     rng = np.random.default_rng(42)
     upars = rng.normal(size=(100, 5))
     lwi = rng.normal(size=100)
@@ -315,7 +303,6 @@ def test_shift_and_scale_transformation():
 
 
 def test_shift_and_cov_transformation():
-    """Test the shift and covariance transformation."""
     rng = np.random.default_rng(42)
     upars = rng.normal(size=(100, 5))
     lwi = rng.normal(size=100)
@@ -343,7 +330,6 @@ def test_shift_and_cov_transformation():
 
 
 def test_update_quantities_i(problematic_model):
-    """Test the update_quantities_i function."""
     unconstrained = problematic_model.get_unconstrained_parameters()
     param_names = list(unconstrained.keys())
     param_converter = ParameterConverter(problematic_model)
@@ -387,7 +373,6 @@ def test_update_quantities_i(problematic_model):
 
 
 def test_loo_moment_match_split_function(problematic_model):
-    """Test the loo_moment_match_split function directly."""
     unconstrained = problematic_model.get_unconstrained_parameters()
     param_names = list(unconstrained.keys())
 
@@ -432,7 +417,6 @@ def test_loo_moment_match_split_function(problematic_model):
 
 
 def test_initialize_array():
-    """Test the _initialize_array function."""
     arr = np.ones(5)
     dim = 5
     result = _initialize_array(arr, np.zeros, dim)
@@ -450,7 +434,6 @@ def test_initialize_array():
 
 
 def test_loo_moment_match_with_custom_threshold(problematic_model):
-    """Test moment matching with custom k threshold."""
     loo_orig = loo(problematic_model.idata, pointwise=True)
 
     thresholds = [0.5, 0.7, 0.9]
@@ -475,7 +458,6 @@ def test_loo_moment_match_with_custom_threshold(problematic_model):
 
 
 def test_loo_moment_match_roaches_model(roaches_model):
-    """Test moment matching with the roaches model."""
     model, idata = roaches_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -494,15 +476,11 @@ def test_loo_moment_match_roaches_model(roaches_model):
         verbose=True,
     )
 
-    logger.info(loo_mm)
-    logger.info(loo_orig)
-
     improvements = loo_orig.pareto_k[high_k] - loo_mm.pareto_k[high_k]
     assert np.any(improvements > 0), "No Pareto k values improved"
 
 
 def test_parameter_converter_initialization(mmm_model):
-    """Test initialization of ParameterConverter."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -519,7 +497,6 @@ def test_parameter_converter_initialization(mmm_model):
 
 
 def test_dict_to_matrix_conversion(mmm_model):
-    """Test conversion from dictionary to matrix format."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -548,7 +525,6 @@ def test_dict_to_matrix_conversion(mmm_model):
 
 
 def test_matrix_to_dict_conversion(mmm_model):
-    """Test conversion from matrix to dictionary format."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -566,7 +542,6 @@ def test_matrix_to_dict_conversion(mmm_model):
 
 
 def test_multidimensional_parameters(mmm_model):
-    """Test handling of multi-dimensional parameters."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -591,7 +566,6 @@ def test_multidimensional_parameters(mmm_model):
 
 
 def test_parameter_info_consistency(mmm_model):
-    """Test consistency of parameter info with actual data."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -616,7 +590,6 @@ def test_parameter_info_consistency(mmm_model):
 
 
 def test_roundtrip_conversion(mmm_model):
-    """Test that converting to matrix and back preserves all information."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -631,7 +604,6 @@ def test_roundtrip_conversion(mmm_model):
 
 
 def test_error_handling(mmm_model):
-    """Test error handling in ParameterConverter."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -652,7 +624,6 @@ def test_error_handling(mmm_model):
 
 
 def test_parameter_ordering(mmm_model):
-    """Test that parameter ordering is consistent."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -676,7 +647,6 @@ def test_parameter_ordering(mmm_model):
 
 
 def test_converter_with_log_prob_upars(mmm_model):
-    """Test that ParameterConverter works correctly with log_prob_upars."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -693,7 +663,6 @@ def test_converter_with_log_prob_upars(mmm_model):
 
 
 def test_converter_with_log_lik_i_upars(mmm_model):
-    """Test that ParameterConverter works correctly with log_lik_i_upars."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -710,7 +679,6 @@ def test_converter_with_log_lik_i_upars(mmm_model):
 
 
 def test_converter_with_multidim_log_lik(mmm_model):
-    """Test ParameterConverter with multi-dimensional log likelihood."""
     model, idata = mmm_model
     wrapper = PyMCWrapper(model, idata)
     converter = ParameterConverter(wrapper)
@@ -836,7 +804,6 @@ def custom_model():
 
 
 def test_loo_moment_match_custom_implementation(custom_model):
-    """Test that loo_moment_match works with custom implementations."""
     loo_data = create_mock_loo_data(custom_model)
     original_k_values = loo_data.pareto_k.values.copy()
 
@@ -872,7 +839,6 @@ def test_loo_moment_match_custom_implementation(custom_model):
 
 
 def test_loo_moment_match_custom_vs_split(custom_model):
-    """Test split moment matching with custom implementation."""
     loo_data = create_mock_loo_data(custom_model)
     original_elpd = loo_data.elpd_loo
 
@@ -918,7 +884,6 @@ def test_loo_moment_match_custom_vs_split(custom_model):
 
 
 def test_loo_moment_match_custom_missing_functions(custom_model):
-    """Test error handling when required functions are missing."""
     loo_data = create_mock_loo_data(custom_model)
 
     with pytest.raises(ValueError, match="must provide all the following functions"):
@@ -941,7 +906,6 @@ def test_loo_moment_match_custom_missing_functions(custom_model):
 
 
 def test_loo_moment_match_custom_different_methods(custom_model):
-    """Test moment matching with different importance sampling methods for custom model."""
     loo_data = create_mock_loo_data(custom_model)
     original_elpd = loo_data.elpd_loo
 
@@ -978,7 +942,6 @@ def test_loo_moment_match_custom_different_methods(custom_model):
 
 
 def test_loo_moment_match_pymc_vs_custom(problematic_model):
-    """Test that PyMCWrapper and custom function implementations yield same results."""
     wrapper = problematic_model
     loo_orig = loo(wrapper.idata, pointwise=True)
 
@@ -1048,12 +1011,8 @@ def test_loo_moment_match_pymc_vs_custom(problematic_model):
     assert_allclose(loo_mm_pymc.loo_i, loo_mm_custom.loo_i, rtol=1e-6)
     assert_allclose(loo_mm_pymc.pareto_k, loo_mm_custom.pareto_k, rtol=1e-6)
 
-    logger.info(loo_mm_pymc)
-    logger.info(loo_mm_custom)
-
 
 def test_loo_moment_match_cmdstan_example():
-    """Test the CmdStanPy example from the docstring."""
     mock_cmdstan = MockCmdStanModel(n_samples=1000, n_obs=20, n_predictors=3)
 
     model_obj = {
@@ -1158,16 +1117,8 @@ def test_loo_moment_match_cmdstan_example():
     assert np.any(np.array(improvements) > 0), "No Pareto k values improved"
     assert loo_mm.elpd_loo >= loo_data.elpd_loo - 1e-10
 
-    logger.info(f"Original ELPD LOO: {loo_data.elpd_loo}")
-    logger.info(f"Improved ELPD LOO: {loo_mm.elpd_loo}")
-    logger.info(f"Original k values: {k_values}")
-    logger.info(f"Improved k values: {loo_mm.pareto_k.values}")
-
-    logger.info(loo_mm)
-
 
 def test_validate_custom_function():
-    """Test the _validate_custom_function utility."""
 
     def good_func(model, i, extra=None):
         return i
@@ -1196,7 +1147,6 @@ def test_validate_custom_function():
 
 
 def test_validate_output():
-    """Test the _validate_output utility."""
     good_array = np.array([1.0, 2.0, 3.0])
     validated = _validate_output(good_array, "good_array", expected_ndim=1)
     assert_allclose(validated, good_array)
