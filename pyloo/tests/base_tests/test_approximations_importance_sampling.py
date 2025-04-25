@@ -12,7 +12,6 @@ from ...base import ISMethod
 
 
 def test_importance_sampling_approximation_base(log_likelihood_data):
-    """Test the base ImportanceSamplingApproximation class with real data."""
     approx = ImportanceSamplingApproximation(method=ISMethod.PSIS)
     assert approx.method == ISMethod.PSIS
 
@@ -24,7 +23,6 @@ def test_importance_sampling_approximation_base(log_likelihood_data):
 
 
 def test_sis_approximation(log_likelihood_data):
-    """Test the SISApproximation class with real data."""
     approx = SISApproximation()
     assert approx.method == ISMethod.SIS
 
@@ -36,7 +34,6 @@ def test_sis_approximation(log_likelihood_data):
 
 
 def test_tis_approximation(log_likelihood_data):
-    """Test the TISApproximation class with real data."""
     approx = TISApproximation()
     assert approx.method == ISMethod.TIS
 
@@ -48,7 +45,6 @@ def test_tis_approximation(log_likelihood_data):
 
 
 def test_importance_sampling_with_n_draws(log_likelihood_data):
-    """Test importance sampling with specified number of draws."""
     approx = ImportanceSamplingApproximation(method=ISMethod.PSIS)
 
     n_samples = log_likelihood_data.sizes["__sample__"]
@@ -64,7 +60,6 @@ def test_importance_sampling_with_n_draws(log_likelihood_data):
 
 
 def test_importance_sampling_with_extreme_values(log_likelihood_data):
-    """Test importance sampling with extreme log-likelihood values."""
     approx = ImportanceSamplingApproximation(method=ISMethod.PSIS)
 
     log_likelihood_extreme = log_likelihood_data.copy(deep=True)
@@ -78,7 +73,6 @@ def test_importance_sampling_with_extreme_values(log_likelihood_data):
 
 
 def test_importance_sampling_with_constant_values(log_likelihood_data):
-    """Test importance sampling with constant log-likelihood values."""
     approx = ImportanceSamplingApproximation(method=ISMethod.PSIS)
 
     log_likelihood_constant = log_likelihood_data.copy(deep=True)
@@ -91,7 +85,6 @@ def test_importance_sampling_with_constant_values(log_likelihood_data):
 
 
 def test_importance_sampling_methods_comparison(log_likelihood_data):
-    """Compare results from different importance sampling methods."""
     psis_approx = ImportanceSamplingApproximation(method=ISMethod.PSIS)
     sis_approx = SISApproximation()
     tis_approx = TISApproximation()
@@ -110,7 +103,6 @@ def test_importance_sampling_methods_comparison(log_likelihood_data):
 
 
 def test_importance_sampling_with_multidimensional_data(multidim_data):
-    """Test importance sampling with multidimensional data."""
     log_likelihood = xr.DataArray(
         multidim_data["llm"],
         dims=["chain", "draw", "dim1", "dim2"],
@@ -138,7 +130,6 @@ def test_importance_sampling_with_multidimensional_data(multidim_data):
 
 
 def test_importance_sampling_with_extreme_data(extreme_data):
-    """Test importance sampling with extreme data fixture."""
     log_likelihood = xr.DataArray(
         extreme_data.T,
         dims=["obs_id", "__sample__"],
@@ -162,7 +153,6 @@ def test_importance_sampling_with_extreme_data(extreme_data):
 
 
 def test_importance_sampling_with_centered_eight(centered_eight):
-    """Test importance sampling with the centered_eight dataset."""
     log_likelihood = centered_eight.log_likelihood.obs.stack(
         __sample__=("chain", "draw")
     )

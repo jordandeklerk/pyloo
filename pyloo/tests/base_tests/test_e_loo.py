@@ -23,7 +23,6 @@ from ..helpers import assert_arrays_allclose, assert_finite, assert_positive
 
 
 def test_expectation_result_dataclass():
-    """Test the ExpectationResult dataclass."""
     value = xr.DataArray([1.0, 2.0, 3.0], dims=["dim1"])
     pareto_k = xr.DataArray([0.1, 0.2, 0.3], dims=["dim1"])
 
@@ -37,7 +36,6 @@ def test_expectation_result_dataclass():
 
 
 def test_normalize_log_weights():
-    """Test the _normalize_log_weights function."""
     log_weights = xr.DataArray(
         [[-1.0, -2.0], [-3.0, -4.0]],
         dims=("__sample__", "obs_dim"),
@@ -53,7 +51,6 @@ def test_normalize_log_weights():
 
 
 def test_wvar_func():
-    """Test the _wvar_func function."""
     x_const = np.array([5.0, 5.0, 5.0, 5.0])
     w_const = np.array([0.25, 0.25, 0.25, 0.25])
     assert_arrays_allclose(_wvar_func(x_const, w_const), 0.0)
@@ -69,7 +66,6 @@ def test_wvar_func():
 
 
 def test_weighted_quantile():
-    """Test the _weighted_quantile function."""
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     w = np.array([0.1, 0.2, 0.4, 0.2, 0.1])
 
@@ -89,7 +85,6 @@ def test_weighted_quantile():
 
 
 def test_khat_func():
-    """Test the _khat_func function."""
     rng = np.random.default_rng(42)
     x = rng.normal(size=100)
     log_ratios = rng.normal(size=100)
@@ -109,7 +104,6 @@ def test_khat_func():
 
 
 def test_compute_weighted_mean(centered_eight):
-    """Test the _compute_weighted_mean function."""
     x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
@@ -123,7 +117,6 @@ def test_compute_weighted_mean(centered_eight):
 
 
 def test_compute_weighted_variance(centered_eight):
-    """Test the _compute_weighted_variance function."""
     x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
@@ -137,7 +130,6 @@ def test_compute_weighted_variance(centered_eight):
 
 
 def test_compute_weighted_sd(centered_eight):
-    """Test the _compute_weighted_sd function."""
     x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
@@ -154,7 +146,6 @@ def test_compute_weighted_sd(centered_eight):
 
 
 def test_compute_weighted_quantiles(centered_eight):
-    """Test the _compute_weighted_quantiles function."""
     x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     probs = np.array([0.25, 0.5, 0.75])
@@ -173,7 +164,6 @@ def test_compute_weighted_quantiles(centered_eight):
 
 
 def test_compute_pareto_k(centered_eight):
-    """Test the _compute_pareto_k function."""
     x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
@@ -193,7 +183,6 @@ def test_compute_pareto_k(centered_eight):
 
 
 def test_e_loo_with_arrays(centered_eight):
-    """Test e_loo with xarray DataArrays."""
     x = centered_eight.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
     log_weights = centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
@@ -266,7 +255,6 @@ def test_e_loo_with_arrays(centered_eight):
 
 
 def test_e_loo_with_weights(centered_eight):
-    """Test e_loo with pre-computed weights."""
     log_like = -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
 
     log_weights, _ = compute_importance_weights(log_like)
@@ -290,7 +278,6 @@ def test_e_loo_with_weights(centered_eight):
 
 
 def test_e_loo_with_inference_data(centered_eight):
-    """Test e_loo with InferenceData objects."""
     log_like = -centered_eight.log_likelihood.obs.stack(__sample__=("chain", "draw"))
     log_weights, _ = compute_importance_weights(log_like)
 
@@ -340,7 +327,6 @@ def test_e_loo_with_inference_data(centered_eight):
 
 
 def test_e_loo_errors(centered_eight):
-    """Test error handling in e_loo."""
     x, log_weights = (
         centered_eight.posterior_predictive.obs,
         centered_eight.log_likelihood.obs,
@@ -364,7 +350,6 @@ def test_e_loo_errors(centered_eight):
 
 
 def test_e_loo_with_multidimensional_data():
-    """Test e_loo with multidimensional data."""
     rng = np.random.default_rng(42)
     n_samples = 100
     n_dim1 = 3
@@ -407,7 +392,6 @@ def test_e_loo_with_multidimensional_data():
 
 
 def test_e_loo_with_aligned_data():
-    """Test e_loo with data that needs alignment."""
     rng = np.random.default_rng(42)
     n_samples = 100
     n_obs = 3
@@ -442,7 +426,6 @@ def test_e_loo_with_aligned_data():
 
 
 def test_e_loo_with_constant_values():
-    """Test e_loo with constant values."""
     n_samples = 100
     n_obs = 3
 
@@ -479,7 +462,6 @@ def test_e_loo_with_constant_values():
 
 
 def test_e_loo_with_extreme_weights():
-    """Test e_loo with extreme weights."""
     n_samples = 100
     n_obs = 3
 
@@ -505,7 +487,6 @@ def test_e_loo_with_extreme_weights():
 
 
 def test_e_loo_with_eight_schools(centered_eight, non_centered_eight):
-    """Test e_loo with eight schools data from both parameterizations."""
     log_like_centered = -centered_eight.log_likelihood.obs.stack(
         __sample__=("chain", "draw")
     )
@@ -555,7 +536,6 @@ def test_e_loo_with_eight_schools(centered_eight, non_centered_eight):
 
 
 def test_e_loo_with_custom_inference_data():
-    """Test e_loo with a custom InferenceData object."""
     n_chains = 4
     n_draws = 100
     n_obs = 3
@@ -584,7 +564,6 @@ def test_e_loo_with_custom_inference_data():
 
 
 def test_e_loo_numerical_stability():
-    """Test numerical stability of e_loo with challenging data."""
     n_samples = 100
     n_obs = 3
 

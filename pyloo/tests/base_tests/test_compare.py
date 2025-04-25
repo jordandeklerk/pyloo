@@ -1,6 +1,5 @@
-"""Tests for model comparison functionality."""
 
-import logging
+
 from copy import deepcopy
 
 import arviz as az
@@ -20,19 +19,16 @@ from ..helpers import create_large_model
 
 @pytest.fixture(scope="session")
 def centered_eight():
-    """Load the centered_eight example dataset from ArviZ."""
     return az.load_arviz_data("centered_eight")
 
 
 @pytest.fixture(scope="session")
 def non_centered_eight():
-    """Load the non_centered_eight example dataset from ArviZ."""
     return az.load_arviz_data("non_centered_eight")
 
 
 @pytest.fixture(scope="session")
 def models(centered_eight, non_centered_eight):
-    """Create dictionary of models for comparison."""
     return {
         "centered": centered_eight,
         "non_centered": non_centered_eight,
@@ -41,7 +37,6 @@ def models(centered_eight, non_centered_eight):
 
 @pytest.fixture(scope="session")
 def large_models():
-    """Create dictionary of large models for testing subsampling."""
     model1 = create_large_model(seed=42, n_obs=10000)
     model2 = create_large_model(seed=43, n_obs=10000)
     return {
@@ -51,7 +46,6 @@ def large_models():
 
 
 def test_loo_compare_basic(models):
-    """Test basic model comparison functionality."""
     result = loo_compare(models)
 
     assert isinstance(result, pd.DataFrame)
@@ -82,7 +76,6 @@ def test_loo_compare_basic(models):
 
 
 def test_waic_compare_basic(models):
-    """Test basic model comparison functionality using WAIC."""
     result = loo_compare(models, ic="waic")
 
     assert isinstance(result, pd.DataFrame)
@@ -114,7 +107,6 @@ def test_waic_compare_basic(models):
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_loo_compare_scales(models, scale):
-    """Test model comparison with different scales."""
     result = loo_compare(models, scale=scale)
 
     if scale == "log":
@@ -128,7 +120,6 @@ def test_loo_compare_scales(models, scale):
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_waic_compare_scales(models, scale):
-    """Test model comparison with different scales using WAIC."""
     result = loo_compare(models, ic="waic", scale=scale)
 
     if scale == "log":
@@ -142,7 +133,6 @@ def test_waic_compare_scales(models, scale):
 
 @pytest.mark.parametrize("method", ["stacking", "BB-pseudo-BMA", "pseudo-BMA"])
 def test_loo_compare_methods(models, method):
-    """Test different methods for computing model weights."""
     result = loo_compare(models, method=method)
 
     assert_allclose(result["weight"].sum(), 1.0, rtol=1e-7)
@@ -161,7 +151,6 @@ def test_loo_compare_methods(models, method):
 
 @pytest.mark.parametrize("method", ["stacking", "BB-pseudo-BMA", "pseudo-BMA"])
 def test_waic_compare_methods(models, method):
-    """Test different methods for computing model weights using WAIC."""
     result = loo_compare(models, ic="waic", method=method)
 
     assert_allclose(result["weight"].sum(), 1.0, rtol=1e-7)
@@ -179,7 +168,6 @@ def test_waic_compare_methods(models, method):
 
 
 def test_loo_compare_precomputed_elpd(models):
-    """Test model comparison with pre-computed ELPD values."""
     elpds = {name: loo(model, pointwise=True) for name, model in models.items()}
     result = loo_compare(elpds)
 
@@ -189,7 +177,6 @@ def test_loo_compare_precomputed_elpd(models):
 
 
 def test_waic_compare_precomputed_elpd(models):
-    """Test model comparison with pre-computed WAIC values."""
     elpds = {name: waic(model, pointwise=True) for name, model in models.items()}
     result = loo_compare(elpds)
 
@@ -199,31 +186,26 @@ def test_waic_compare_precomputed_elpd(models):
 
 
 def test_loo_compare_invalid_scale(models):
-    """Test model comparison with invalid scale."""
     with pytest.raises(ValueError, match="Scale must be"):
         loo_compare(models, scale="invalid")
 
 
 def test_loo_compare_invalid_method(models):
-    """Test model comparison with invalid method."""
     with pytest.raises(ValueError, match="Method must be"):
         loo_compare(models, method="invalid")
 
 
 def test_loo_compare_invalid_ic(models):
-    """Test model comparison with invalid information criterion."""
     with pytest.raises(ValueError, match="ic must be 'loo', 'waic', or 'kfold'"):
         loo_compare(models, ic="invalid")
 
 
 def test_loo_compare_single_model(models):
-    """Test model comparison with single model."""
     with pytest.raises(ValueError, match="at least two models"):
         loo_compare({"model1": next(iter(models.values()))})
 
 
 def test_mixed_ic_error(models):
-    """Test error when mixing different information criteria."""
     elpds = {
         "loo_model": loo(next(iter(models.values())), pointwise=True),
         "waic_model": waic(next(iter(models.values())), pointwise=True),
@@ -235,7 +217,6 @@ def test_mixed_ic_error(models):
 
 
 def test_loo_compare_warning_models(centered_eight):
-    """Test model comparison with problematic models that raise warnings."""
     model1 = deepcopy(centered_eight)
     model2 = deepcopy(centered_eight)
 
@@ -251,7 +232,6 @@ def test_loo_compare_warning_models(centered_eight):
 
 @pytest.mark.parametrize("observations", [1000, 2000])
 def test_loo_compare_subsample(large_models, observations):
-    """Test model comparison with subsampled LOO computation."""
     result = loo_compare(
         large_models,
         observations=observations,
@@ -283,7 +263,6 @@ def test_loo_compare_subsample(large_models, observations):
 
 @pytest.mark.parametrize("estimator", ["diff_srs", "srs", "hh_pps"])
 def test_loo_compare_subsample_estimators(large_models, estimator):
-    """Test model comparison with different subsampling estimators."""
     result = loo_compare(
         large_models,
         observations=1000,
@@ -298,7 +277,6 @@ def test_loo_compare_subsample_estimators(large_models, estimator):
 
 
 def test_loo_compare_mixed_subsample(models, large_models):
-    """Test comparing mix of subsampled and full LOO models."""
     mixed_models = {
         "small": next(iter(models.values())),
         "large": next(iter(large_models.values())),
@@ -312,7 +290,6 @@ def test_loo_compare_mixed_subsample(models, large_models):
 
 
 def test_loo_compare_precomputed_subsample(large_models):
-    """Test model comparison with pre-computed subsampled ELPD values."""
     elpds = {
         name: loo_subsample(
             model, observations=1000, pointwise=True, estimator="diff_srs"
@@ -334,7 +311,6 @@ def test_loo_compare_precomputed_subsample(large_models):
 
 
 def test_loo_compare_subsample_warning(large_models):
-    """Test warnings with subsampled model comparison."""
     model1 = deepcopy(next(iter(large_models.values())))
     model2 = deepcopy(model1)
 
@@ -350,7 +326,6 @@ def test_loo_compare_subsample_warning(large_models):
 
 @pytest.mark.parametrize("K", [2, 5])
 def test_kfold_compare_basic(simple_model, K):
-    """Test basic model comparison functionality using K-fold cross-validation."""
     model1, idata1 = simple_model
     model2, idata2 = simple_model
 
@@ -392,7 +367,6 @@ def test_kfold_compare_basic(simple_model, K):
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_kfold_compare_scales(simple_model, scale):
-    """Test model comparison with different scales using K-fold cross-validation."""
     model1, idata1 = simple_model
     model2, idata2 = simple_model
 
@@ -419,7 +393,6 @@ def test_kfold_compare_scales(simple_model, scale):
 
 @pytest.mark.parametrize("method", ["stacking", "BB-pseudo-BMA", "pseudo-BMA"])
 def test_kfold_compare_methods(simple_model, poisson_model, method):
-    """Test different methods for computing model weights using K-fold cross-validation."""
     model1, idata1 = simple_model
     model2, idata2 = poisson_model
 
@@ -441,7 +414,6 @@ def test_kfold_compare_methods(simple_model, poisson_model, method):
 
 
 def test_kfold_compare_with_folds(simple_model):
-    """Test model comparison with pre-specified folds."""
     model, idata = simple_model
 
     wrapper1 = PyMCWrapper(model, idata)
@@ -475,7 +447,6 @@ def test_kfold_compare_with_folds(simple_model):
 
 
 def test_kfold_compare_stratified(simple_model):
-    """Test model comparison with stratified K-fold cross-validation."""
     model, idata = simple_model
 
     wrapper1 = PyMCWrapper(model, idata)
@@ -505,7 +476,6 @@ def test_kfold_compare_stratified(simple_model):
 
 
 def test_loo_compare_with_jacobian_adjustments(centered_eight):
-    """Test model comparison with Jacobian adjustments for different transformations."""
     original_model = deepcopy(centered_eight)
     squared_model = deepcopy(centered_eight)
     log_model = deepcopy(centered_eight)
@@ -534,10 +504,6 @@ def test_loo_compare_with_jacobian_adjustments(centered_eight):
     }
 
     comparison = loo_compare(loo_dict)
-
-    logging.info(original_loo)
-    logging.info(squared_loo)
-    logging.info(log_loo)
 
     assert isinstance(comparison, pd.DataFrame)
     assert len(comparison) == 3

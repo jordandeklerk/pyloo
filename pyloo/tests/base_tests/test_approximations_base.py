@@ -8,7 +8,6 @@ from ...approximations.base import LooApproximation, thin_draws
 
 
 class MockApproximation(LooApproximation):
-    """Mock implementation of LooApproximation for testing."""
 
     def compute_approximation(self, log_likelihood, n_draws=None):
         """Mock implementation that returns the mean of log_likelihood."""
@@ -18,13 +17,11 @@ class MockApproximation(LooApproximation):
 
 
 def test_loo_approximation_abstract():
-    """Test that LooApproximation cannot be instantiated directly."""
     with pytest.raises(TypeError):
         LooApproximation()
 
 
 def test_mock_approximation():
-    """Test that a concrete subclass can be instantiated and used."""
     approx = MockApproximation()
     log_likelihood = xr.DataArray(
         np.random.randn(10, 100),
@@ -37,7 +34,6 @@ def test_mock_approximation():
 
 
 def test_thin_draws_none():
-    """Test thin_draws with n_draws=None."""
     data = xr.DataArray(
         np.random.randn(10, 100),
         dims=["obs_id", "__sample__"],
@@ -48,7 +44,6 @@ def test_thin_draws_none():
 
 
 def test_thin_draws_subset():
-    """Test thin_draws with n_draws < available draws."""
     data = xr.DataArray(
         np.random.randn(10, 100),
         dims=["obs_id", "__sample__"],
@@ -62,7 +57,6 @@ def test_thin_draws_subset():
 
 
 def test_thin_draws_all():
-    """Test thin_draws with n_draws = available draws."""
     data = xr.DataArray(
         np.random.randn(10, 100),
         dims=["obs_id", "__sample__"],
@@ -76,7 +70,6 @@ def test_thin_draws_all():
 
 
 def test_thin_draws_too_many():
-    """Test thin_draws with n_draws > available draws."""
     data = xr.DataArray(
         np.random.randn(10, 100),
         dims=["obs_id", "__sample__"],
@@ -94,7 +87,6 @@ def test_thin_draws_too_many():
 
 
 def test_thin_draws_dataset():
-    """Test thin_draws with xr.Dataset."""
     data = xr.Dataset(
         {
             "var1": (["obs_id", "__sample__"], np.random.randn(10, 100)),
@@ -110,7 +102,6 @@ def test_thin_draws_dataset():
 
 
 def test_thin_draws_chain_draw():
-    """Test thin_draws with chain and draw dimensions."""
     data = xr.Dataset(
         {
             "var1": (["chain", "draw", "obs_id"], np.random.randn(4, 25, 10)),
