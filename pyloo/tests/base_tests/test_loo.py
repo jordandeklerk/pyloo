@@ -1,6 +1,5 @@
 """Tests for the LOO module."""
 
-import logging
 from copy import deepcopy
 
 import arviz as az
@@ -9,24 +8,20 @@ import pytest
 import xarray as xr
 
 from ...loo import loo
-from ...loo_subsample import loo_subsample, update_subsample
+from ...loo_subsample import loo_subsample
 from ...psis import psislw
 from ...wrapper.pymc.pymc import PyMCWrapper
 from ..helpers import assert_allclose, assert_array_almost_equal
 
-logger = logging.getLogger(__name__)
-
 
 @pytest.fixture(scope="session")
 def centered_eight():
-    """Load the centered_eight example dataset from ArviZ."""
     return az.load_arviz_data("centered_eight")
 
 
 @pytest.fixture(scope="module")
 def multidim_model():
-    """Create a model with multidimensional log-likelihood."""
-    log_like = np.random.randn(4, 100, 10, 2)  # chains, draws, dim1, dim2
+    log_like = np.random.randn(4, 100, 10, 2) 
     return az.from_dict(
         posterior={"mu": np.random.randn(4, 100, 2)},
         log_likelihood={"obs": log_like},
@@ -36,7 +31,6 @@ def multidim_model():
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_loo_basic(centered_eight, scale):
-    """Test basic LOO computation with different scales."""
     az_result = az.loo(centered_eight, scale=scale)
     pl_result = loo(centered_eight, scale=scale)
 
@@ -47,7 +41,6 @@ def test_loo_basic(centered_eight, scale):
 
 
 def test_loo_one_chain(centered_eight):
-    """Test LOO computation with single chain."""
     centered_eight_one = deepcopy(centered_eight)
     centered_eight_one.posterior = centered_eight_one.posterior.sel(chain=[0])
     centered_eight_one.log_likelihood = centered_eight_one.log_likelihood.sel(chain=[0])
@@ -58,7 +51,6 @@ def test_loo_one_chain(centered_eight):
 
 
 def test_loo_pointwise(centered_eight):
-    """Test LOO computation with pointwise=True."""
     result = loo(centered_eight, pointwise=True)
     assert result is not None
     assert "loo_i" in result
@@ -70,7 +62,6 @@ def test_loo_pointwise(centered_eight):
 
 
 def test_loo_bad_scale(centered_eight):
-    """Test LOO computation with invalid scale."""
     with pytest.raises(
         TypeError, match='Valid scale values are "deviance", "log", "negative_log"'
     ):
@@ -78,14 +69,12 @@ def test_loo_bad_scale(centered_eight):
 
 
 def test_loo_missing_loglik():
-    """Test LOO computation with missing log_likelihood."""
     data = az.from_dict(posterior={"mu": np.random.randn(4, 100)})
     with pytest.raises(TypeError):
         loo(data)
 
 
 def test_loo_missing_posterior():
-    """Test LOO computation with missing posterior and no reff provided."""
     data = az.from_dict(
         log_likelihood={"obs": np.random.randn(4, 100, 8)},
     )
@@ -98,7 +87,6 @@ def test_loo_missing_posterior():
 
 
 def test_loo_warning(centered_eight):
-    """Test warning for high Pareto k values."""
     centered_eight = deepcopy(centered_eight)
     # Make one of the observations very influential
     centered_eight.log_likelihood["obs"][:, :, 1] = 10
@@ -110,7 +98,6 @@ def test_loo_warning(centered_eight):
 
 
 def test_loo_pointwise_warning(centered_eight):
-    """Test warning when pointwise LOO equals total LOO."""
     centered_eight = deepcopy(centered_eight)
     # Make all observations have same log likelihood
     centered_eight.log_likelihood["obs"][:] = 1.0
@@ -122,7 +109,6 @@ def test_loo_pointwise_warning(centered_eight):
 
 
 def test_psislw_matches(centered_eight):
-    """Test that psislw results match between PyLOO and ArviZ."""
     log_likelihood = centered_eight.log_likelihood["obs"].stack(
         __sample__=("chain", "draw")
     )
@@ -142,7 +128,6 @@ def test_psislw_matches(centered_eight):
 
 
 def test_loo_multidim(multidim_model):
-    """Test LOO computation with multidimensional log-likelihood."""
     result = loo(multidim_model)
     assert result is not None
     assert "elpd_loo" in result
@@ -152,7 +137,6 @@ def test_loo_multidim(multidim_model):
 
 
 def test_loo_nan_handling(centered_eight):
-    """Test LOO computation with NaN values in log-likelihood."""
     centered_eight = deepcopy(centered_eight)
     log_like = centered_eight.log_likelihood["obs"].values
     log_like[0, 0, 0] = np.nan
@@ -170,7 +154,6 @@ def test_loo_nan_handling(centered_eight):
 
 
 def test_loo_extreme_values(centered_eight):
-    """Test LOO computation with extreme values in log-likelihood."""
     centered_eight = deepcopy(centered_eight)
     log_like = centered_eight.log_likelihood["obs"].values
 
@@ -189,7 +172,6 @@ def test_loo_extreme_values(centered_eight):
 
 
 def test_loo_constant_values(centered_eight):
-    """Test LOO computation with constant values in log-likelihood."""
     centered_eight = deepcopy(centered_eight)
     log_like = centered_eight.log_likelihood["obs"].values
     log_like[:] = 1.0
@@ -206,7 +188,6 @@ def test_loo_constant_values(centered_eight):
 
 
 def test_loo_multiple_groups(centered_eight):
-    """Test LOO computation with multiple log_likelihood groups."""
     centered_eight = deepcopy(centered_eight)
     centered_eight.log_likelihood["obs2"] = centered_eight.log_likelihood["obs"]
 
@@ -218,7 +199,6 @@ def test_loo_multiple_groups(centered_eight):
 
 
 def test_loo_different_methods(centered_eight):
-    """Test LOO computation with different IS methods."""
     psis_result = loo(centered_eight, pointwise=True)
     assert "pareto_k" in psis_result
     assert "good_k" in psis_result
@@ -237,13 +217,11 @@ def test_loo_different_methods(centered_eight):
 
 
 def test_loo_invalid_method(centered_eight):
-    """Test LOO computation with invalid method."""
     with pytest.raises(ValueError, match="Invalid method 'invalid'"):
         loo(centered_eight, method="invalid")
 
 
 def test_loo_sis_tis_low_ess(centered_eight):
-    """Test warning for low ESS with SIS/TIS methods."""
     centered_eight = deepcopy(centered_eight)
     centered_eight.log_likelihood["obs"] *= 10
 
@@ -257,7 +235,6 @@ def test_loo_sis_tis_low_ess(centered_eight):
 
 
 def test_loo_non_pointwise_returns(centered_eight):
-    """Test non-pointwise returns for different methods."""
     psis_result = loo(centered_eight, pointwise=False)
     assert "good_k" in psis_result
 
@@ -269,7 +246,6 @@ def test_loo_non_pointwise_returns(centered_eight):
 
 
 def test_loo_method_results(centered_eight):
-    """Test that results from different methods are numerically reasonable."""
     psis_result = loo(centered_eight, pointwise=True)
     sis_result = loo(centered_eight, pointwise=True, method="sis")
     tis_result = loo(centered_eight, pointwise=True, method="tis")
@@ -309,7 +285,6 @@ def test_loo_method_results(centered_eight):
 
 
 def test_loo_moment_matching(problematic_k_model):
-    """Test moment matching for LOO computation."""
     model, idata = problematic_k_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -320,7 +295,6 @@ def test_loo_moment_matching(problematic_k_model):
 
 
 def test_loo_moment_matching_no_pointwise(problematic_k_model):
-    """Test moment matching for LOO computation with no pointwise results."""
     model, idata = problematic_k_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -331,15 +305,11 @@ def test_loo_moment_matching_no_pointwise(problematic_k_model):
 
 
 def test_loo_jacobian_adjustment(centered_eight):
-    """Test Jacobian adjustment for transformed response variables."""
     centered_eight = deepcopy(centered_eight)
 
     y = centered_eight.observed_data.obs.values
-
     result_no_adj = loo(centered_eight, pointwise=True)
-
     jacobian_adj = np.log(np.abs(2 * y))
-
     result_with_adj = loo(centered_eight, pointwise=True, jacobian=jacobian_adj)
 
     expected_adjusted_loo_i = result_no_adj.loo_i.values + jacobian_adj
@@ -367,7 +337,6 @@ def test_loo_jacobian_adjustment(centered_eight):
 
 
 def test_loo_wells(wells_model):
-    """Test LOO computation with the wells dataset."""
     _, idata = wells_model
     result = loo(idata, pointwise=True)
     result_subsample = loo_subsample(
@@ -378,12 +347,6 @@ def test_loo_wells(wells_model):
         pointwise=True,
     )
 
-    updated = update_subsample(result_subsample, observations=200)
-
-    logger.info(result)
-    logger.info(result_subsample)
-    logger.info(updated)
-
     assert result is not None
     assert "elpd_loo" in result
     assert "p_loo" in result
@@ -392,11 +355,8 @@ def test_loo_wells(wells_model):
 
 
 def test_loo_roaches(roaches_model):
-    """Test LOO computation with the roaches dataset."""
     _, idata = roaches_model
     result = loo(idata, pointwise=True)
-
-    logger.info(result)
 
     assert result is not None
     assert "elpd_loo" in result
@@ -406,7 +366,6 @@ def test_loo_roaches(roaches_model):
 
 
 def test_loo_mixture(problematic_k_model):
-    """Test LOO computation with mixture posterior."""
     _, idata = problematic_k_model
 
     mix_result = loo(idata, pointwise=True, mixture=True)
@@ -433,21 +392,14 @@ def test_loo_mixture(problematic_k_model):
     assert np.all(np.isfinite(mix_result.loo_i.values))
     assert np.all(np.isfinite(reg_result.loo_i.values))
 
-    logger.info(f"Mixture LOO: {mix_result['elpd_loo']}")
-    logger.info(f"Regular LOO: {reg_result['elpd_loo']}")
-
-    logger.info(mix_result)
-    logger.info(reg_result)
-
 
 def test_loo_moment_matching_custom_funcs():
-    """Test moment matching with custom functions passed via kwargs."""
     mock_model = {"data": {"N": 8, "K": 2}, "fit_params": {"S": 400}}
 
     n_chains = 4
     n_draws = 100
     n_obs = 8
-    n_params = 2  # K + intercept
+    n_params = 2
     S = n_chains * n_draws
 
     log_like = np.random.randn(n_chains, n_draws, n_obs) * 0.5
