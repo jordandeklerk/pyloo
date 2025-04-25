@@ -13,7 +13,6 @@ from ..helpers import assert_arrays_allclose
 
 @pytest.mark.parametrize("data_fixture", ["centered_eight", "non_centered_eight"])
 def test_psis_equivalence(data_fixture, request):
-    """Test that unified PSIS gives same results as original implementation."""
     data = request.getfixturevalue(data_fixture)
     log_likelihood = get_log_likelihood(data)
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
@@ -31,7 +30,6 @@ def test_psis_equivalence(data_fixture, request):
 
 @pytest.mark.parametrize("data_fixture", ["centered_eight", "non_centered_eight"])
 def test_sis_equivalence(data_fixture, request):
-    """Test that unified SIS gives same results as original implementation."""
     data = request.getfixturevalue(data_fixture)
     log_likelihood = get_log_likelihood(data)
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
@@ -46,7 +44,6 @@ def test_sis_equivalence(data_fixture, request):
 
 @pytest.mark.parametrize("data_fixture", ["centered_eight", "non_centered_eight"])
 def test_tis_equivalence(data_fixture, request):
-    """Test that unified TIS gives same results as original implementation."""
     data = request.getfixturevalue(data_fixture)
     log_likelihood = get_log_likelihood(data)
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
@@ -60,7 +57,6 @@ def test_tis_equivalence(data_fixture, request):
 
 
 def test_invalid_method(centered_eight):
-    """Test that invalid method raises appropriate error."""
     log_likelihood = get_log_likelihood(centered_eight)
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
 
@@ -69,7 +65,6 @@ def test_invalid_method(centered_eight):
 
 
 def test_method_case_insensitive(centered_eight):
-    """Test that method parameter is case insensitive."""
     log_likelihood = get_log_likelihood(centered_eight)
     log_likelihood = log_likelihood.stack(__sample__=("chain", "draw"))
 

@@ -7,7 +7,6 @@ from ...approximations.lpd import LPDApproximation
 
 
 def test_lpd_approximation_basic(log_likelihood_data):
-    """Test basic functionality of LPDApproximation with real data."""
     approx = LPDApproximation()
 
     result = approx.compute_approximation(log_likelihood_data)
@@ -18,7 +17,6 @@ def test_lpd_approximation_basic(log_likelihood_data):
 
 
 def test_lpd_approximation_with_n_draws(log_likelihood_data):
-    """Test LPD approximation with specified number of draws."""
     approx = LPDApproximation()
 
     n_samples = log_likelihood_data.sizes["__sample__"]
@@ -34,7 +32,6 @@ def test_lpd_approximation_with_n_draws(log_likelihood_data):
 
 
 def test_lpd_approximation_with_extreme_values(log_likelihood_data):
-    """Test LPD approximation with extreme log-likelihood values."""
     approx = LPDApproximation()
 
     log_likelihood_extreme = log_likelihood_data.copy(deep=True)
@@ -48,7 +45,6 @@ def test_lpd_approximation_with_extreme_values(log_likelihood_data):
 
 
 def test_lpd_approximation_with_constant_values(log_likelihood_data):
-    """Test LPD approximation with constant log-likelihood values."""
     approx = LPDApproximation()
 
     log_likelihood_constant = log_likelihood_data.copy(deep=True)
@@ -61,7 +57,6 @@ def test_lpd_approximation_with_constant_values(log_likelihood_data):
 
 
 def test_lpd_approximation_formula():
-    """Test that LPD approximation follows the expected formula."""
     approx = LPDApproximation()
 
     n_obs = 2
@@ -85,7 +80,6 @@ def test_lpd_approximation_formula():
 
 
 def test_lpd_approximation_with_multidimensional_data(multidim_data):
-    """Test LPD approximation with multidimensional data."""
     approx = LPDApproximation()
 
     log_likelihood = xr.DataArray(
@@ -109,7 +103,6 @@ def test_lpd_approximation_with_multidimensional_data(multidim_data):
 
 
 def test_lpd_approximation_with_extreme_data(extreme_data):
-    """Test LPD approximation with extreme data fixture."""
     log_likelihood = xr.DataArray(
         extreme_data.T,
         dims=["obs_id", "__sample__"],
@@ -128,7 +121,6 @@ def test_lpd_approximation_with_extreme_data(extreme_data):
 
 
 def test_lpd_approximation_with_centered_eight(centered_eight):
-    """Test LPD approximation with the centered_eight dataset."""
     log_likelihood = centered_eight.log_likelihood.obs.stack(
         __sample__=("chain", "draw")
     )

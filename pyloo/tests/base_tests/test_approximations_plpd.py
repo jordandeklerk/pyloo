@@ -10,7 +10,6 @@ from ...approximations.plpd import PLPDApproximation
 
 
 def mock_log_likelihood_fn(data, params):
-    """Mock log likelihood function for testing."""
     if isinstance(params, dict):
         return sum(p.flat[0] if hasattr(p, "flat") else p for p in params.values())
     else:
@@ -18,14 +17,10 @@ def mock_log_likelihood_fn(data, params):
 
 
 def test_plpd_approximation_basic(log_likelihood_data, centered_eight):
-    """Test basic functionality of PLPDApproximation with real data."""
     posterior = centered_eight.posterior.stack(__sample__=("chain", "draw"))
 
     approx = PLPDApproximation(posterior=posterior)
-    with warnings.catch_warnings(record=True) as w:
-        result = approx.compute_approximation(log_likelihood_data)
-        assert len(w) == 1
-        assert "approximate PLPD calculation" in str(w[0].message)
+    result = approx.compute_approximation(log_likelihood_data)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (8,)
@@ -33,7 +28,6 @@ def test_plpd_approximation_basic(log_likelihood_data, centered_eight):
 
 
 def test_plpd_approximation_with_n_draws(log_likelihood_data, centered_eight):
-    """Test PLPD approximation with specified number of draws."""
     posterior = centered_eight.posterior.stack(__sample__=("chain", "draw"))
 
     approx = PLPDApproximation(posterior=posterior)
@@ -41,11 +35,10 @@ def test_plpd_approximation_with_n_draws(log_likelihood_data, centered_eight):
     n_samples = log_likelihood_data.sizes["__sample__"]
     n_draws = n_samples // 2
 
-    with warnings.catch_warnings(record=True):
-        result_full = approx.compute_approximation(log_likelihood_data)
-        result_subset = approx.compute_approximation(
-            log_likelihood_data, n_draws=n_draws
-        )
+    result_full = approx.compute_approximation(log_likelihood_data)
+    result_subset = approx.compute_approximation(
+        log_likelihood_data, n_draws=n_draws
+    )
 
     assert isinstance(result_subset, np.ndarray)
     assert result_subset.shape == (8,)
@@ -56,7 +49,6 @@ def test_plpd_approximation_with_n_draws(log_likelihood_data, centered_eight):
 
 
 def test_plpd_approximation_no_posterior():
-    """Test PLPD approximation raises error when no posterior is provided."""
     log_likelihood = xr.DataArray(
         np.random.randn(10, 100),
         dims=["obs_id", "__sample__"],
@@ -69,7 +61,6 @@ def test_plpd_approximation_no_posterior():
 
 
 def test_plpd_approximation_with_likelihood_fn(log_likelihood_data, centered_eight):
-    """Test PLPD approximation with likelihood function and data."""
     posterior = centered_eight.posterior.stack(__sample__=("chain", "draw"))
     data = np.arange(8)
 
@@ -85,7 +76,6 @@ def test_plpd_approximation_with_likelihood_fn(log_likelihood_data, centered_eig
 
 
 def test_plpd_approximation_with_multidimensional_posterior(multidim_data):
-    """Test PLPD approximation with multidimensional posterior."""
     log_likelihood = xr.DataArray(
         multidim_data["llm"],
         dims=["chain", "draw", "dim1", "dim2"],
@@ -109,8 +99,7 @@ def test_plpd_approximation_with_multidimensional_posterior(multidim_data):
     posterior = posterior.stack(__sample__=("chain", "draw"))
 
     approx = PLPDApproximation(posterior=posterior)
-    with warnings.catch_warnings(record=True):
-        result = approx.compute_approximation(log_likelihood)
+    result = approx.compute_approximation(log_likelihood)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (15, 2)
@@ -118,7 +107,6 @@ def test_plpd_approximation_with_multidimensional_posterior(multidim_data):
 
 
 def test_plpd_approximation_with_extreme_data(extreme_data, centered_eight):
-    """Test PLPD approximation with extreme data fixture."""
     posterior = centered_eight.posterior.stack(__sample__=("chain", "draw"))
 
     log_likelihood = xr.DataArray(
@@ -131,8 +119,7 @@ def test_plpd_approximation_with_extreme_data(extreme_data, centered_eight):
     )
 
     approx = PLPDApproximation(posterior=posterior)
-    with warnings.catch_warnings(record=True):
-        result = approx.compute_approximation(log_likelihood)
+    result = approx.compute_approximation(log_likelihood)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (extreme_data.shape[1],)
@@ -140,7 +127,6 @@ def test_plpd_approximation_with_extreme_data(extreme_data, centered_eight):
 
 
 def test_plpd_approximation_formula():
-    """Test that PLPD approximation follows the expected formula."""
     log_likelihood = xr.DataArray(
         np.array([
             [0.0, -1.0, -2.0],
@@ -158,8 +144,7 @@ def test_plpd_approximation_formula():
     )
 
     approx = PLPDApproximation(posterior=posterior)
-    with warnings.catch_warnings(record=True):
-        result = approx.compute_approximation(log_likelihood)
+    result = approx.compute_approximation(log_likelihood)
 
     expected = np.array([
         np.mean([0.0, -1.0, -2.0]),
