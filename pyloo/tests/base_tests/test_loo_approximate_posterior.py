@@ -31,12 +31,9 @@ def simple_model_with_approximation(simple_model):
 
 
 def test_loo_approximate_posterior_basic(simple_model_with_approximation):
-    """Test basic functionality of loo_approximate_posterior."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     result = loo_approximate_posterior(idata, log_p, log_q)
-
-    logger.info(result)
 
     assert result is not None
     assert "elpd_loo" in result
@@ -51,7 +48,6 @@ def test_loo_approximate_posterior_basic(simple_model_with_approximation):
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_loo_approximate_posterior_scales(simple_model_with_approximation, scale):
-    """Test loo_approximate_posterior with different scales."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     result = loo_approximate_posterior(idata, log_p, log_q, scale=scale)
@@ -60,14 +56,10 @@ def test_loo_approximate_posterior_scales(simple_model_with_approximation, scale
 
     standard_loo = loo(idata, scale=scale)
 
-    logger.info(result)
-    logger.info(standard_loo)
-
     assert np.sign(result["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
 
 def test_loo_approximate_posterior_pointwise(simple_model_with_approximation):
-    """Test loo_approximate_posterior with pointwise=True."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     result = loo_approximate_posterior(idata, log_p, log_q, pointwise=True)
@@ -79,7 +71,6 @@ def test_loo_approximate_posterior_pointwise(simple_model_with_approximation):
 
 
 def test_loo_approximate_posterior_methods(simple_model_with_approximation):
-    """Test loo_approximate_posterior with different importance sampling methods."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     result_psis = loo_approximate_posterior(idata, log_p, log_q, pointwise=True)
@@ -97,7 +88,6 @@ def test_loo_approximate_posterior_methods(simple_model_with_approximation):
 
 
 def test_loo_approximate_posterior_invalid_method(simple_model_with_approximation):
-    """Test loo_approximate_posterior with invalid method."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     with pytest.raises(ValueError, match="Invalid method"):
@@ -105,7 +95,6 @@ def test_loo_approximate_posterior_invalid_method(simple_model_with_approximatio
 
 
 def test_loo_approximate_posterior_invalid_scale(simple_model_with_approximation):
-    """Test loo_approximate_posterior with invalid scale."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     with pytest.raises(TypeError, match="Valid scale values are"):
@@ -113,7 +102,6 @@ def test_loo_approximate_posterior_invalid_scale(simple_model_with_approximation
 
 
 def test_loo_approximate_posterior_missing_loglik(simple_model_with_approximation):
-    """Test loo_approximate_posterior with missing log_likelihood."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_no_loglik = InferenceData(posterior=idata.posterior)
@@ -123,7 +111,6 @@ def test_loo_approximate_posterior_missing_loglik(simple_model_with_approximatio
 
 
 def test_loo_approximate_posterior_missing_posterior(simple_model_with_approximation):
-    """Test loo_approximate_posterior with missing posterior and no reff provided."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_no_posterior = InferenceData(log_likelihood=idata.log_likelihood)
@@ -136,7 +123,6 @@ def test_loo_approximate_posterior_missing_posterior(simple_model_with_approxima
 
 
 def test_loo_approximate_posterior_nan_handling(simple_model_with_approximation):
-    """Test loo_approximate_posterior with NaN values in log-likelihood."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_with_nan = idata.copy()
@@ -156,7 +142,6 @@ def test_loo_approximate_posterior_nan_handling(simple_model_with_approximation)
 
 
 def test_loo_approximate_posterior_length_mismatch(simple_model_with_approximation):
-    """Test loo_approximate_posterior with mismatched log_p and log_g lengths."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     short_log_p = log_p[:-10]
@@ -169,7 +154,6 @@ def test_loo_approximate_posterior_length_mismatch(simple_model_with_approximati
 
 
 def test_loo_approximate_posterior_multiple_groups(simple_model_with_approximation):
-    """Test loo_approximate_posterior with multiple log_likelihood groups."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     idata_multi = idata.copy()
@@ -183,7 +167,6 @@ def test_loo_approximate_posterior_multiple_groups(simple_model_with_approximati
 
 
 def test_loo_approximate_posterior_numerical_stability(simple_model_with_approximation):
-    """Test numerical stability of loo_approximate_posterior with extreme values."""
     _, idata, log_p, log_q = simple_model_with_approximation
 
     extreme_log_p = log_p.copy() * 1e3
@@ -197,7 +180,6 @@ def test_loo_approximate_posterior_numerical_stability(simple_model_with_approxi
 
 
 def test_loo_approximate_posterior_with_laplace_wrapper(simple_model):
-    """Test integration with Laplace."""
     model, idata = simple_model
 
     wrapper = Laplace(model, idata)
@@ -220,7 +202,6 @@ def test_loo_approximate_posterior_with_laplace_wrapper(simple_model):
 
 
 def test_loo_approximate_posterior_multidimensional(simple_model):
-    """Test loo_approximate_posterior with multidimensional log-likelihood."""
     _, idata = simple_model
 
     log_likelihood = idata.log_likelihood["y"].values
@@ -256,7 +237,6 @@ def test_loo_approximate_posterior_multidimensional(simple_model):
 
 
 def test_loo_approximate_posterior_variational_with_laplace(simple_model):
-    """Test loo_approximate_posterior with variational inference using Laplace."""
     model, idata = simple_model
 
     wrapper = Laplace(model)
@@ -280,14 +260,10 @@ def test_loo_approximate_posterior_variational_with_laplace(simple_model):
 
     standard_loo = loo(idata, pointwise=True)
 
-    logger.info(standard_loo)
-    logger.info(loo_result_psis)
-
     assert np.sign(loo_result_psis["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
 
 def test_loo_approximate_posterior_wells(wells_model):
-    """Test loo_approximate_posterior with variational inference using Laplace."""
     model, idata = wells_model
 
     wrapper = Laplace(model)
@@ -297,19 +273,6 @@ def test_loo_approximate_posterior_wells(wells_model):
     log_g = wrapper.compute_logq().flatten()
 
     standard_loo = loo(idata, pointwise=True)
-
-    if hasattr(standard_loo, "pareto_k"):
-        logger.info(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
-        logger.info(
-            f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
-            f" {np.max(standard_loo.pareto_k)}"
-        )
-        logger.info(
-            f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}"
-        )
-        logger.info(
-            f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}"
-        )
 
     loo_result_psis = loo_approximate_posterior(
         result.idata,
@@ -324,30 +287,10 @@ def test_loo_approximate_posterior_wells(wells_model):
     assert "pareto_k" in loo_result_psis
     assert np.isfinite(loo_result_psis["elpd_loo"])
 
-    logger.info(standard_loo)
-    logger.info(loo_result_psis)
-
-    if hasattr(loo_result_psis, "pareto_k"):
-        logger.info(f"Approximate LOO pareto_k shape: {loo_result_psis.pareto_k.shape}")
-        logger.info(
-            f"Approximate LOO pareto_k min: {np.min(loo_result_psis.pareto_k)}, max:"
-            f" {np.max(loo_result_psis.pareto_k)}"
-        )
-        logger.info(
-            f"Approximate LOO pareto_k > 0.7: {np.sum(loo_result_psis.pareto_k > 0.7)}"
-        )
-        logger.info(
-            f"Approximate LOO pareto_k > 1.0: {np.sum(loo_result_psis.pareto_k > 1.0)}"
-        )
-
-        if np.sum(loo_result_psis.pareto_k > 1.0) > 0:
-            logger.info(f"Bad pareto_k value: {loo_result_psis.pareto_k}")
-
     assert np.sign(loo_result_psis["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
 
 def test_loo_approximate_posterior_constant_values(simple_model_with_approximation):
-    """Test loo_approximate_posterior with constant log-likelihood values."""
     _, idata, log_p, log_g = simple_model_with_approximation
 
     idata_const = idata.copy()
@@ -367,7 +310,6 @@ def test_loo_approximate_posterior_constant_values(simple_model_with_approximati
 
 
 def test_loo_approximate_posterior_wells_advi(wells_model):
-    """Test loo_approximate_posterior with variational inference using Laplace."""
     model, idata = wells_model
 
     with model:
@@ -379,19 +321,6 @@ def test_loo_approximate_posterior_wells_advi(wells_model):
 
     standard_loo = loo(idata, pointwise=True)
 
-    if hasattr(standard_loo, "pareto_k"):
-        logger.info(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
-        logger.info(
-            f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
-            f" {np.max(standard_loo.pareto_k)}"
-        )
-        logger.info(
-            f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}"
-        )
-        logger.info(
-            f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}"
-        )
-
     loo_approx = loo_approximate_posterior(
         data=trace,
         log_p=log_p,
@@ -406,30 +335,10 @@ def test_loo_approximate_posterior_wells_advi(wells_model):
     assert "pareto_k" in loo_approx
     assert np.isfinite(loo_approx["elpd_loo"])
 
-    logger.info(standard_loo)
-    logger.info(loo_approx)
-
-    if hasattr(loo_approx, "pareto_k"):
-        logger.info(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
-        logger.info(
-            f"Approximate LOO pareto_k min: {np.min(loo_approx.pareto_k)}, max:"
-            f" {np.max(loo_approx.pareto_k)}"
-        )
-        logger.info(
-            f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}"
-        )
-        logger.info(
-            f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}"
-        )
-
-        if np.sum(loo_approx.pareto_k > 1.0) > 0:
-            logger.info(f"Bad pareto_k value: {loo_approx.pareto_k}")
-
     assert np.sign(loo_approx["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])
 
 
 def test_loo_approximate_posterior_wells_full_rank_advi(wells_model):
-    """Test loo_approximate_posterior with variational inference using Laplace."""
     model, idata = wells_model
 
     with model:
@@ -441,19 +350,6 @@ def test_loo_approximate_posterior_wells_full_rank_advi(wells_model):
 
     standard_loo = loo(idata, pointwise=True)
 
-    if hasattr(standard_loo, "pareto_k"):
-        logger.info(f"Standard LOO pareto_k shape: {standard_loo.pareto_k.shape}")
-        logger.info(
-            f"Standard LOO pareto_k min: {np.min(standard_loo.pareto_k)}, max:"
-            f" {np.max(standard_loo.pareto_k)}"
-        )
-        logger.info(
-            f"Standard LOO pareto_k > 0.7: {np.sum(standard_loo.pareto_k > 0.7)}"
-        )
-        logger.info(
-            f"Standard LOO pareto_k > 1.0: {np.sum(standard_loo.pareto_k > 1.0)}"
-        )
-
     loo_approx = loo_approximate_posterior(
         data=trace,
         log_p=log_p,
@@ -467,24 +363,5 @@ def test_loo_approximate_posterior_wells_full_rank_advi(wells_model):
     assert "elpd_loo" in loo_approx
     assert "pareto_k" in loo_approx
     assert np.isfinite(loo_approx["elpd_loo"])
-
-    logger.info(standard_loo)
-    logger.info(loo_approx)
-
-    if hasattr(loo_approx, "pareto_k"):
-        logger.info(f"Approximate LOO pareto_k shape: {loo_approx.pareto_k.shape}")
-        logger.info(
-            f"Approximate LOO pareto_k min: {np.min(loo_approx.pareto_k)}, max:"
-            f" {np.max(loo_approx.pareto_k)}"
-        )
-        logger.info(
-            f"Approximate LOO pareto_k > 0.7: {np.sum(loo_approx.pareto_k > 0.7)}"
-        )
-        logger.info(
-            f"Approximate LOO pareto_k > 1.0: {np.sum(loo_approx.pareto_k > 1.0)}"
-        )
-
-        if np.sum(loo_approx.pareto_k > 1.0) > 0:
-            logger.info(f"Bad pareto_k value: {loo_approx.pareto_k}")
 
     assert np.sign(loo_approx["elpd_loo"]) == np.sign(standard_loo["elpd_loo"])

@@ -1,6 +1,5 @@
 """Tests for the leave-one-group-out cross-validation module."""
 
-import logging
 import warnings
 
 import arviz as az
@@ -15,7 +14,6 @@ from ...wrapper.pymc.pymc import PyMCWrapper
 
 
 def test_loo_group_synthetic():
-    """Test leave-one-group-out cross-validation with synthetic data."""
     np.random.seed(42)
     n_groups = 10
     n_per_group = 20
@@ -75,7 +73,6 @@ def test_loo_group_synthetic():
 
 
 def test_loo_group_different_methods(simple_model):
-    """Test loo_group with different importance sampling methods."""
     _, idata = simple_model
 
     n_obs = len(idata.log_likelihood.y.obs_id)
@@ -107,7 +104,6 @@ def test_loo_group_different_methods(simple_model):
 
 
 def test_loo_group_different_scales(simple_model):
-    """Test loo_group with different scale options."""
     _, idata = simple_model
 
     n_obs = len(idata.log_likelihood.y.obs_id)
@@ -129,7 +125,6 @@ def test_loo_group_different_scales(simple_model):
 
 
 def test_loo_group_var_name(multi_observed_model):
-    """Test loo_group with specified var_name parameter."""
     _, idata = multi_observed_model
 
     n_obs = len(idata.log_likelihood.y1.obs_id)
@@ -145,7 +140,6 @@ def test_loo_group_var_name(multi_observed_model):
 
 
 def test_loo_group_reff_parameter(simple_model):
-    """Test loo_group with specified reff parameter."""
     _, idata = simple_model
 
     n_obs = len(idata.log_likelihood.y.obs_id)
@@ -166,7 +160,6 @@ def test_loo_group_reff_parameter(simple_model):
 
 
 def test_loo_group_nan_values(simple_model):
-    """Test loo_group with NaN values in log_likelihood."""
     _, idata = simple_model
 
     log_like = idata.log_likelihood.y.values.copy()
@@ -202,7 +195,6 @@ def test_loo_group_nan_values(simple_model):
 
 
 def test_loo_group_input_validation(simple_model):
-    """Test loo_group error handling for invalid inputs."""
     _, idata = simple_model
 
     n_obs = idata.log_likelihood.dims["obs_id"]
@@ -227,7 +219,6 @@ def test_loo_group_input_validation(simple_model):
 
 
 def test_loo_group_problematic_k(problematic_k_model):
-    """Test loo_group behavior with problematic Pareto k values."""
     _, idata = problematic_k_model
 
     n_groups = 5
@@ -247,7 +238,6 @@ def test_loo_group_problematic_k(problematic_k_model):
 
 
 def test_loo_group_compared_to_loo_kfold(simple_model):
-    """Compare loo_group results with loo_kfold."""
     model, idata = simple_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -272,12 +262,8 @@ def test_loo_group_compared_to_loo_kfold(simple_model):
     assert relative_diff < 0.3
     assert logo_results.n_groups == len(kfold_indices)
 
-    logging.info(logo_results)
-    logging.info(kfold_results)
-
 
 def test_loo_group_with_custom_groups(shared_variable_model):
-    """Test loo_group with custom group definitions."""
     _, idata = shared_variable_model
 
     n_obs = idata.log_likelihood.dims["obs_id"]
