@@ -12,7 +12,6 @@ def test_elpd_data_error():
 
 
 def test_elpd_data_initialization():
-    """Test basic initialization of ELPDData."""
     data = [1.0, 0.5, 0.1, 100, False, 1000]
     index = ["elpd_loo", "se", "p_loo", "n_samples", "warning", "n_data_points"]
     elpd = ELPDData(data=data, index=index)
@@ -29,7 +28,6 @@ def test_elpd_data_initialization():
 
 
 def test_elpd_data_copy():
-    """Test copy functionality of ELPDData."""
     data = [1.0, 0.5, 0.1, 100, False, 1000]
     index = ["elpd_loo", "se", "p_loo", "n_samples", "warning", "n_data_points"]
     elpd = ELPDData(data=data, index=index)
@@ -45,7 +43,6 @@ def test_elpd_data_copy():
 
 
 def test_elpd_data_properties():
-    """Test ELPDData property getters and setters."""
     data = [1.0, 0.5, 0.1, 100, False, 1000]
     index = ["elpd_loo", "se", "p_loo", "n_samples", "warning", "n_data_points"]
     elpd = ELPDData(data=data, index=index)
@@ -64,7 +61,6 @@ def test_elpd_data_properties():
 
 
 def test_elpd_str_subsampled_format():
-    """Test string representation for subsampled LOO output."""
     data = {
         "elpd_loo": 1.0,
         "se": 0.5,
@@ -83,7 +79,6 @@ def test_elpd_str_subsampled_format():
 
 
 def test_elpd_invalid_kind():
-    """Test error handling for invalid ELPD kind."""
     data = [1.0, 0.5, 0.1, 100, False, 1000]
     index = ["invalid_kind", "se", "p_loo", "n_samples", "warning", "n_data_points"]
     elpd = ELPDData(data=data, index=index)
@@ -93,7 +88,6 @@ def test_elpd_invalid_kind():
 
 
 def test_elpd_with_warning():
-    """Test string representation when warning is present."""
     data = {
         "elpd_loo": 1.0,
         "se": 0.5,

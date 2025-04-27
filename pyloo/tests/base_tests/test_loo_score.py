@@ -1,6 +1,5 @@
 """Tests for the loo_score module."""
 
-import logging
 import warnings
 
 import numpy as np
@@ -20,7 +19,6 @@ from ..helpers import assert_arrays_allclose, assert_finite, assert_positive
 
 
 def test_loo_score_basic(prepare_inference_data_for_crps):
-    """Test basic functionality of loo_score."""
     idata = prepare_inference_data_for_crps
 
     result = loo_score(
@@ -33,8 +31,6 @@ def test_loo_score_basic(prepare_inference_data_for_crps):
         y_var="obs",
     )
 
-    logging.info(result)
-
     assert result is not None
     assert isinstance(result, LooScoreResult)
     assert hasattr(result, "estimates")
@@ -43,7 +39,6 @@ def test_loo_score_basic(prepare_inference_data_for_crps):
 
 
 def test_loo_score_scaled(prepare_inference_data_for_crps):
-    """Test loo_score with scale=True (LOO-SCRPS)."""
     idata = prepare_inference_data_for_crps
 
     result = loo_score(
@@ -57,8 +52,6 @@ def test_loo_score_scaled(prepare_inference_data_for_crps):
         scale=True,
     )
 
-    logging.info(result)
-
     assert result is not None
     assert isinstance(result, LooScoreResult)
     assert hasattr(result, "estimates")
@@ -67,7 +60,6 @@ def test_loo_score_scaled(prepare_inference_data_for_crps):
 
 
 def test_loo_score_pointwise(prepare_inference_data_for_crps):
-    """Test loo_score with pointwise=True."""
     idata = prepare_inference_data_for_crps
 
     result = loo_score(
@@ -92,7 +84,6 @@ def test_loo_score_pointwise(prepare_inference_data_for_crps):
 
 
 def test_loo_score_with_reff(prepare_inference_data_for_crps):
-    """Test loo_score with specified reff."""
     idata = prepare_inference_data_for_crps
 
     result = loo_score(
@@ -113,7 +104,6 @@ def test_loo_score_with_reff(prepare_inference_data_for_crps):
 
 
 def test_loo_score_permutations(prepare_inference_data_for_crps):
-    """Test loo_score with multiple permutations."""
     idata = prepare_inference_data_for_crps
 
     result = loo_score(
@@ -134,7 +124,6 @@ def test_loo_score_permutations(prepare_inference_data_for_crps):
 
 
 def test_loo_score_with_e_loo_args(prepare_inference_data_for_crps):
-    """Test loo_score with additional arguments passed to e_loo."""
     idata = prepare_inference_data_for_crps
 
     result_variance = loo_score(
@@ -170,7 +159,6 @@ def test_loo_score_with_e_loo_args(prepare_inference_data_for_crps):
 
 
 def test_loo_score_missing_posterior(prepare_inference_data_for_crps):
-    """Test loo_score with missing posterior group."""
     idata = prepare_inference_data_for_crps
 
     idata_no_posterior = InferenceData(
@@ -209,7 +197,6 @@ def test_loo_score_missing_posterior(prepare_inference_data_for_crps):
 
 
 def test_loo_score_missing_groups(centered_eight):
-    """Test loo_score with missing required groups."""
     with pytest.raises(
         ValueError, match="Variable 'obs2' not found in posterior_predictive group"
     ):
@@ -242,7 +229,6 @@ def test_loo_score_missing_groups(centered_eight):
 
 
 def test_loo_score_missing_variables(prepare_inference_data_for_crps):
-    """Test loo_score with missing variables."""
     idata = prepare_inference_data_for_crps
 
     with pytest.raises(ValueError, match="Variable 'nonexistent' not found"):
@@ -280,7 +266,6 @@ def test_loo_score_missing_variables(prepare_inference_data_for_crps):
 
 
 def test_loo_score_warning_high_k(prepare_inference_data_for_crps):
-    """Test loo_score warning for high Pareto k values."""
     idata = prepare_inference_data_for_crps
 
     log_lik = idata.log_likelihood["obs"].values.copy()
@@ -318,7 +303,6 @@ def test_loo_score_warning_high_k(prepare_inference_data_for_crps):
 
 
 def test_validate_crps_input():
-    """Test validate_crps_input function."""
     n_samples = 100
     n_obs = 5
 
@@ -395,7 +379,6 @@ def test_validate_crps_input():
 
 
 def test_get_data(prepare_inference_data_for_crps):
-    """Test _get_data function with real model data."""
     idata = prepare_inference_data_for_crps
 
     x_data, x2_data, y_data, log_lik = _get_data(
@@ -488,7 +471,6 @@ def test_get_data(prepare_inference_data_for_crps):
 
 
 def test_compute_expected_diff_loo(prepare_inference_data_for_crps):
-    """Test _compute_expected_diff_loo function with real model data."""
     idata = prepare_inference_data_for_crps
 
     x_data = idata.posterior_predictive.obs.stack(__sample__=("chain", "draw"))
@@ -505,7 +487,6 @@ def test_compute_expected_diff_loo(prepare_inference_data_for_crps):
 
 
 def test_crps_fun():
-    """Test _crps_fun function."""
     n_obs = 8
 
     rng = np.random.default_rng(42)
@@ -544,7 +525,6 @@ def test_crps_fun():
 
 
 def test_loo_score_nan_handling(prepare_inference_data_for_crps):
-    """Test loo_score with NaN values."""
     idata = prepare_inference_data_for_crps
 
     pp_data = idata.posterior_predictive.copy()
@@ -578,7 +558,6 @@ def test_loo_score_nan_handling(prepare_inference_data_for_crps):
 
 
 def test_loo_score_inf_handling(prepare_inference_data_for_crps):
-    """Test loo_score with infinite values."""
     idata = prepare_inference_data_for_crps
 
     pp_data = idata.posterior_predictive.copy()
@@ -612,7 +591,6 @@ def test_loo_score_inf_handling(prepare_inference_data_for_crps):
 
 
 def test_loo_score_with_var_name(prepare_inference_data_for_crps):
-    """Test loo_score with var_name parameter for log_likelihood."""
     idata = prepare_inference_data_for_crps
 
     ll_data = idata.log_likelihood.copy()

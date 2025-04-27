@@ -12,7 +12,6 @@ from ...estimators.base import (
 
 
 def test_base_estimate():
-    """Test the BaseEstimate dataclass."""
     estimate = BaseEstimate(
         y_hat=1.0,
         v_y_hat=0.1,
@@ -31,7 +30,6 @@ def test_base_estimate():
 
 
 def test_subsample_indices():
-    """Test the subsample_indices function."""
     n_obs = 100
     elpd_loo_approximation = np.random.randn(n_obs)
     observations = 10
@@ -68,7 +66,6 @@ def test_subsample_indices():
 
 
 def test_subsample_indices_reproducibility():
-    """Test that subsample_indices is reproducible with fixed seed."""
     n_obs = 100
     elpd_loo_approximation = np.random.randn(n_obs)
     observations = 10
@@ -88,7 +85,6 @@ def test_subsample_indices_reproducibility():
 
 
 def test_compare_indices():
-    """Test the compare_indices function."""
     current_indices = SubsampleIndices(
         idx=np.array([0, 1, 2, 3, 4]),
         m_i=np.array([1, 1, 1, 1, 1]),
@@ -115,7 +111,6 @@ def test_compare_indices():
 
 
 def test_compare_indices_with_counts():
-    """Test compare_indices with non-uniform counts."""
     current_indices = SubsampleIndices(
         idx=np.array([0, 1, 2, 3]),
         m_i=np.array([2, 1, 3, 1]),
@@ -138,7 +133,6 @@ def test_compare_indices_with_counts():
 
 
 def test_compare_indices_edge_cases():
-    """Test compare_indices with edge cases."""
     current_indices = SubsampleIndices(
         idx=np.array([0, 1, 2]),
         m_i=np.array([1, 1, 1]),

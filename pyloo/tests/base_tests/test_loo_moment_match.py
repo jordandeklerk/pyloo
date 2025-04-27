@@ -34,7 +34,6 @@ class MockCmdStanModel:
     """A mock CmdStanPy model for testing CmdStanPy integration."""
 
     def __init__(self, n_samples=1000, n_obs=20, n_predictors=3, seed=42):
-        """Initialize with simulated Poisson regression data."""
         self.rng = np.random.RandomState(seed)
         self.n_samples = n_samples
         self.n_obs = n_obs
@@ -66,7 +65,6 @@ class MockCmdStanModel:
                 )
 
     def stan_variables(self):
-        """Return a dictionary of Stan variables."""
         return {
             "beta": self.draws["beta"].reshape(1, self.n_samples, self.n_predictors),
             "intercept": self.draws["intercept"].reshape(1, self.n_samples),
@@ -76,7 +74,6 @@ class MockCmdStanModel:
 
 @pytest.fixture
 def problematic_model(problematic_k_model):
-    """Create a model with problematic Pareto k values."""
     model, idata = problematic_k_model
     wrapper = PyMCWrapper(model, idata)
     return wrapper
@@ -86,7 +83,6 @@ class CustomModel:
     """A simple custom model for testing."""
 
     def __init__(self, n_samples=1000, n_obs=20, seed=42):
-        """Initialize the custom model with simulated data."""
         self.rng = np.random.RandomState(seed)
         self.n_samples = n_samples
         self.n_obs = n_obs
@@ -107,7 +103,6 @@ class CustomModel:
         self._compute_log_likelihood()
 
     def _compute_log_likelihood(self):
-        """Compute log-likelihood values for all observations and draws."""
         n_samples = self.n_samples
         n_obs = self.n_obs
 
@@ -149,7 +144,6 @@ def test_loo_moment_match_basic(problematic_model):
         k_threshold=0.7,
         split=True,
         cov=True,
-        verbose=True,
     )
 
     improvements = []
@@ -447,7 +441,6 @@ def test_loo_moment_match_with_custom_threshold(problematic_model):
             k_threshold=threshold,
             split=False,
             cov=True,
-            verbose=True,
         )
 
     n_improved_05 = np.sum(results[0.5].pareto_k < loo_orig.pareto_k)
@@ -473,7 +466,6 @@ def test_loo_moment_match_roaches_model(roaches_model):
         k_threshold=k_threshold,
         split=True,
         cov=True,
-        verbose=True,
     )
 
     improvements = loo_orig.pareto_k[high_k] - loo_mm.pareto_k[high_k]
@@ -705,7 +697,6 @@ def test_converter_with_multidim_log_lik(mmm_model):
 
 
 def post_draws_custom(model, **kwargs):
-    """Get posterior draws from custom model."""
     draws = np.column_stack(
         [model.draws["alpha"], model.draws["beta"], model.draws["sigma"]]
     )
@@ -713,19 +704,16 @@ def post_draws_custom(model, **kwargs):
 
 
 def log_lik_i_custom(model, i, **kwargs):
-    """Get log-likelihood for observation i from custom model."""
     return model.log_likelihood[:, i]
 
 
 def unconstrain_pars_custom(model, pars, **kwargs):
-    """Convert parameters to unconstrained space for custom model."""
     upars = pars.copy()
     upars[:, 2] = np.log(pars[:, 2])
     return upars
 
 
 def log_prob_upars_custom(model, upars, **kwargs):
-    """Compute log probability for unconstrained parameters for custom model."""
     log_prob = np.zeros(len(upars))
     log_prob += -0.5 * upars[:, 0] ** 2 - 0.5 * np.log(2 * np.pi)
     log_prob += -0.5 * upars[:, 1] ** 2 - 0.5 * np.log(2 * np.pi)
@@ -736,7 +724,6 @@ def log_prob_upars_custom(model, upars, **kwargs):
 
 
 def log_lik_i_upars_custom(model, upars, i, **kwargs):
-    """Compute log-likelihood for observation i with unconstrained parameters."""
     n_samples = len(upars)
     log_lik = np.zeros(n_samples)
 
@@ -755,7 +742,6 @@ def log_lik_i_upars_custom(model, upars, i, **kwargs):
 
 
 def create_mock_loo_data(model, k_values=None):
-    """Create a mock LOO data object for testing."""
     n_obs = model.n_obs
 
     if k_values is None:
@@ -799,7 +785,6 @@ def create_mock_loo_data(model, k_values=None):
 
 @pytest.fixture
 def custom_model():
-    """Create a custom model for testing."""
     return CustomModel(n_samples=1000, n_obs=20, seed=42)
 
 
@@ -959,7 +944,6 @@ def test_loo_moment_match_pymc_vs_custom(problematic_model):
     unconstrained_draws_dict = wrapper.get_unconstrained_parameters()
 
     def post_draws_from_wrapper(model, **kwargs):
-        """Get posterior draws from wrapper."""
         posterior = model.idata.posterior
         stacked_posterior = posterior.stack(__sample__=("chain", "draw"))
         draw_list = [
@@ -968,7 +952,6 @@ def test_loo_moment_match_pymc_vs_custom(problematic_model):
         return np.column_stack(draw_list)
 
     def log_lik_i_from_wrapper(model, i, **kwargs):
-        """Get log-likelihood for observation i from wrapper."""
         log_likelihood = model.idata.log_likelihood
         var_name = list(log_likelihood.data_vars)[0]
         stacked_log_lik = log_likelihood[var_name].stack(__sample__=("chain", "draw"))
@@ -976,16 +959,13 @@ def test_loo_moment_match_pymc_vs_custom(problematic_model):
         return stacked_log_lik.isel({obs_dim: i}).values
 
     def unconstrain_pars_from_wrapper(model, pars, **kwargs):
-        """Convert parameters to unconstrained space for wrapper."""
         return converter.dict_to_matrix(unconstrained_draws_dict)
 
     def log_prob_upars_from_wrapper(model, upars, **kwargs):
-        """Compute log probability for unconstrained parameters for wrapper."""
         upars_dict = converter.matrix_to_dict(upars)
         return log_prob_upars(model, upars_dict)
 
     def log_lik_i_upars_from_wrapper(model, upars, i, **kwargs):
-        """Compute log-likelihood for observation i with unconstrained parameters for wrapper."""
         upars_dict = converter.matrix_to_dict(upars)
         log_lik_result = log_lik_i_upars(model, upars_dict, pointwise=True)
         return extract_log_likelihood_for_observation(log_lik_result, i)
@@ -1101,7 +1081,6 @@ def test_loo_moment_match_cmdstan_example():
         k_threshold=0.7,
         split=True,
         cov=True,
-        verbose=True,
     )
 
     high_k_indices = np.where(k_values > 0.7)[0]

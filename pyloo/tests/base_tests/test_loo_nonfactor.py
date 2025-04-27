@@ -1,6 +1,6 @@
 """Tests for non-factorized multivariate models."""
 
-import logging
+
 from unittest.mock import patch
 
 import numpy as np
@@ -14,7 +14,6 @@ from ...loo_nonfactor import _validate_model_structure, loo_nonfactor
 
 
 def test_loo_nonfactor_basic(mvn_inference_data):
-    """Test basic functionality of loo_nonfactor."""
     loo_results = loo_nonfactor(mvn_inference_data, var_name="y", pointwise=True)
 
     assert isinstance(loo_results, ELPDData)
@@ -29,7 +28,6 @@ def test_loo_nonfactor_basic(mvn_inference_data):
 
 
 def test_loo_nonfactor_student_t_basic(mvt_inference_data):
-    """Test basic functionality of loo_nonfactor with Student-t model."""
     loo_results = loo_nonfactor(
         mvt_inference_data, var_name="y", pointwise=True, model_type="student_t"
     )
@@ -46,7 +44,6 @@ def test_loo_nonfactor_student_t_basic(mvt_inference_data):
 
 
 def test_loo_nonfactor_precision_input(mvn_precision_data):
-    """Test loo_nonfactor using precision matrix input."""
     loo_results = loo_nonfactor(
         mvn_precision_data, var_name="y", prec_var_name="prec", pointwise=True
     )
@@ -63,7 +60,6 @@ def test_loo_nonfactor_precision_input(mvn_precision_data):
 
 
 def test_loo_nonfactor_student_t_precision_input(mvt_precision_data):
-    """Test loo_nonfactor with Student-t model using precision matrix input."""
     loo_results = loo_nonfactor(
         mvt_precision_data,
         var_name="y",
@@ -84,7 +80,6 @@ def test_loo_nonfactor_student_t_precision_input(mvt_precision_data):
 
 
 def test_verify_mvn_structure(mvn_validation_data):
-    """Test the model structure verification helper function."""
 
     valid_idata = mvn_validation_data["valid"]
     no_mu_idata = mvn_validation_data["no_mu"]
@@ -112,7 +107,6 @@ def test_verify_mvn_structure(mvn_validation_data):
 
 
 def test_verify_student_t_structure(mvt_validation_data):
-    """Test validation of Student-t model structure."""
 
     valid_idata = mvt_validation_data["valid"]
     missing_df_idata = mvt_validation_data["missing_df"]
@@ -127,7 +121,6 @@ def test_verify_student_t_structure(mvt_validation_data):
 
 
 def test_loo_nonfactor_warnings(missing_cov_data):
-    """Test that appropriate warnings are raised for incorrect model structures."""
     with pytest.warns(
         UserWarning,
         match="loo_nonfactor\\(\\) with model_type='normal' requires the correct model",
@@ -142,7 +135,6 @@ def test_loo_nonfactor_warnings(missing_cov_data):
 
 
 def test_loo_nonfactor_both_cov_prec(both_cov_prec_data):
-    """Test that loo_nonfactor works when both covariance and precision matrices are provided."""
     loo_results = loo_nonfactor(both_cov_prec_data, var_name="y")
     assert isinstance(loo_results, ELPDData)
 
@@ -153,7 +145,6 @@ def test_loo_nonfactor_both_cov_prec(both_cov_prec_data):
 
 
 def test_loo_nonfactor_custom_names(mvn_custom_names_data):
-    """Test loo_nonfactor with custom variable names."""
     loo_results = loo_nonfactor(
         mvn_custom_names_data,
         var_name="observations",
@@ -176,7 +167,6 @@ def test_loo_nonfactor_custom_names(mvn_custom_names_data):
 
 
 def test_loo_nonfactor_student_t_custom_names(mvt_custom_names_data):
-    """Test loo_nonfactor with Student-t model using custom variable names."""
     loo_results = loo_nonfactor(
         mvt_custom_names_data,
         var_name="observations",
@@ -203,7 +193,6 @@ def test_loo_nonfactor_student_t_custom_names(mvt_custom_names_data):
 
 
 def test_loo_nonfactor_student_t_negative_df(mvt_negative_df_data):
-    """Test loo_nonfactor with Student-t model including negative degrees of freedom."""
     with pytest.warns(UserWarning, match="Non-positive degrees of freedom"):
         loo_results = loo_nonfactor(
             mvt_negative_df_data, var_name="y", model_type="student_t", pointwise=True
@@ -214,7 +203,6 @@ def test_loo_nonfactor_student_t_negative_df(mvt_negative_df_data):
 
 
 def test_loo_nonfactor_singular_matrices(singular_matrix_data):
-    """Test loo_nonfactor handling of singular matrices."""
     with pytest.warns(UserWarning, match="Invalid values detected in log-likelihood"):
         loo_results = loo_nonfactor(singular_matrix_data, var_name="y")
         assert isinstance(loo_results, ELPDData)
@@ -222,7 +210,6 @@ def test_loo_nonfactor_singular_matrices(singular_matrix_data):
 
 @pytest.mark.skipif(pm is None, reason="PyMC not installed")
 def test_loo_nonfactor_pymc_model(mvn_spatial_model):
-    """Test loo_nonfactor with a realistic spatial model using a joint MVN likelihood."""
     model, idata, _, _, _ = mvn_spatial_model
     n_obs = idata.observed_data.y_obs.shape[0]
 
@@ -248,16 +235,9 @@ def test_loo_nonfactor_pymc_model(mvn_spatial_model):
     assert not np.any(np.isnan(loo_results.loo_i))
     assert not np.any(np.isnan(loo_results.pareto_k))
 
-    logging.info(f"loo_nonfactor successful: elpd_loo={loo_results.elpd_loo}")
-    logging.info(f"p_loo={loo_results.p_loo}")
-    logging.info(f"p_loo_se={loo_results.p_loo_se}")
-
-    logging.info(f"{loo_results}")
-
 
 @pytest.mark.skipif(pm is None, reason="PyMC not installed")
 def test_loo_nonfactor_student_t_pymc_model(mvt_spatial_model):
-    """Test loo_nonfactor with a realistic spatial model using a multivariate Student-t likelihood."""
     model, idata, _, _, _ = mvt_spatial_model
     n_obs = idata.observed_data.y_obs.shape[0]
 
@@ -285,16 +265,9 @@ def test_loo_nonfactor_student_t_pymc_model(mvt_spatial_model):
     assert not np.any(np.isnan(loo_results.loo_i))
     assert not np.any(np.isnan(loo_results.pareto_k))
 
-    logging.info(f"Student-t loo_nonfactor successful: elpd_loo={loo_results.elpd_loo}")
-    logging.info(f"p_loo={loo_results.p_loo}")
-    logging.info(f"p_loo_se={loo_results.p_loo_se}")
-
-    logging.info(loo_results)
-
 
 @pytest.mark.parametrize("method", ["psis", "sis", "tis"])
 def test_loo_nonfactor_methods(mvn_inference_data, method):
-    """Test loo_nonfactor with different importance sampling methods."""
     if method != "psis":
         with pytest.warns(UserWarning, match=f"Using {method.upper()} for LOO"):
             loo_results = loo_nonfactor(
@@ -319,7 +292,6 @@ def test_loo_nonfactor_methods(mvn_inference_data, method):
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_loo_nonfactor_scales(mvn_inference_data, scale):
-    """Test loo_nonfactor with different output scales."""
     loo_results = loo_nonfactor(
         mvn_inference_data, var_name="y", scale=scale, pointwise=True
     )
@@ -334,7 +306,6 @@ def test_loo_nonfactor_scales(mvn_inference_data, scale):
 
 
 def test_loo_nonfactor_no_pointwise(mvn_inference_data):
-    """Test loo_nonfactor without pointwise results."""
     loo_results = loo_nonfactor(mvn_inference_data, var_name="y", pointwise=False)
     assert isinstance(loo_results, ELPDData)
     assert "elpd_loo" in loo_results
@@ -345,19 +316,16 @@ def test_loo_nonfactor_no_pointwise(mvn_inference_data):
 
 
 def test_loo_nonfactor_invalid_scale(mvn_inference_data):
-    """Test error handling for invalid scale."""
     with pytest.raises(TypeError, match='Valid scale values are "deviance", "log"'):
         loo_nonfactor(mvn_inference_data, var_name="y", scale="invalid_scale")
 
 
 def test_loo_nonfactor_invalid_method(mvn_inference_data):
-    """Test error handling for invalid method."""
     with pytest.raises(ValueError, match="Invalid method 'invalid_method'"):
         loo_nonfactor(mvn_inference_data, var_name="y", method="invalid_method")
 
 
 def test_loo_nonfactor_missing_var_name_ambiguous(mvn_inference_data):
-    """Test error when var_name is missing and observed_data has multiple variables."""
     idata_copy = mvn_inference_data.copy()
     idata_copy.observed_data["y2"] = xr.DataArray(
         np.random.randn(idata_copy.observed_data.y.shape[0]),
@@ -370,7 +338,6 @@ def test_loo_nonfactor_missing_var_name_ambiguous(mvn_inference_data):
 
 
 def test_loo_nonfactor_missing_var_name_success(mvn_inference_data):
-    """Test successful inference of var_name when only one variable exists."""
     idata_single_obs = mvn_inference_data.copy()
     obs_vars = list(idata_single_obs.observed_data.data_vars)
     if len(obs_vars) > 1:
@@ -383,13 +350,11 @@ def test_loo_nonfactor_missing_var_name_success(mvn_inference_data):
 
 
 def test_loo_nonfactor_var_name_not_found(mvn_inference_data):
-    """Test error when specified var_name does not exist."""
     with pytest.raises(ValueError, match="Variable 'wrong_name' not found"):
         loo_nonfactor(mvn_inference_data, var_name="wrong_name")
 
 
 def test_loo_nonfactor_y_ndim_error(mvn_inference_data):
-    """Test error when observed data y is not 1-dimensional."""
     idata_copy = mvn_inference_data.copy()
     y_orig = idata_copy.observed_data["y"]
     idata_copy.observed_data["y"] = xr.DataArray(
@@ -402,7 +367,6 @@ def test_loo_nonfactor_y_ndim_error(mvn_inference_data):
 
 
 def test_loo_nonfactor_mu_shape_error(mvn_inference_data):
-    """Test error when mu shape is incompatible with y."""
     idata_copy = mvn_inference_data.copy()
     mu_orig = idata_copy.posterior["mu"]
     idata_copy.posterior["mu"] = xr.DataArray(
@@ -419,7 +383,6 @@ def test_loo_nonfactor_mu_shape_error(mvn_inference_data):
 
 
 def test_loo_nonfactor_cov_shape_error(mvn_inference_data):
-    """Test error when cov shape is incompatible with y."""
     idata_copy = mvn_inference_data.copy()
     cov_orig = idata_copy.posterior["cov"]
     new_cov_vals = cov_orig.values[:, :, :-1, :-1]
@@ -439,7 +402,6 @@ def test_loo_nonfactor_cov_shape_error(mvn_inference_data):
 
 
 def test_loo_nonfactor_prec_shape_error(mvn_precision_data):
-    """Test error when prec shape is incompatible with y."""
     idata_copy = mvn_precision_data.copy()
     prec_orig = idata_copy.posterior["prec"]
     new_prec_vals = prec_orig.values[:, :, :-1, :-1]
@@ -459,7 +421,6 @@ def test_loo_nonfactor_prec_shape_error(mvn_precision_data):
 
 
 def test_loo_nonfactor_student_t_missing_df(mvn_inference_data):
-    """Test error when model_type='student_t' but df variable is missing."""
     with pytest.warns(UserWarning, match="Degrees of freedom variable 'df' not found"):
         with pytest.raises(
             ValueError, match="Degrees of freedom variable 'df' not found"
@@ -468,7 +429,6 @@ def test_loo_nonfactor_student_t_missing_df(mvn_inference_data):
 
 
 def test_loo_nonfactor_student_t_df_shape_error(mvt_inference_data):
-    """Test error when df shape is incompatible."""
     idata_copy = mvt_inference_data.copy()
     df_orig = idata_copy.posterior["df"]
     idata_copy.posterior["df"] = xr.DataArray(
@@ -496,7 +456,6 @@ def test_loo_nonfactor_student_t_df_shape_error(mvt_inference_data):
 
 
 def test_loo_nonfactor_no_observed_data():
-    """Test error when InferenceData has no observed_data group."""
     idata = InferenceData(
         posterior=xr.Dataset({"mu": (("chain", "draw"), np.random.randn(2, 10))})
     )
@@ -507,7 +466,6 @@ def test_loo_nonfactor_no_observed_data():
 
 
 def test_loo_nonfactor_no_posterior_data():
-    """Test error when InferenceData has no posterior group."""
     idata = InferenceData(
         observed_data=xr.Dataset({"y": (("obs",), np.random.randn(5))})
     )
@@ -516,7 +474,6 @@ def test_loo_nonfactor_no_posterior_data():
 
 
 def test_loo_nonfactor_manual_reff(mvn_inference_data):
-    """Test providing reff manually."""
     manual_reff = 0.5
     loo_results = loo_nonfactor(
         mvn_inference_data, var_name="y", reff=manual_reff, pointwise=True
@@ -527,7 +484,6 @@ def test_loo_nonfactor_manual_reff(mvn_inference_data):
 
 @patch("pyloo.loo_nonfactor.ess")
 def test_loo_nonfactor_low_ess_warning(mock_ess, mvn_inference_data):
-    """Test warning for low ESS with SIS/TIS methods."""
     n_samples = (
         mvn_inference_data.posterior.dims["draw"]
         * mvn_inference_data.posterior.dims["chain"]
@@ -553,7 +509,6 @@ def test_loo_nonfactor_low_ess_warning(mock_ess, mvn_inference_data):
 
 @patch("pyloo.loo_nonfactor.compute_importance_weights")
 def test_loo_nonfactor_high_pareto_k_warning(mock_compute_weights, mvn_inference_data):
-    """Test warning for high Pareto k values with PSIS."""
     obs_var = "y"
     obs_dim = mvn_inference_data.observed_data[obs_var].dims[0]
     n_obs = mvn_inference_data.observed_data[obs_var].shape[0]
@@ -583,7 +538,6 @@ def test_loo_nonfactor_high_pareto_k_warning(mock_compute_weights, mvn_inference
 
 
 def test_loo_nonfactor_nan_inf_loglik_warning(mvn_inference_data):
-    """Test warning when NaN or -inf values occur in log-likelihood calculation."""
     idata_copy = mvn_inference_data.copy()
     cov_vals = idata_copy.posterior["cov"].values
     cov_vals[0, 0, :, :] = np.zeros_like(cov_vals[0, 0, :, :])
@@ -605,7 +559,6 @@ def test_loo_nonfactor_nan_inf_loglik_warning(mvn_inference_data):
 
 
 def test_loo_nonfactor_student_t_beta_nan_warning(mvt_inference_data):
-    """Test warning for NaN/Inf in beta calculation for Student-t."""
     idata_copy = mvt_inference_data.copy()
     prec_vals = np.linalg.inv(idata_copy.posterior["cov"].values)
     prec_vals[0, 0, :, :] = 0

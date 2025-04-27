@@ -14,13 +14,11 @@ from ..helpers import assert_allclose
 
 @pytest.fixture(scope="session")
 def centered_eight():
-    """Load the centered_eight example dataset from ArviZ."""
     return az.load_arviz_data("centered_eight")
 
 
 @pytest.fixture(scope="module")
 def multidim_model():
-    """Create a model with multidimensional log-likelihood."""
     log_like = np.random.randn(4, 100, 10, 2)  # chains, draws, dim1, dim2
     return az.from_dict(
         posterior={"mu": np.random.randn(4, 100, 2)},
@@ -31,7 +29,6 @@ def multidim_model():
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_loo_i_basic(centered_eight, scale):
-    """Test basic LOO-i computation with different scales."""
     result = loo_i(0, centered_eight, scale=scale)
     assert result is not None
     assert "elpd_loo" in result
@@ -42,7 +39,6 @@ def test_loo_i_basic(centered_eight, scale):
 
 
 def test_loo_i_matches_loo(centered_eight):
-    """Test that loo_i results match corresponding observation in full loo."""
     full_loo = loo(centered_eight, pointwise=True)
 
     for i in range(8):  # centered_eight has 8 observations
@@ -63,7 +59,6 @@ def test_loo_i_matches_loo(centered_eight):
 
 
 def test_loo_i_one_chain(centered_eight):
-    """Test LOO-i computation with single chain."""
     centered_eight_one = deepcopy(centered_eight)
     centered_eight_one.posterior = centered_eight_one.posterior.sel(chain=[0])
     centered_eight_one.log_likelihood = centered_eight_one.log_likelihood.sel(chain=[0])
@@ -74,7 +69,6 @@ def test_loo_i_one_chain(centered_eight):
 
 
 def test_loo_i_pointwise(centered_eight):
-    """Test LOO-i computation with pointwise=True."""
     result = loo_i(0, centered_eight, pointwise=True)
     assert result is not None
     assert "loo_i" in result
@@ -82,7 +76,6 @@ def test_loo_i_pointwise(centered_eight):
 
 
 def test_loo_i_bad_scale(centered_eight):
-    """Test LOO-i computation with invalid scale."""
     with pytest.raises(
         TypeError, match='Valid scale values are "deviance", "log", "negative_log"'
     ):
@@ -90,14 +83,12 @@ def test_loo_i_bad_scale(centered_eight):
 
 
 def test_loo_i_missing_loglik():
-    """Test LOO-i computation with missing log_likelihood."""
     data = az.from_dict(posterior={"mu": np.random.randn(4, 100)})
     with pytest.raises(TypeError):
         loo_i(0, data)
 
 
 def test_loo_i_missing_posterior():
-    """Test LOO-i computation with missing posterior and no reff provided."""
     data = az.from_dict(
         log_likelihood={"obs": np.random.randn(4, 100, 8)},
     )
@@ -110,7 +101,6 @@ def test_loo_i_missing_posterior():
 
 
 def test_loo_i_warning(centered_eight):
-    """Test warning for high Pareto k values."""
     centered_eight = deepcopy(centered_eight)
     # Make the first observation very influential
     centered_eight.log_likelihood["obs"][:, :, 0] = 10
@@ -122,7 +112,6 @@ def test_loo_i_warning(centered_eight):
 
 
 def test_loo_i_nan_handling(centered_eight):
-    """Test LOO-i computation with NaN values in log-likelihood."""
     centered_eight = deepcopy(centered_eight)
     log_like = centered_eight.log_likelihood["obs"].values
     log_like[0, 0, 0] = np.nan
@@ -140,7 +129,6 @@ def test_loo_i_nan_handling(centered_eight):
 
 
 def test_loo_i_multiple_groups(centered_eight):
-    """Test LOO-i computation with multiple log_likelihood groups."""
     centered_eight = deepcopy(centered_eight)
     centered_eight.log_likelihood["obs2"] = centered_eight.log_likelihood["obs"]
 
@@ -152,7 +140,6 @@ def test_loo_i_multiple_groups(centered_eight):
 
 
 def test_loo_i_different_methods(centered_eight):
-    """Test LOO-i computation with different IS methods."""
     psis_result = loo_i(0, centered_eight, pointwise=True)
     assert "pareto_k" in psis_result
     assert "good_k" in psis_result
@@ -171,13 +158,11 @@ def test_loo_i_different_methods(centered_eight):
 
 
 def test_loo_i_invalid_method(centered_eight):
-    """Test LOO-i computation with invalid method."""
     with pytest.raises(ValueError, match="Invalid method 'invalid'"):
         loo_i(0, centered_eight, method="invalid")
 
 
 def test_loo_i_sis_tis_low_ess(centered_eight):
-    """Test warning for low ESS with SIS/TIS methods."""
     centered_eight = deepcopy(centered_eight)
     centered_eight.log_likelihood["obs"] *= 10
 
@@ -191,7 +176,6 @@ def test_loo_i_sis_tis_low_ess(centered_eight):
 
 
 def test_loo_i_method_results(centered_eight):
-    """Test that results from different methods are numerically reasonable."""
     psis_result = loo_i(0, centered_eight, pointwise=True)
     sis_result = loo_i(0, centered_eight, pointwise=True, method="sis")
     tis_result = loo_i(0, centered_eight, pointwise=True, method="tis")
@@ -231,7 +215,6 @@ def test_loo_i_method_results(centered_eight):
 
 
 def test_loo_i_invalid_index(centered_eight):
-    """Test LOO-i computation with invalid observation index."""
     with pytest.raises(IndexError):
         loo_i(100, centered_eight)
 
@@ -243,7 +226,6 @@ def test_loo_i_invalid_index(centered_eight):
 
 
 def test_loo_i_multidim(multidim_model):
-    """Test LOO-i computation with multidimensional log-likelihood."""
     result = loo_i(0, multidim_model)
     assert result is not None
     assert "elpd_loo" in result
