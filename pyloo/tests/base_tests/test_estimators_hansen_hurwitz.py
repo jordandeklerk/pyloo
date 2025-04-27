@@ -14,7 +14,6 @@ from ..helpers import assert_allclose
 
 
 def test_hansen_hurwitz_estimator_basic():
-    """Test basic functionality of the Hansen-Hurwitz estimator."""
     N = 100
     m = 10
     z = np.random.rand(m)
@@ -38,7 +37,6 @@ def test_hansen_hurwitz_estimator_basic():
 
 
 def test_hansen_hurwitz_estimator_validation():
-    """Test input validation in the Hansen-Hurwitz estimator."""
     N = 100
     m = 10
     z = np.random.rand(m)
@@ -63,7 +61,6 @@ def test_hansen_hurwitz_estimator_validation():
 
 
 def test_hansen_hurwitz_estimator_with_counts():
-    """Test the Hansen-Hurwitz estimator with non-uniform counts."""
     N = 100
     m = 5
     z = np.random.rand(m)
@@ -87,7 +84,6 @@ def test_hansen_hurwitz_estimator_with_counts():
 
 
 def test_compute_sampling_probabilities():
-    """Test the compute_sampling_probabilities function."""
     elpd_loo_approximation = np.array([-1.0, -2.0, -3.0, -4.0])
     probs = compute_sampling_probabilities(elpd_loo_approximation)
 
@@ -122,7 +118,6 @@ def test_compute_sampling_probabilities():
 
 
 def test_hansen_hurwitz_estimate_function():
-    """Test the hansen_hurwitz_estimate convenience function."""
     N = 100
     m = 10
     z = np.random.rand(m)
@@ -149,7 +144,6 @@ def test_hansen_hurwitz_estimate_function():
 
 
 def test_estimate_elpd_loo():
-    """Test the estimate_elpd_loo convenience function."""
     N = 100
     m = 10
     elpd_loo_approximation = np.random.randn(N)
@@ -184,7 +178,6 @@ def test_estimate_elpd_loo():
 
 
 def test_estimate_elpd_loo_with_non_uniform_counts():
-    """Test estimate_elpd_loo with non-uniform counts."""
     N = 100
     elpd_loo_approximation = np.random.randn(N)
 

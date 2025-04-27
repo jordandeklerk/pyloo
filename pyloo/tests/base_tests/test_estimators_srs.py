@@ -12,7 +12,6 @@ from ..helpers import assert_allclose
 
 
 def test_simple_random_sampling_estimator_basic():
-    """Test basic functionality of the SRS estimator."""
     N = 100
     m = 10
     y = np.random.randn(m)
@@ -38,7 +37,6 @@ def test_simple_random_sampling_estimator_basic():
 
 
 def test_simple_random_sampling_estimator_single_sample():
-    """Test the SRS estimator with a single sample."""
     N = 100
     m = 1
     y = np.array([1.0])
@@ -59,7 +57,6 @@ def test_simple_random_sampling_estimator_single_sample():
 
 
 def test_simple_random_sampling_estimator_full_sample():
-    """Test the SRS estimator with a full sample (m=N)."""
     N = 10
     m = N
     y = np.random.randn(m)
@@ -80,7 +77,6 @@ def test_simple_random_sampling_estimator_full_sample():
 
 
 def test_srs_estimate_function():
-    """Test the srs_estimate convenience function."""
     N = 100
     m = 10
     y = np.random.randn(m)
@@ -104,7 +100,6 @@ def test_srs_estimate_function():
 
 
 def test_estimate_elpd_loo():
-    """Test the estimate_elpd_loo convenience function."""
     N = 100
     m = 10
     elpd_loo_i = np.random.randn(m)
@@ -127,7 +122,6 @@ def test_estimate_elpd_loo():
 
 
 def test_srs_with_extreme_values():
-    """Test SRS estimator with extreme values."""
     N = 100
     m = 10
 
@@ -148,7 +142,6 @@ def test_srs_with_extreme_values():
 
 
 def test_srs_with_constant_values():
-    """Test SRS estimator with constant values."""
     N = 100
     m = 10
 
@@ -170,7 +163,6 @@ def test_srs_with_constant_values():
 
 
 def test_srs_with_different_sample_sizes():
-    """Test SRS estimator with different sample sizes."""
     N = 1000
     sample_sizes = [10, 50, 100, 500]
 

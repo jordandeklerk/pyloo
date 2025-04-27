@@ -12,7 +12,6 @@ from ..helpers import assert_allclose
 
 
 def test_difference_estimator_basic():
-    """Test basic functionality of the difference estimator."""
     N = 100
     m = 10
     y_approx = np.random.randn(N)
@@ -39,7 +38,6 @@ def test_difference_estimator_basic():
 
 
 def test_difference_estimator_validation():
-    """Test input validation in the difference estimator."""
     N = 100
     m = 10
     y_approx = np.random.randn(N)
@@ -59,7 +57,6 @@ def test_difference_estimator_validation():
 
 
 def test_difference_estimator_multidimensional():
-    """Test the difference estimator with multidimensional data."""
     N = 5
     dim = 2
 
@@ -100,7 +97,6 @@ def test_difference_estimator_multidimensional():
 
 
 def test_difference_estimator_single_sample():
-    """Test the difference estimator with a single sample."""
     N = 100
     m = 1
     y_approx = np.random.randn(N)
@@ -120,7 +116,6 @@ def test_difference_estimator_single_sample():
 
 
 def test_diff_srs_estimate():
-    """Test the diff_srs_estimate convenience function."""
     N = 100
     m = 10
     elpd_loo_approximation = np.random.randn(N)
