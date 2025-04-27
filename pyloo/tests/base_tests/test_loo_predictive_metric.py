@@ -1,6 +1,5 @@
 """Tests for the loo_predictive_metric module."""
 
-import logging
 
 import numpy as np
 import pytest
@@ -16,7 +15,6 @@ from ...loo_predictive_metric import (
 
 
 def test_loo_predictive_metric_basic(centered_eight):
-    """Test basic functionality of loo_predictive_metric."""
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
@@ -24,7 +22,6 @@ def test_loo_predictive_metric_basic(centered_eight):
         data=idata, y=y_obs, var_name="obs", log_lik_var_name="obs", metric="mae"
     )
 
-    logging.info(result)
 
     assert isinstance(result, dict)
     assert "estimate" in result
@@ -34,7 +31,6 @@ def test_loo_predictive_metric_basic(centered_eight):
 
 
 def test_loo_predictive_metric_mse(centered_eight):
-    """Test loo_predictive_metric with MSE metric."""
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
@@ -50,7 +46,6 @@ def test_loo_predictive_metric_mse(centered_eight):
 
 
 def test_loo_predictive_metric_rmse(centered_eight):
-    """Test RMSE metric calculation."""
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
@@ -68,7 +63,6 @@ def test_loo_predictive_metric_rmse(centered_eight):
 
 
 def test_loo_predictive_metric_with_r_eff(centered_eight):
-    """Test loo_predictive_metric with r_eff parameter."""
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
@@ -97,7 +91,6 @@ def test_loo_predictive_metric_with_r_eff(centered_eight):
 
 
 def test_loo_predictive_metric_invalid_metric(centered_eight):
-    """Test loo_predictive_metric with invalid metric."""
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
@@ -112,7 +105,6 @@ def test_loo_predictive_metric_invalid_metric(centered_eight):
 
 
 def test_loo_predictive_metric_dimension_mismatch(centered_eight):
-    """Test loo_predictive_metric with mismatched dimensions."""
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
@@ -127,7 +119,6 @@ def test_loo_predictive_metric_dimension_mismatch(centered_eight):
 
 
 def test_loo_predictive_metric_missing_group(centered_eight):
-    """Test loo_predictive_metric with missing group."""
     idata = centered_eight
     y_obs = idata.observed_data.obs.values
 
@@ -143,7 +134,6 @@ def test_loo_predictive_metric_missing_group(centered_eight):
 
 
 def test_mae_function():
-    """Test the _mae helper function."""
     y = np.array([1.0, 2.0, 3.0])
     yhat = np.array([1.1, 2.2, 2.7])
 
@@ -165,7 +155,6 @@ def test_mae_function():
 
 
 def test_mse_function():
-    """Test the _mse helper function."""
     y = np.array([1.0, 2.0, 3.0])
     yhat = np.array([1.1, 2.2, 2.7])
 
@@ -187,7 +176,6 @@ def test_mse_function():
 
 
 def test_rmse_function():
-    """Test the _rmse helper function."""
     y = np.array([1.0, 2.0, 3.0])
     yhat = np.array([1.1, 2.2, 2.7])
 
@@ -207,7 +195,6 @@ def test_rmse_function():
 
 
 def test_accuracy_function():
-    """Test the _accuracy helper function."""
     y = np.array([0, 1, 0, 1, 1])
     yhat = np.array([0.1, 0.9, 0.4, 0.6, 0.3])
 
@@ -236,7 +223,6 @@ def test_accuracy_function():
 
 
 def test_balanced_accuracy_function():
-    """Test the _balanced_accuracy helper function."""
     y = np.array([0, 0, 0, 1, 1])
     yhat = np.array([0.1, 0.3, 0.6, 0.7, 0.4])
 

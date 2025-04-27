@@ -25,7 +25,6 @@ from ..helpers import (
 
 @pytest.fixture(scope="session")
 def large_model():
-    """Create a large model for testing subsampling."""
     return create_large_model(n_obs=10000)
 
 

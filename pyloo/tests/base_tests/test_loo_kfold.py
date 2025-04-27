@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.parametrize("scale", ["log", "negative_log", "deviance"])
 def test_kfold_basic(large_regression_model, scale):
-    """Test basic K-fold cross-validation functionality with different scales."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -35,11 +34,8 @@ def test_kfold_basic(large_regression_model, scale):
     assert result["n_data_points"] > 0
     assert result["warning"] is False
 
-    logging.info(result)
-
 
 def test_kfold_compare_to_loo(large_regression_model):
-    """Test that K-fold CV results match R rstanarm implementation."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -49,26 +45,10 @@ def test_kfold_compare_to_loo(large_regression_model):
         wrapper, K=10, draws=1000, tune=500, chains=4, progressbar=False
     )
 
-    logger.info(kfold_result)
-    logger.info(loo_result)
-
     loo_elpd = loo_result["elpd_loo"]
     kfold_elpd = kfold_result["elpd_kfold"]
 
-    logger.info("\nLOO Result:")
-    logger.info(f"elpd_loo: {loo_elpd:.2f}")
-    logger.info(f"p_loo: {loo_result['p_loo']:.2f}")
-    logger.info(f"looic: {loo_result['looic']:.2f}")
-    logger.info(f"se: {loo_result['se']:.2f}")
-
-    logger.info("\nK-fold Result:")
-    logger.info(f"elpd_kfold: {kfold_elpd:.2f}")
-    logger.info(f"p_kfold: {kfold_result['p_kfold']:.2f}")
-    logger.info(f"kfoldic: {kfold_result['kfoldic']:.2f}")
-    logger.info(f"se: {kfold_result['se']:.2f}")
-
     rel_diff = np.abs(loo_elpd - kfold_elpd) / np.abs(loo_elpd)
-    logger.info(f"\nRelative difference: {rel_diff:.2%}")
 
     assert np.sign(loo_elpd) == np.sign(kfold_elpd)
     assert (
@@ -77,7 +57,6 @@ def test_kfold_compare_to_loo(large_regression_model):
 
 
 def test_kfold_save_fits(large_regression_model):
-    """Test K-fold CV with save_fits=True."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -95,7 +74,6 @@ def test_kfold_save_fits(large_regression_model):
 
 
 def test_kfold_custom_folds(large_regression_model):
-    """Test K-fold CV with custom fold assignments."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -119,7 +97,6 @@ def test_kfold_custom_folds(large_regression_model):
 
 
 def test_kfold_split_random():
-    """Test random fold creation function."""
     N = 100
     K = 5
 
@@ -144,7 +121,6 @@ def test_kfold_split_random():
 
 
 def test_kfold_split_stratified():
-    """Test stratified fold creation function."""
     N = 100
     K = 5
 
@@ -177,7 +153,6 @@ def test_kfold_split_stratified():
 
 
 def test_kfold_split_grouped():
-    """Test group-based fold creation function."""
     N = 100
     K = 5
     n_groups = 10
@@ -207,7 +182,6 @@ def test_kfold_split_grouped():
 
 
 def test_kfold_split_stratified_continuous():
-    """Test stratified fold creation with continuous variables."""
     N = 100
     K = 5
 
@@ -223,7 +197,6 @@ def test_kfold_split_stratified_continuous():
 
 
 def test_kfold_hierarchical_model(large_regression_model):
-    """Test K-fold CV with a hierarchical model (using large regression model)."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -240,7 +213,6 @@ def test_kfold_hierarchical_model(large_regression_model):
 
 
 def test_kfold_poisson_model(large_regression_model):
-    """Test K-fold CV with a Poisson model (using large regression model)."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -257,7 +229,6 @@ def test_kfold_poisson_model(large_regression_model):
 
 
 def test_kfold_multi_observed_model(large_regression_model):
-    """Test K-fold CV with a model having multiple observed variables (using large regression model)."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -275,7 +246,6 @@ def test_kfold_multi_observed_model(large_regression_model):
 
 
 def test_kfold_stratified_example(large_regression_model):
-    """Test a complete example of stratified K-fold CV."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -311,7 +281,6 @@ def test_kfold_stratified_example(large_regression_model):
 
 
 def test_kfold_grouped_parameter(large_regression_model):
-    """Test the groups parameter in the kfold function."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -364,9 +333,6 @@ def test_kfold_grouped_parameter(large_regression_model):
         progressbar=False,
     )
 
-    logger.info(result_grouped)
-    logger.info(result_both)
-
     assert result_both is not None
     assert "elpd_kfold" in result_both
     assert result_both["stratified"] is False
@@ -374,7 +340,6 @@ def test_kfold_grouped_parameter(large_regression_model):
 
 
 def test_kfold_large_model(large_regression_model):
-    """Test K-fold CV with a large regression model to ensure robustness."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -424,7 +389,6 @@ def test_kfold_large_model(large_regression_model):
 
 
 def test_kfold_stratify_parameter(large_regression_model):
-    """Test the stratify parameter in the kfold function."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
 
@@ -485,7 +449,6 @@ def test_kfold_stratify_parameter(large_regression_model):
 
 
 def test_kfold_improved_validation(large_regression_model):
-    """Test the improved validation in the kfold function."""
     model, idata = large_regression_model
     wrapper = PyMCWrapper(model, idata)
     n_obs = len(wrapper.get_observed_data())

@@ -21,7 +21,7 @@ def centered_eight():
 
 @pytest.fixture(scope="module")
 def multidim_model():
-    log_like = np.random.randn(4, 100, 10, 2) 
+    log_like = np.random.randn(4, 100, 10, 2)
     return az.from_dict(
         posterior={"mu": np.random.randn(4, 100, 2)},
         log_likelihood={"obs": log_like},
