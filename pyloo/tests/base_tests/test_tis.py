@@ -13,7 +13,6 @@ from ..helpers import (
 
 
 def test_tislw_numpy(log_likelihood_data):
-    """Test TIS with numpy array input."""
     log_weights = log_likelihood_data.values
     smoothed_log_weights, ess = tislw(log_weights)
     assert_shape_equal(smoothed_log_weights, log_weights)
@@ -23,7 +22,6 @@ def test_tislw_numpy(log_likelihood_data):
 
 
 def test_tislw_xarray(log_likelihood_data):
-    """Test TIS with xarray DataArray input."""
     smoothed_log_weights, ess = tislw(log_likelihood_data)
     assert isinstance(smoothed_log_weights, xr.DataArray)
     assert isinstance(ess, xr.DataArray)
@@ -35,7 +33,6 @@ def test_tislw_xarray(log_likelihood_data):
 
 
 def test_tislw_1d_input(rng):
-    """Test tislw with 1D input."""
     log_ratios = rng.normal(size=1000)
     log_weights, ess = tislw(log_ratios)
 
@@ -48,7 +45,6 @@ def test_tislw_1d_input(rng):
 
 
 def test_tislw_input_validation():
-    """Test input validation in tislw."""
     log_ratios = np.array([1.0, 2.0, 3.0])
     log_weights, ess = tislw(log_ratios)
     assert isinstance(log_weights, np.ndarray)
@@ -56,7 +52,6 @@ def test_tislw_input_validation():
 
 
 def test_tislw_weight_normalization(numpy_arrays):
-    """Test that weights are properly normalized."""
     log_ratios = numpy_arrays["random_ratios"]
     log_weights, _ = tislw(log_ratios)
 
@@ -66,7 +61,6 @@ def test_tislw_weight_normalization(numpy_arrays):
 
 
 def test_tislw_with_real_data(log_likelihood_data):
-    """Test tislw with real log likelihood data."""
     log_ratios = log_likelihood_data.values
     log_weights, ess = tislw(log_ratios)
 
@@ -77,7 +71,6 @@ def test_tislw_with_real_data(log_likelihood_data):
 
 
 def test_tislw_extreme_values(extreme_data):
-    """Test tislw with extreme values."""
     log_weights, ess = tislw(extreme_data)
 
     assert_finite(log_weights)
@@ -89,7 +82,6 @@ def test_tislw_extreme_values(extreme_data):
 
 
 def test_internal_tislw():
-    """Test the internal _tislw function directly."""
     log_weights = np.array([1.0, 2.0, 3.0, 4.0])
     n_samples = len(log_weights)
     smoothed_lw, ess = _tislw(log_weights, n_samples)
@@ -105,7 +97,6 @@ def test_internal_tislw():
 
 
 def test_tislw_truncation_bound():
-    """Test that TIS weights are properly bounded."""
     rng = np.random.default_rng(42)
     log_ratios = rng.normal(size=(1000, 5))
     log_weights, _ = tislw(log_ratios)
@@ -118,7 +109,6 @@ def test_tislw_truncation_bound():
 
 
 def test_tislw_consistency():
-    """Test consistency of TIS weights with different sample sizes."""
     rng = np.random.default_rng(42)
     sizes = [100, 1000, 10000]
 
@@ -138,7 +128,6 @@ def test_tislw_consistency():
 
 
 def test_tislw_constant_weights():
-    """Test tislw with constant log-weights."""
     log_weights = np.ones(100)
     smoothed_lw, ess = tislw(log_weights)
     assert_arrays_allclose(smoothed_lw, -np.log(len(log_weights)), rtol=1e-6)
