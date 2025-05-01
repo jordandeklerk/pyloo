@@ -35,8 +35,7 @@ class PyMCWrapperError(Exception):
 
 
 def get_approximation_params(approx) -> dict[str, Any]:
-    """
-    Extract parameters from a variational approximation.
+    """Extract parameters from a variational approximation.
 
     Parameters
     ----------

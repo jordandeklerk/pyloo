@@ -299,52 +299,6 @@ class PyMCWrapper:
             For multiple indices (array, slice), returns a DataArray with dimensions (chain, draw, obs_idx)
             where obs_idx is the dimension for the observations, with an attribute 'observation_indices'
             containing the list of indices.
-
-        Examples
-        --------
-        Create a synthetic dataset for a simple linear regression model:
-
-        .. code-block:: python
-
-            import pymc as pm
-            import arviz as az
-            import numpy as np
-            from pyloo.wrapper import PyMCWrapper
-
-            x = np.random.normal(0, 1, size=100)
-            true_alpha = 1.0
-            true_beta = 2.5
-            true_sigma = 1.0
-            y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
-
-        Now, let's define a PyMC model for the linear regression and sample from the posterior:
-
-        .. code-block:: python
-
-            with pm.Model() as model:
-                alpha = pm.Normal("alpha", mu=0, sigma=10)
-                beta = pm.Normal("beta", mu=0, sigma=10)
-                sigma = pm.HalfNormal("sigma", sigma=10)
-                mu = alpha + beta * x
-                obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-                idata = pm.sample(1000, chains=2)
-
-        Finally, we can create a PyMCWrapper instance and compute the log-likelihood for a single held-out observation:
-
-        .. code-block:: python
-
-            wrapper = PyMCWrapper(model, idata)
-            idata = wrapper.sample_posterior(draws=1000, tune=1000, chains=2, target_accept=0.9)
-
-            # Single observation
-            log_like_i = wrapper.log_likelihood_i(10, idata)
-
-            # Multiple observations
-            indices = np.array([10, 20, 30])
-            log_like_multiple = wrapper.log_likelihood_i(indices, idata)
-
-            # Using a slice
-            log_like_slice = wrapper.log_likelihood_i(slice(10, 15), idata)
         """
         if var_name is None:
             var_name = self.get_observed_name()
@@ -503,80 +457,11 @@ class PyMCWrapper:
             raise PyMCWrapperError(f"Sampling failed: {str(e)}")
 
     def get_unconstrained_parameters(self) -> dict[str, xr.DataArray]:
-        r"""Convert posterior samples from the constrained to the unconstrained space.
+        r"""Convert posterior samples from constrained to unconstrained space.
 
-        This method transforms each free parameter's posterior samples from its native, constrained
+        Transforms each free parameter's posterior samples from its native, constrained
         domain to an unconstrained space where optimization and other operations can be performed
         more effectively.
-
-        When transforming random variables, we must account for the change in probability density
-        using the Jacobian adjustment. For a transformation :math:`\theta' = g(\theta)`, the probability
-        densities are related by:
-
-        .. math::
-            p(\theta') = p(\theta) \left| \frac{d}{d\theta'} g^{-1}(\theta') \right|
-
-        The mathematical transformations applied depend on the parameter's domain constraints.
-        For example, for positive variables (e.g., HalfNormal, Gamma), a logarithmic transformation is applied:
-
-        .. math::
-            \theta' = g(\theta) = \log(\theta), \quad \theta \in (0, \infty) \mapsto
-            \theta' \in (-\infty, \infty)
-
-        With Jacobian determinant:
-
-        .. math::
-            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| =
-            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta').
-
-        Returns
-        -------
-        dict[str, xr.DataArray]
-            A dictionary mapping parameter names to their posterior samples in the unconstrained space.
-            Each array retains its original dimensions (chain, draw, and parameter-specific dimensions).
-
-        Notes
-        -----
-        The method applies the `backward` transform from each parameter's transform object in the
-        model's `rvs_to_transforms` dictionary. If a transform is unavailable or fails, the original
-        constrained samples are returned instead. Jacobian adjustments are automatically handled
-        by PyMC's transform objects.
-
-        Examples
-        --------
-        Let's first import the necessary packages and create a simple linear regression dataset:
-
-        .. code-block:: python
-
-            import pymc as pm
-            import arviz as az
-            import numpy as np
-            from pyloo.wrapper import PyMCWrapper
-
-            x = np.random.normal(0, 1, size=100)
-            true_alpha = 1.0
-            true_beta = 2.5
-            true_sigma = 1.0
-            y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
-
-        Now, let's create a simple Bayesian linear regression model with PyMC and sample from its posterior:
-
-        .. code-block:: python
-
-            with pm.Model() as model:
-                alpha = pm.Normal("alpha", mu=0, sigma=10)
-                beta = pm.Normal("beta", mu=0, sigma=10)
-                sigma = pm.HalfNormal("sigma", sigma=10)
-                mu = alpha + beta * x
-                obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-                idata = pm.sample(1000, chains=2)
-
-        Finally, we can use the PyMCWrapper to transform our parameters to the unconstrained space:
-
-        .. code-block:: python
-
-            wrapper = PyMCWrapper(model, idata)
-            unconstrained_params = wrapper.get_unconstrained_parameters()
         """
         unconstrained_params = {}
 
@@ -619,91 +504,8 @@ class PyMCWrapper:
     ) -> dict[str, xr.DataArray]:
         r"""Convert parameters from the unconstrained back to the constrained space.
 
-        This method transforms parameter values from an unconstrained representation back to
+        Transforms parameter values from an unconstrained representation back to
         their original constrained domain as specified by their prior distributions.
-
-        When transforming random variables from unconstrained to constrained space, we apply the
-        inverse transformation. For a transformation :math:`\theta' = g(\theta)`, we apply
-        :math:`\theta = g^{-1}(\theta')`. The probability densities are related by:
-
-        .. math::
-            p(\theta) = p(\theta') \left| \frac{d}{d\theta} g(\theta) \right|^{-1} =
-            p(\theta') \left| \frac{1}{\frac{d}{d\theta} g(\theta)} \right|
-
-        The mathematical inverse transformations applied depend on the parameter's original constraints.
-        For example, for positive variables, the inverse of the logarithmic transform is applied:
-
-        .. math::
-            \theta = g^{-1}(\theta') = \exp(\theta'), \quad \theta' \in (-\infty, \infty) \mapsto
-            \theta \in (0, \infty)
-
-        With Jacobian determinant:
-
-        .. math::
-            \left| \frac{d}{d\theta'} g^{-1}(\theta') \right| =
-            \left| \frac{d}{d\theta'} \exp(\theta') \right| = \exp(\theta').
-
-        Parameters
-        ----------
-        unconstrained_params : dict[str, xr.DataArray]
-            A dictionary mapping parameter names to their values in the unconstrained space,
-            with dimensions (chain, draw) and any additional parameter-specific dimensions.
-
-        Returns
-        -------
-        dict[str, xr.DataArray]
-            A dictionary mapping parameter names to their values transformed back to the constrained
-            space, preserving the original dimensions.
-
-        Notes
-        -----
-        The method applies the `forward` transform from each parameter's transform object in the
-        model's `rvs_to_transforms` dictionary. If a transform is unavailable or fails, the original
-        unconstrained values are returned unchanged. Jacobian adjustments are automatically handled
-        by PyMC's transform objects. This operation is the inverse of `get_unconstrained_parameters`.
-
-        Examples
-        --------
-        Let's begin by importing necessary packages and creating a linear regression dataset:
-
-        .. code-block:: python
-
-            import pymc as pm
-            import arviz as az
-            import numpy as np
-            from pyloo.wrapper import PyMCWrapper
-
-            x = np.random.normal(0, 1, size=100)
-            true_alpha = 1.0
-            true_beta = 2.5
-            true_sigma = 1.0
-            y = true_alpha + true_beta * x + np.random.normal(0, true_sigma, size=100)
-
-        Next, we'll create a simple linear regression model and sample from its posterior:
-
-        .. code-block:: python
-
-            with pm.Model() as model:
-                alpha = pm.Normal("alpha", mu=0, sigma=10)
-                beta = pm.Normal("beta", mu=0, sigma=10)
-                sigma = pm.HalfNormal("sigma", sigma=10)
-                mu = alpha + beta * x
-                obs = pm.Normal("y", mu=mu, sigma=sigma, observed=y)
-                idata = pm.sample(1000, chains=2)
-
-        Let's create a PyMCWrapper instance and get our parameters in the unconstrained space:
-
-        .. code-block:: python
-
-            wrapper = PyMCWrapper(model, idata)
-            unconstrained_params = wrapper.get_unconstrained_parameters()
-
-        Now we can modify the unconstrained parameters and then transform them back to the constrained space:
-
-        .. code-block:: python
-
-            modified_unconstrained = {name: param + 0.1 for name, param in unconstrained_params.items()}
-            constrained_params = wrapper.constrain_parameters(modified_unconstrained)
         """
         constrained_params = {}
 
@@ -809,7 +611,7 @@ class PyMCWrapper:
             return mask
 
     def get_observed_name(self) -> str:
-        """Get the name of the first (and typically only) observed variable.
+        """Get the name of the first observed variable.
 
         Returns
         -------
@@ -821,7 +623,7 @@ class PyMCWrapper:
         return next(iter(self.observed_data))
 
     def get_observed_data(self) -> np.ndarray:
-        """Get the data of the first (and typically only) observed variable.
+        """Get the data of the first observed variable.
 
         Returns
         -------
@@ -937,56 +739,58 @@ class PyMCWrapper:
         coords: dict[str, Sequence] | None,
         update_coords: bool,
     ) -> None:
-        """Modifies 'working_coords' but doesn't directly set self.observed_data or
-        self.observed_dims. The caller (`set_data`) is responsible for setting
-        self.observed_data. Coordinate info is primarily managed via InferenceData
-        or model attributes elsewhere.
-        """
+        """Validate and potentially update coordinates for a variable."""
         orig_dims = self.get_dims(var_name)
         if orig_dims is None:
             return
 
         working_coords = {} if coords is None else coords.copy()
         required_dims = {d for d in orig_dims if d is not None}
-        missing_coords = required_dims - set(working_coords.keys())
+        provided_dims = set(working_coords.keys())
+        missing_coords = required_dims - provided_dims
 
         if not update_coords and missing_coords:
             raise ValueError(
                 f"Missing coordinates for dimensions {missing_coords} of variable"
-                f" {var_name}"
+                f" '{var_name}'. Provide coordinates or set update_coords=True."
             )
 
         for dim, size in zip(orig_dims, values.shape):
-            if dim is not None:
-                if dim not in working_coords:
-                    if update_coords:
-                        working_coords[dim] = list(range(size))
-                        warnings.warn(
-                            f"Automatically created coordinates for dimension {dim}",
-                            UserWarning,
-                            stacklevel=2,
-                        )
-                    else:
-                        raise ValueError(
-                            f"Missing coordinates for dimension {dim} of variable"
-                            f" {var_name}"
-                        )
-                elif len(working_coords[dim]) != size:
-                    if update_coords:
-                        original_len = len(working_coords[dim])
-                        working_coords[dim] = list(range(size))
-                        warnings.warn(
-                            f"Coordinate length for dimension {dim} changed from"
-                            f" {original_len} to {size}",
-                            UserWarning,
-                            stacklevel=2,
-                        )
-                    else:
-                        raise ValueError(
-                            f"Coordinate length {len(working_coords[dim])} for"
-                            f" dimension {dim} does not match variable shape {size}"
-                            f" for {var_name}"
-                        )
+            if dim is None:
+                continue
+
+            if dim not in working_coords:
+                if update_coords:
+                    working_coords[dim] = list(range(size))
+                    warnings.warn(
+                        f"Automatically created coordinates for dimension '{dim}' of"
+                        f" variable '{var_name}'.",
+                        UserWarning,
+                        stacklevel=3,  
+                    )
+                else:
+                    raise ValueError(
+                        f"Missing coordinates for dimension '{dim}' of variable"
+                        f" '{var_name}'."
+                    )
+            elif len(working_coords[dim]) != size:
+                original_len = len(working_coords[dim])
+                if update_coords:
+                    working_coords[dim] = list(range(size))
+                    warnings.warn(
+                        f"Coordinate length for dimension '{dim}' of variable"
+                        f" '{var_name}' changed from {original_len} to {size} to"
+                        f" match data shape.",
+                        UserWarning,
+                        stacklevel=3,
+                    )
+                else:
+                    raise ValueError(
+                        f"Coordinate length {original_len} for dimension '{dim}' does"
+                        f" not match data shape ({size}) for variable '{var_name}'."
+                        f" Set update_coords=True to allow resizing."
+                    )
+
 
     def _validate_observed_var(self, var_name: str) -> None:
         """Check if the variable name exists in observed_data."""

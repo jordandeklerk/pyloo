@@ -48,9 +48,7 @@ def tislw(log_weights):
     .. code-block:: python
 
         import pyloo as pl
-
         data = az.load_arviz_data("non_centered_eight")
-
         log_likelihood = data.log_likelihood["obs"].stack(
             __sample__=["chain", "draw"]
         )
