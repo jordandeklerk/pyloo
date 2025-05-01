@@ -17,7 +17,6 @@ from ..helpers import (
 
 
 def test_psislw_numpy(log_likelihood_data):
-    """Test PSIS with numpy array input."""
     log_weights = log_likelihood_data.values
     smoothed_log_weights, pareto_k = psislw(log_weights)
     assert_shape_equal(smoothed_log_weights, log_weights)
@@ -27,7 +26,6 @@ def test_psislw_numpy(log_likelihood_data):
 
 
 def test_psislw_xarray(log_likelihood_data):
-    """Test PSIS with xarray DataArray input."""
     smoothed_log_weights, pareto_k = psislw(log_likelihood_data)
     assert isinstance(smoothed_log_weights, xr.DataArray)
     assert isinstance(pareto_k, xr.DataArray)
@@ -41,7 +39,6 @@ def test_psislw_xarray(log_likelihood_data):
 
 
 def test_psislw_smooths_for_low_k(log_likelihood_data):
-    """Check that log-weights are smoothed regardless of k value."""
     x = log_likelihood_data.isel(
         {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
     )
@@ -50,7 +47,6 @@ def test_psislw_smooths_for_low_k(log_likelihood_data):
 
 
 def test_psislw_reff(log_likelihood_data):
-    """Test PSIS with different relative efficiency values."""
     x = log_likelihood_data.isel(
         {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
     )
@@ -63,7 +59,6 @@ def test_psislw_reff(log_likelihood_data):
 
 
 def test_gpdfit(log_likelihood_data):
-    """Test Generalized Pareto Distribution parameter estimation."""
     x = log_likelihood_data.isel(
         {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
     )
@@ -85,7 +80,6 @@ def test_gpdfit(log_likelihood_data):
 @pytest.mark.parametrize("kappa", [-1, -0.5, 0, 0.5, 1])
 @pytest.mark.parametrize("sigma", [0, 1, 2])
 def test_gpinv(probs, kappa, sigma):
-    """Test inverse Generalized Pareto Distribution function."""
     result = _gpinv(probs, kappa, sigma)
     assert len(result) == len(probs)
 
@@ -99,7 +93,6 @@ def test_gpinv(probs, kappa, sigma):
 
 
 def test_psislw_insufficient_tail_samples():
-    """Test PSIS behavior with insufficient tail samples."""
     log_weights = np.array([1.0, 1.1, 1.2, 1.3])
     smoothed_lw, k = psislw(log_weights)
     assert k == np.inf  # Should get inf when not enough tail samples
@@ -107,7 +100,6 @@ def test_psislw_insufficient_tail_samples():
 
 
 def test_internal_psislw(log_likelihood_data):
-    """Test the internal _psislw function directly."""
     x = log_likelihood_data.isel(
         {d: 0 for d in log_likelihood_data.dims if d != "__sample__"}
     ).values
@@ -121,14 +113,12 @@ def test_internal_psislw(log_likelihood_data):
 
 
 def test_psislw_extreme_values(extreme_data):
-    """Test PSIS with extreme values in log-weights."""
     smoothed_lw, k = psislw(extreme_data)
     assert_arrays_allclose(np.exp(smoothed_lw).sum(axis=-1), 1.0, rtol=1e-6)
     assert np.all(k == np.inf)  # All k values should be infinite
 
 
 def test_psislw_constant_weights():
-    """Test PSIS with constant log-weights."""
     log_weights = np.ones(100)
     smoothed_lw, k = psislw(log_weights)
     assert_arrays_allclose(smoothed_lw, -np.log(len(log_weights)), rtol=1e-6)
@@ -137,7 +127,6 @@ def test_psislw_constant_weights():
 
 @pytest.mark.parametrize("data_fixture", ["centered_eight", "non_centered_eight"])
 def test_psislw_arviz_match(data_fixture, request):
-    """Test that our PSIS implementation matches ArviZ's results."""
     data = request.getfixturevalue(data_fixture)
 
     log_likelihood = get_log_likelihood(data)
@@ -156,7 +145,6 @@ def test_psislw_arviz_match(data_fixture, request):
 
 
 def test_psislw_multidimensional(multidim_data):
-    """Test PSIS with multidimensional data."""
     data = xr.DataArray(
         multidim_data["llm"],
         dims=["chain", "draw", "dim1", "dim2"],
