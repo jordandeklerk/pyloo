@@ -1098,7 +1098,8 @@ def test_coordinate_handling(hierarchical_model):
 
     new_data = np.random.normal(0, 1, size=(12, 30))
     with pytest.raises(
-        ValueError, match="Coordinate length .* does not match variable shape"
+        ValueError,
+        match=r"Coordinate length 8 for dimension 'group' does not match data shape \(12\) for variable 'Y'. Set update_coords=True to allow resizing.",
     ):
         wrapper.set_data(
             {"Y": new_data},
