@@ -31,6 +31,9 @@ Analysis, doi:10.1214/17-BA1091.
 
 We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (like Pareto k estimates) and estimates for effective sample size and Monte Carlo error, providing greater insight into the reliability of the results.
 
+> **⚠️ Migration Notice**  
+> Most of the ongoing development for *pyloo* is moving to the new **[arviz-stats](https://github.com/arviz-devs/arviz-stats)** project. Future enhancements and bug-fixes will be concentrated there, while this repository will remain as a lightweight wrapper and archival reference.
+
 ## Features
 
 ### Core Functionality
