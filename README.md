@@ -11,7 +11,10 @@
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
 __pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models with advanced features for **PyMC** models. Inspired by its R twin [loo](https://github.com/stan-dev/loo), __pyloo__ brings similar functionality to the Python ecosystem.
-<br><br>
+<br><br><br>
+
+> **⚠️ Migration Notice**  
+> Most of the ongoing development for *pyloo* is moving to the new **[arviz-stats](https://github.com/arviz-devs/arviz-stats)** project. Future enhancements and bug-fixes will be concentrated there, while this repository will remain as a lightweight wrapper and archival reference.
 
 The package implements the fast and stable computations for approximate LOO-CV from
 
@@ -30,9 +33,6 @@ Analysis, doi:10.1214/17-BA1091.
 [arXiv preprint arXiv:1704.02030](https://arxiv.org/abs/1704.02030).
 
 We recommend PSIS-LOO-CV over WAIC because PSIS offers informative diagnostics (like Pareto k estimates) and estimates for effective sample size and Monte Carlo error, providing greater insight into the reliability of the results.
-
-> **⚠️ Migration Notice**  
-> Most of the ongoing development for *pyloo* is moving to the new **[arviz-stats](https://github.com/arviz-devs/arviz-stats)** project. Future enhancements and bug-fixes will be concentrated there, while this repository will remain as a lightweight wrapper and archival reference.
 
 ## Features
 
