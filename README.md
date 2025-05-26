@@ -1,3 +1,6 @@
+<img src="assets/pyloo-dark.png#gh-light-mode-only" width="200" align="left" alt="sieve logo"></img>
+<img src="assets/pyloo-light.png#gh-dark-mode-only" width="200" align="left" alt="sieve logo"></img>
+
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![Build Status](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/pyloo/actions/workflows/test.yml)
 [![Code Coverage](https://codecov.io/gh/jordandeklerk/pyloo/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/pyloo)
@@ -8,7 +11,7 @@
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
 __pyloo__ is a Python package providing efficient approximate leave-one-out cross-validation (LOO-CV) for fitted Bayesian models with advanced features for **PyMC** models. Inspired by its R twin [loo](https://github.com/stan-dev/loo), __pyloo__ brings similar functionality to the Python ecosystem.
-<br><br><br>
+<br><br>
 
 > **⚠️ Migration Notice**  
 > Most of the ongoing development for *pyloo* is moving to the new **[arviz-stats](https://github.com/arviz-devs/arviz-stats)** project. Future enhancements and bug-fixes will be concentrated there, while this repository will remain as a lightweight wrapper and archival reference.
